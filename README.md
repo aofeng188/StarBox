@@ -34,7 +34,9 @@
 
 `android/` 目录是原生 Kotlin + Jetpack Compose 的 Android 版（Android 8.0 及以上），与 iOS 版共用同一套文案 JSON，运势算法和随机种子与 iOS 完全一致：同一个人同一天在两台设备上看到的运势相同。
 
-**直接安装**：打开仓库的 Actions ▸ Android ▸ 最新一次成功的运行，下载 `XingXia-android` 构建产物，解压后把 `app-release.apk` 传到手机安装（需要在系统设置里允许「安装未知来源应用」）。release 包用 debug 证书签名，只适合自己侧载。
+**直接安装**：在 [Releases](../../releases) 里下载最新的 `XingXia-android-<版本>.apk`，传到手机安装（需要在系统设置里允许「安装未知来源应用」）。安装包用 debug 证书签名，只适合自己侧载。每次推送到 main 的构建也可以在 Actions ▸ Android 的 `XingXia-android` 构建产物里下载。
+
+**发布新版本**：改 `android/app/build.gradle.kts` 里的 `versionCode` / `versionName`，合并后在 main 上打 `android-v<versionName>` 标签并推送，CI 会自动建 Release 并附上 APK。
 
 **自己编译**：用 Android Studio 打开 `android/` 目录直接运行；或者命令行 `cd android && ./gradlew assembleDebug`。只想跑核心算法的单元测试（不需要 Android SDK）：`./gradlew -Pxingxia.coreOnly=true :core:test`。
 
