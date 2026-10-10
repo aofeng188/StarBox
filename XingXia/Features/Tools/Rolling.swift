@@ -89,6 +89,8 @@ struct ChipPicker: View {
         } label: {
             Text(title)
                 .font(.subheadline.weight(isOn ? .semibold : .regular))
+                .lineLimit(1)
+                .fixedSize()
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
                 .foregroundStyle(isOn ? .white : .primary)

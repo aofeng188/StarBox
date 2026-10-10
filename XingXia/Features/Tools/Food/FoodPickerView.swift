@@ -144,23 +144,31 @@ struct FoodPickerView: View {
         switch source {
         case .library:
             VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    ForEach(MealTime.allCases) { item in
-                        Button {
-                            meal = item
-                            Haptics.selection()
-                        } label: {
-                            Label(item.name, systemImage: item.symbol)
-                                .labelStyle(.titleAndIcon)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 7)
-                                .foregroundStyle(meal == item ? .white : .primary)
-                                .background(Capsule().fill(meal == item ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.primary.opacity(0.07))))
+                // 五个餐段在窄屏上放不下，改为可横向滑动，文字不换行
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(MealTime.allCases) { item in
+                            Button {
+                                meal = item
+                                Haptics.selection()
+                            } label: {
+                                Label(item.name, systemImage: item.symbol)
+                                    .labelStyle(.titleAndIcon)
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(1)
+                                    .fixedSize()
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 7)
+                                    .foregroundStyle(meal == item ? .white : .primary)
+                                    .background(Capsule().fill(meal == item ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.primary.opacity(0.07))))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(meal == item ? .isSelected : [])
                         }
-                        .buttonStyle(.plain)
                     }
+                    .padding(.horizontal, 16)
                 }
+                .padding(.horizontal, -16)
                 ChipPicker(options: FoodLibrary.cuisines, selection: $cuisines, allLabel: "全部菜系")
                 HStack {
                     ChipPicker(options: FoodLibrary.tastes, selection: $tastes, allLabel: "任意口味")

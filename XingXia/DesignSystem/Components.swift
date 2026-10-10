@@ -7,6 +7,8 @@ struct GlassCard<Content: View>: View {
     var padding: CGFloat = 18
     var tint: Color?
     var interactive = false
+    /// 把内容裁剪到卡片圆角内（卡片里有横向滚动内容时使用）
+    var clipped = false
     @ViewBuilder var content: Content
 
     @Environment(\.palette) private var palette
@@ -15,19 +17,35 @@ struct GlassCard<Content: View>: View {
         content
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .clipShape(.rect(cornerRadius: clipped ? cornerRadius : 0))
             .glassEffect(.regular.tint(tint ?? palette.glassTint).interactive(interactive),
                          in: .rect(cornerRadius: cornerRadius))
     }
 }
 
 extension View {
-    func glassCard(cornerRadius: CGFloat = 28, padding: CGFloat = 18, tint: Color? = nil, interactive: Bool = false) -> some View {
-        GlassCard(cornerRadius: cornerRadius, padding: padding, tint: tint, interactive: interactive) { self }
+    func glassCard(cornerRadius: CGFloat = 28, padding: CGFloat = 18, tint: Color? = nil, interactive: Bool = false, clipped: Bool = false) -> some View {
+        GlassCard(cornerRadius: cornerRadius, padding: padding, tint: tint, interactive: interactive, clipped: clipped) { self }
     }
 
     /// 圆形玻璃底
     func glassCircle(tint: Color? = nil, interactive: Bool = false) -> some View {
         glassEffect(.regular.tint(tint).interactive(interactive), in: .circle)
+    }
+}
+
+/// 卡片内的横向滚动：内容一直铺到卡片左右边缘，再由卡片圆角裁剪，
+/// 既不会在卡片内被生硬截断，也不会溢出到卡片外面。配合 `glassCard(clipped: true)` 使用。
+struct CardHScroll<Content: View>: View {
+    var inset: CGFloat = 18
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            content.padding(.horizontal, inset)
+        }
+        .scrollClipDisabled()
+        .padding(.horizontal, -inset)
     }
 }
 
@@ -182,12 +200,34 @@ struct TagChip: View {
     var body: some View {
         HStack(spacing: 4) {
             if let symbol { Image(systemName: symbol).font(.caption2) }
-            Text(text).font(.caption.weight(.medium))
+            Text(text).font(.caption.weight(.medium)).lineLimit(1)
         }
+        .fixedSize()
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .foregroundStyle(color ?? palette.accent)
         .background((color ?? palette.accent).opacity(0.14), in: .capsule)
+    }
+}
+
+/// 颜色标签：色点 + 色名。文字用系统主色，避免浅色（如月白）在浅底上看不清。
+struct ColorDotChip: View {
+    let named: NamedColor
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(Color(named))
+                .frame(width: 10, height: 10)
+                .overlay(Circle().strokeBorder(.primary.opacity(0.25), lineWidth: 0.5))
+            Text(named.name).font(.caption.weight(.medium)).lineLimit(1)
+        }
+        .fixedSize()
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(.primary.opacity(0.07), in: .capsule)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("幸运色 \(named.name)")
     }
 }
 

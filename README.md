@@ -20,7 +20,7 @@
 
 ## 不用 Xcode 安装（未签名 IPA）
 
-[Releases](../../releases) 里提供未签名的 `XingXia-1.0.1-unsigned.ipa`。它**不能**直接点开安装，需要用侧载工具配合你自己的 Apple ID 重新签名：
+[Releases](../../releases) 里提供未签名的 `XingXia-1.0.2-unsigned.ipa`。它**不能**直接点开安装，需要用侧载工具配合你自己的 Apple ID 重新签名：
 
 1. 在电脑上安装 Sideloadly、AltStore 或 SideStore 中的任意一个。
 2. 用工具打开下载的 IPA，登录 Apple ID，选择你的 iPhone 后安装。

@@ -47,7 +47,11 @@ struct AlmanacDetailView: View {
                     HStack(spacing: 8) {
                         TagChip(text: almanac.jianChu.name, color: almanac.jianChu.isLucky ? Color(hex: 0x34D399) : Color(hex: 0xFBBF24))
                         TagChip(text: "\(almanac.deity.name) · \(almanac.deity.pathName)", color: almanac.deity.isYellowPath ? Color(hex: 0xFBBF24) : Color(hex: 0x94A3B8))
-                        ForEach(almanac.festivals, id: \.self) { TagChip(text: $0, color: Color(hex: 0xFB7185)) }
+                    }
+                    if !almanac.festivals.isEmpty {
+                        HStack(spacing: 8) {
+                            ForEach(almanac.festivals, id: \.self) { TagChip(text: $0, color: Color(hex: 0xFB7185)) }
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity)

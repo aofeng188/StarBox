@@ -120,7 +120,7 @@ struct FortuneCalendarView: View {
                     Text("\(fortune.levelName) · \(fortune.summary)").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
                 }
             }
-            HStack(spacing: 8) {
+            FlowLayout(spacing: 8) {
                 TagChip(text: "宜 " + fortune.funYi.prefix(2).joined(separator: "、"), color: Color(hex: 0x34D399))
                 TagChip(text: "忌 " + fortune.funJi.prefix(2).joined(separator: "、"), color: Color(hex: 0xFB7185))
             }

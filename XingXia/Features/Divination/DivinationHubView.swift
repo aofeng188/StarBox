@@ -26,8 +26,8 @@ struct DivinationHubView: View {
                         SmallHeroCard(title: "答案之书", subtitle: "默念问题 · 翻开一页", colors: [Color(hex: 0xD97706), Color(hex: 0x92400E)]) {
                             Image(systemName: "book.closed.fill")
                                 .font(.system(size: 44))
-                                .foregroundStyle(LinearGradient(colors: [Color(hex: 0xFFE7A3), Color(hex: 0xF5B83D)], startPoint: .top, endPoint: .bottom))
-                                .shadow(color: Color(hex: 0xFFD166).opacity(0.8), radius: 12)
+                                .foregroundStyle(LinearGradient(colors: [Color(hex: 0xF5B83D), Color(hex: 0xB45309)], startPoint: .top, endPoint: .bottom))
+                                .shadow(color: Color(hex: 0xF5B83D).opacity(0.7), radius: 12)
                         }
                     }
                     .buttonStyle(.pressableCard)
@@ -39,7 +39,7 @@ struct DivinationHubView: View {
                             SectionHeader(title: "星座运势", subtitle: "今日 · 明日 · 本周 · 本月", symbol: "moon.stars.fill")
                             Image(systemName: "chevron.right").foregroundStyle(.tertiary)
                         }
-                        ScrollView(.horizontal, showsIndicators: false) {
+                        CardHScroll {
                             HStack(spacing: 12) {
                                 ForEach(ZodiacSign.allCases) { sign in
                                     VStack(spacing: 4) {
@@ -49,10 +49,9 @@ struct DivinationHubView: View {
                                 }
                             }
                         }
-                        .scrollClipDisabled()
                         .allowsHitTesting(false)
                     }
-                    .glassCard(interactive: true)
+                    .glassCard(interactive: true, clipped: true)
                 }
                 .buttonStyle(.pressableCard)
 

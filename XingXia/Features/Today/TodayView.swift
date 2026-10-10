@@ -103,7 +103,7 @@ private struct TodayHeader: View {
             .font(.footnote)
             .foregroundStyle(.secondary)
             if !almanac.festivals.isEmpty {
-                HStack(spacing: 6) {
+                FlowLayout(spacing: 6) {
                     ForEach(almanac.festivals, id: \.self) { TagChip(text: $0, symbol: "party.popper.fill") }
                 }
                 .padding(.top, 2)

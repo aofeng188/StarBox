@@ -110,7 +110,7 @@ struct HoroscopeView: View {
                 // 星座档案
                 VStack(alignment: .leading, spacing: 12) {
                     SectionHeader(title: "星座档案", symbol: "person.text.rectangle")
-                    HStack(spacing: 8) {
+                    FlowLayout(spacing: 8) {
                         TagChip(text: sign.element.name)
                         TagChip(text: sign.modality.name, color: palette.accentSecondary)
                         TagChip(text: "守护星 \(sign.ruler)", color: palette.nebula[2])

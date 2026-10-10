@@ -40,6 +40,18 @@ enum StickLevel: String, CaseIterable {
         }
     }
 
+    /// 用作文字颜色时的版本：浅色模式下用加深的同色系，保证在浅底上看得清
+    func ink(_ scheme: ColorScheme) -> Color {
+        guard scheme == .light else { return color }
+        switch self {
+        case .best: return Color(hex: 0xA16207)
+        case .good: return Color(hex: 0xBE185D)
+        case .fair: return Color(hex: 0x0369A1)
+        case .middle: return Color(hex: 0x047857)
+        case .low: return Color(hex: 0x6D28D9)
+        }
+    }
+
     var blessing: String {
         switch self {
         case .best: "大吉大利，心想事成"

@@ -80,7 +80,7 @@ struct MeView: View {
                         Text(DateText.full(DayKey(profile.birthday)) + (profile.hasBirthTime ? String(format: " %02d:%02d", profile.birthHour, profile.birthMinute) : ""))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        HStack(spacing: 6) {
+                        FlowLayout(spacing: 6) {
                             TagChip(text: profile.sunSign.name, symbol: "sparkle")
                             TagChip(text: "属\(bazi.zodiacAnimal.animal)", color: palette.accentSecondary)
                             TagChip(text: "日主\(bazi.dayMaster.name)\(bazi.dayMaster.element.name)", color: bazi.dayMaster.element.color)

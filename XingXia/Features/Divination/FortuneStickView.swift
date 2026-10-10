@@ -265,6 +265,7 @@ struct StickResultView: View {
     let onAgain: () -> Void
 
     @Environment(\.palette) private var palette
+    @Environment(\.colorScheme) private var scheme
     @State private var stamped = false
 
     var body: some View {
@@ -310,7 +311,7 @@ struct StickResultView: View {
                     .accessibilityLabel(stick.poem.joined(separator: "，"))
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("解曰").font(AppFont.serif(17, weight: .bold)).foregroundStyle(stick.levelInfo.color)
+                        Text("解曰").font(AppFont.serif(17, weight: .bold)).foregroundStyle(stick.levelInfo.ink(scheme))
                         Text(stick.meaning).font(.body).lineSpacing(4)
                         Text(stick.levelInfo.blessing).font(.subheadline).foregroundStyle(.secondary)
                     }
@@ -325,7 +326,7 @@ struct StickResultView: View {
                         ForEach(stick.areas, id: \.0) { area, verdict in
                             let highlighted = area == wish || (wish == "学业" && area == "事业")
                             VStack(spacing: 4) {
-                                Text(area).font(.caption).foregroundStyle(highlighted ? stick.levelInfo.color : .secondary)
+                                Text(area).font(.caption).foregroundStyle(highlighted ? stick.levelInfo.ink(scheme) : .secondary)
                                 Text(verdict).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
                             }
                             .frame(maxWidth: .infinity)

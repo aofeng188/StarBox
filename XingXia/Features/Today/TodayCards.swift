@@ -194,9 +194,9 @@ struct HoroscopeMiniCard: View {
                     Text(horoscope.comment)
                         .font(.subheadline)
                         .foregroundStyle(.primary.opacity(0.85))
-                    HStack(spacing: 6) {
+                    FlowLayout(spacing: 6) {
                         TagChip(text: "速配 \(horoscope.matchSign.shortName)", symbol: "heart.fill")
-                        TagChip(text: horoscope.luckyColor.name, color: Color(horoscope.luckyColor), symbol: "paintpalette.fill")
+                        ColorDotChip(named: horoscope.luckyColor)
                     }
                 }
                 Spacer(minLength: 0)
@@ -240,6 +240,7 @@ struct ZodiacBadge: View {
 // MARK: - 今日一签
 
 struct StickMiniCard: View {
+    @Environment(\.colorScheme) private var scheme
     @Environment(AppState.self) private var app
     @Query(sort: \StickDraw.date, order: .reverse) private var draws: [StickDraw]
     @Environment(\.palette) private var palette
@@ -269,7 +270,7 @@ struct StickMiniCard: View {
                                 .font(.caption.weight(.bold))
                                 .padding(.horizontal, 8).padding(.vertical, 3)
                                 .background(stick.levelInfo.color.opacity(0.25), in: .capsule)
-                                .foregroundStyle(stick.levelInfo.color)
+                                .foregroundStyle(stick.levelInfo.ink(scheme))
                         }
                         Text("「\(stick.title)」\(stick.poem[0])").font(.subheadline).lineLimit(1).foregroundStyle(.secondary)
                     }
@@ -297,7 +298,7 @@ struct QuickToolsRow: View {
         let tools = settings.favoriteTools.compactMap(ToolKind.init(rawValue:))
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: "快捷工具", subtitle: "在百宝箱长按工具可收藏", symbol: "bolt.fill")
-            ScrollView(.horizontal, showsIndicators: false) {
+            CardHScroll {
                 HStack(spacing: 14) {
                     ForEach(tools) { tool in
                         NavigationLink(value: AppRoute.tool(tool)) {
@@ -323,9 +324,8 @@ struct QuickToolsRow: View {
                 }
                 .padding(.vertical, 4)
             }
-            .scrollClipDisabled()
         }
-        .glassCard()
+        .glassCard(clipped: true)
     }
 }
 
@@ -355,17 +355,16 @@ struct CountdownStrip: View {
                 }
                 .buttonStyle(.glass)
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
+                CardHScroll {
                     HStack(spacing: 12) {
                         ForEach(shown) { countdown in
                             CountdownChip(countdown: countdown)
                         }
                     }
                 }
-                .scrollClipDisabled()
             }
         }
-        .glassCard()
+        .glassCard(clipped: true)
     }
 }
 
