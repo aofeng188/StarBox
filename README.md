@@ -36,7 +36,7 @@
 
 **直接安装**：在 [Releases](../../releases) 里下载最新的 `XingXia-android-<版本>.apk`，传到手机安装（需要在系统设置里允许「安装未知来源应用」）。安装包用 debug 证书签名，只适合自己侧载。每次推送到 main 的构建也可以在 Actions ▸ Android 的 `XingXia-android` 构建产物里下载。
 
-**发布新版本**：改 `android/app/build.gradle.kts` 里的 `versionCode` / `versionName`，合并后在 main 上打 `android-v<versionName>` 标签并推送，CI 会自动建 Release 并附上 APK。
+**发布新版本**：改 `android/app/build.gradle.kts` 里的 `versionCode` / `versionName`，合并后到 Actions ▸ Android ▸ Run workflow 勾选 publish（或在 main 上推送 `android-v<versionName>` 标签），CI 会自动建 Release 并附上 APK。
 
 **自己编译**：用 Android Studio 打开 `android/` 目录直接运行；或者命令行 `cd android && ./gradlew assembleDebug`。只想跑核心算法的单元测试（不需要 Android SDK）：`./gradlew -Pxingxia.coreOnly=true :core:test`。
 

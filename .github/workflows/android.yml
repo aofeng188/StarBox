@@ -3,12 +3,17 @@ name: Android
 on:
   push:
     branches: [main]
-    # 推送 android-v* 标签时额外发布 GitHub Release（标签推送不受下面的 paths 过滤）
+    # 推送 android-v* 标签（或手动运行时勾选 publish）会额外发布 GitHub Release；标签推送不受下面的 paths 过滤
     tags: ["android-v*"]
     paths: ["android/**", "Shared/Content/**", "XingXia/Resources/**", ".github/workflows/android.yml"]
   pull_request:
     paths: ["android/**", "Shared/Content/**", "XingXia/Resources/**", ".github/workflows/android.yml"]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "按 versionName 发布 Release（标签 android-v<versionName>）"
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -43,16 +48,23 @@ jobs:
             android/app/build/outputs/apk/debug/*.apk
 
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/android-v')
+        if: startsWith(github.ref, 'refs/tags/android-v') || inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          version="${TAG#android-v}"
           declared=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)
-          if [ "$version" != "$declared" ]; then
-            echo "标签版本 $version 与 versionName $declared 不一致" >&2
-            exit 1
+          if [ "$REF_TYPE" = tag ]; then
+            TAG="$REF_NAME"
+            version="${TAG#android-v}"
+            if [ "$version" != "$declared" ]; then
+              echo "标签版本 $version 与 versionName $declared 不一致" >&2
+              exit 1
+            fi
+          else
+            version="$declared"
+            TAG="android-v$version"
           fi
           apk="XingXia-android-$version.apk"
           cp app/build/outputs/apk/release/app-release.apk "$apk"
@@ -63,4 +75,4 @@ jobs:
 
           功能与 iOS 版基本一致：今日运势、占卜、百宝箱 12 个工具、记录、多人档案、8 套主题、每日运势通知、桌面小组件与快捷方式。与 iOS 版的差异见仓库 README 的「Android 版」一节。
           NOTES
-          gh release create "$TAG" "$apk" --title "星匣 Android $version" --notes-file notes.md --latest=false
+          gh release create "$TAG" "$apk" --title "星匣 Android $version" --notes-file notes.md --latest=false --target "$GITHUB_SHA"
