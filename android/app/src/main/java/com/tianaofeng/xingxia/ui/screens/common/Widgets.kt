@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CurrencyYen
+import androidx.compose.material.icons.rounded.Paid
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FormatQuote
 import androidx.compose.material.icons.rounded.Spa
@@ -66,7 +66,7 @@ val FortuneCategory.icon: ImageVector
     get() = when (this) {
         FortuneCategory.LOVE -> Icons.Rounded.Favorite
         FortuneCategory.CAREER -> Icons.Rounded.Work
-        FortuneCategory.WEALTH -> Icons.Rounded.CurrencyYen
+        FortuneCategory.WEALTH -> Icons.Rounded.Paid
         FortuneCategory.HEALTH -> Icons.Rounded.Spa
     }
 
