@@ -11,6 +11,9 @@ import com.tianaofeng.xingxia.core.DayKey
 import com.tianaofeng.xingxia.core.ZodiacSign
 import com.tianaofeng.xingxia.core.BaZi
 import com.tianaofeng.xingxia.core.EarthlyBranch
+import com.tianaofeng.xingxia.core.CountdownKind
+import com.tianaofeng.xingxia.core.CountdownSpec
+import com.tianaofeng.xingxia.core.CountdownStatus
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
@@ -91,6 +94,92 @@ data class BlockedFood(val name: String, val date: Long = System.currentTimeMill
 @Serializable
 data class Roster(val id: String = newId(), val name: String, val members: List<String>, val createdAt: Long = System.currentTimeMillis())
 
+@Serializable
+data class MoodEntry(
+    val dayKey: Int,
+    /** 1…5 */
+    val mood: Int,
+    val note: String = "",
+    val tags: List<String> = emptyList(),
+    val date: Long = System.currentTimeMillis(),
+)
+
+@Serializable
+data class Countdown(
+    val id: String = newId(),
+    val title: String,
+    val emoji: String = "🎉",
+    /** 公历日期 yyyyMMdd（农历倒数日中仅生日用来参考出生年份） */
+    val date: Int,
+    /** "countdown" 倒数日 / "anniversary" 纪念日 / "birthday" 生日 */
+    val kind: String = "countdown",
+    val repeatsYearly: Boolean = false,
+    val isLunar: Boolean = false,
+    val lunarMonth: Int = 1,
+    val lunarDay: Int = 1,
+    val colorIndex: Int = 0,
+    val pinned: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis(),
+) {
+    val kindValue: CountdownKind get() = CountdownKind.of(kind)
+
+    val spec: CountdownSpec
+        get() = CountdownSpec(kindValue, DayKey.fromRaw(date) ?: DayKey.today, repeatsYearly, isLunar, lunarMonth, lunarDay)
+
+    fun status(today: DayKey = DayKey.today): CountdownStatus = spec.status(today)
+}
+
+@Serializable
+data class LotteryItem(
+    val id: String = newId(),
+    val name: String,
+    val weight: Double = 1.0,
+    val quantity: Int = 1,
+    val remaining: Int = quantity,
+)
+
+@Serializable
+data class LotteryPool(
+    val id: String = newId(),
+    val name: String,
+    val icon: String = "🎁",
+    val removeAfterDraw: Boolean = true,
+    val items: List<LotteryItem> = emptyList(),
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
+@Serializable
+data class FoodMenuItem(val id: String = newId(), val name: String, val note: String = "", val weight: Double = 1.0)
+
+@Serializable
+data class FoodMenu(
+    val id: String = newId(),
+    val name: String,
+    val icon: String = "🍱",
+    val items: List<FoodMenuItem> = emptyList(),
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
+/** 真心话大冒险的自定义题目 */
+@Serializable
+data class CustomPrompt(
+    val id: String = newId(),
+    /** "truth" / "dare" */
+    val kind: String,
+    val text: String,
+    val level: Int = 0,
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
+@Serializable
+data class ScratchPreset(
+    val id: String = newId(),
+    val name: String,
+    val prizes: List<String>,
+    val blankWeight: Double = 1.0,
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
 // endregion
 
 /** 用 SharedPreferences 持久化的 Compose 状态：读写都会触发重组。 */
@@ -170,12 +259,23 @@ object Store {
     val foodLogs = PersistedList("foodLogs", FoodLog.serializer())
     val blockedFoods = PersistedList("blockedFoods", BlockedFood.serializer())
     val rosters = PersistedList("rosters", Roster.serializer())
+    val moods = PersistedList("moodEntries", MoodEntry.serializer())
+    val countdowns = PersistedList("countdowns", Countdown.serializer())
+    val lotteryPools = PersistedList("lotteryPools", LotteryPool.serializer())
+    val foodMenus = PersistedList("foodMenus", FoodMenu.serializer())
+    val customPrompts = PersistedList("customPrompts", CustomPrompt.serializer())
+    val scratchPresets = PersistedList("scratchPresets", ScratchPreset.serializer())
+
+    private val all get() = listOf(
+        profiles, records, stickDraws, wheels, foodLogs, blockedFoods, rosters,
+        moods, countdowns, lotteryPools, foodMenus, customPrompts, scratchPresets,
+    )
 
     private val primaryId by lazy { Prefs.string("primaryProfileId", "") }
 
     fun init(context: Context) {
         Prefs.init(context)
-        listOf(profiles, records, stickDraws, wheels, foodLogs, blockedFoods, rosters).forEach { it.load() }
+        all.forEach { it.load() }
         SeedData.insertIfNeeded()
     }
 
@@ -188,18 +288,47 @@ object Store {
 
     fun setPrimary(profile: Profile?) {
         primaryId.value = profile?.id ?: ""
+        onPrimaryChanged()
+    }
+
+    /** 当前档案或倒数日变化时由 App 注册：刷新小组件、重排每日提醒 */
+    var onDataChanged: () -> Unit = {}
+
+    private fun onPrimaryChanged() = onDataChanged()
+
+    fun todayMood(today: DayKey = DayKey.today): MoodEntry? = moods.items.lastOrNull { it.dayKey == today.rawValue }
+
+    fun setMood(value: Int, today: DayKey = DayKey.today) {
+        moods.update { list ->
+            val existing = list.lastOrNull { it.dayKey == today.rawValue }
+            if (existing != null) list.map { if (it.dayKey == today.rawValue) it.copy(mood = value, date = System.currentTimeMillis()) else it }
+            else list + MoodEntry(today.rawValue, value)
+        }
+    }
+
+    fun saveCountdown(countdown: Countdown) {
+        countdowns.update { list ->
+            if (list.any { it.id == countdown.id }) list.map { if (it.id == countdown.id) countdown else it } else list + countdown
+        }
+        onDataChanged()
+    }
+
+    fun deleteCountdown(id: String) {
+        countdowns.update { list -> list.filter { it.id != id } }
+        onDataChanged()
     }
 
     fun saveProfile(profile: Profile) {
         profiles.update { list ->
             if (list.any { it.id == profile.id }) list.map { if (it.id == profile.id) profile else it } else list + profile
         }
+        onDataChanged()
     }
 
     fun deleteProfile(profile: Profile) {
         val wasPrimary = primary?.id == profile.id
         profiles.update { list -> list.filter { it.id != profile.id } }
-        if (wasPrimary) setPrimary(sortedProfiles.firstOrNull())
+        if (wasPrimary) setPrimary(sortedProfiles.firstOrNull()) else onDataChanged()
     }
 
     /** 往「决策历史」里记一笔 */
@@ -226,9 +355,12 @@ object Store {
 private object SeedData {
     fun insertIfNeeded() {
         var version by Prefs.int("seedVersion", 0)
-        if (version >= 1) return
-        version = 1
+        if (version < 1) seedV1()
+        if (version < 2) seedV2()
+        version = 2
+    }
 
+    private fun seedV1() {
         val wheels = listOf(
             "今晚谁洗碗" to listOf("我", "你", "石头剪刀布决定", "一起洗", "明天再洗"),
             "周末去哪儿" to listOf("看电影", "逛公园", "爬山", "宅家追剧", "探店", "博物馆", "去海边"),
@@ -239,6 +371,50 @@ private object SeedData {
             existing + wheels.mapIndexed { i, (name, options) ->
                 WheelTemplate(name = name, options = options.map { WheelOption(title = it) }, createdAt = System.currentTimeMillis() + i)
             }
+        }
+    }
+    }
+
+    /** 第二阶段加入的工具的示例数据 */
+    private fun seedV2() {
+        Store.lotteryPools.update { existing ->
+            existing + listOf(
+                LotteryPool(
+                    name = "年会抽奖", icon = "🎊", removeAfterDraw = true,
+                    items = listOf(
+                        LotteryItem(name = "特等奖 · 新款手机", quantity = 1),
+                        LotteryItem(name = "一等奖 · 无线耳机", quantity = 2),
+                        LotteryItem(name = "二等奖 · 购物卡", quantity = 5),
+                        LotteryItem(name = "三等奖 · 奶茶券", quantity = 10),
+                        LotteryItem(name = "参与奖 · 幸运红包", quantity = 20),
+                    ),
+                ),
+                LotteryPool(
+                    name = "今日小奖励", icon = "🎁", removeAfterDraw = false, createdAt = System.currentTimeMillis() + 1,
+                    items = listOf("一杯奶茶", "看一集剧", "早睡一小时", "买束花", "散步半小时", "吃顿好的", "谢谢惠顾").map {
+                        LotteryItem(name = it, weight = if (it == "谢谢惠顾") 2.0 else 1.0, quantity = 99)
+                    },
+                ),
+            )
+        }
+        Store.foodMenus.update { existing ->
+            existing + FoodMenu(
+                name = "公司楼下", icon = "🏢",
+                items = listOf("兰州拉面", "黄焖鸡米饭", "麻辣烫", "沙拉轻食", "日式便当", "螺蛳粉").map { FoodMenuItem(name = it) },
+            )
+        }
+        Store.scratchPresets.update { existing ->
+            existing + ScratchPreset(name = "今日惊喜", prizes = listOf("奶茶一杯 🧋", "免做家务一次 🧹", "电影之夜 🎬", "抱抱一下 🤗", "零食大礼包 🍫"))
+        }
+        val today = DayKey.today
+        Store.countdowns.update { existing ->
+            existing + listOf(
+                Countdown(title = "元旦", emoji = "🎆", date = DayKey(today.year + 1, 1, 1).rawValue, repeatsYearly = true, colorIndex = 0),
+                Countdown(
+                    title = "春节", emoji = "🧧", date = today.rawValue, repeatsYearly = true, isLunar = true,
+                    lunarMonth = 1, lunarDay = 1, pinned = true, colorIndex = 1, createdAt = System.currentTimeMillis() + 1,
+                ),
+            )
         }
     }
 }

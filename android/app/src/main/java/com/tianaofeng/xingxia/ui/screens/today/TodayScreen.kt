@@ -91,6 +91,8 @@ import com.tianaofeng.xingxia.ui.screens.common.ZodiacBadge
 import com.tianaofeng.xingxia.ui.screens.common.stickLevelColor
 import com.tianaofeng.xingxia.ui.screens.common.stickLevelInk
 import com.tianaofeng.xingxia.ui.screens.tools.ToolKind
+import com.tianaofeng.xingxia.ui.screens.records.CountdownStrip
+import com.tianaofeng.xingxia.ui.screens.records.MoodCheckInCard
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.hex
 import com.tianaofeng.xingxia.ui.theme.toColor
@@ -137,6 +139,8 @@ fun TodayScreen() {
                 HomeCard.HOROSCOPE -> HoroscopeMiniCard(today)
                 HomeCard.STICK -> StickMiniCard(today)
                 HomeCard.QUICK_TOOLS -> QuickToolsRow()
+                HomeCard.COUNTDOWN -> CountdownStrip { navigator.open(Routes.COUNTDOWNS) }
+                HomeCard.MOOD -> MoodCheckInCard { navigator.open(Routes.MOOD) }
                 HomeCard.QUOTE -> QuoteCard(fortune.quote)
             }
         }

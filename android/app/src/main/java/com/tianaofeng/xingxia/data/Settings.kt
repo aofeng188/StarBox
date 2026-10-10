@@ -10,6 +10,8 @@ enum class HomeCard(val key: String, val label: String) {
     HOROSCOPE("horoscope", "星座运势"),
     STICK("stick", "今日一签"),
     QUICK_TOOLS("quickTools", "快捷工具"),
+    COUNTDOWN("countdown", "倒数日"),
+    MOOD("mood", "心情打卡"),
     QUOTE("quote", "每日一句");
 
     companion object {
@@ -29,12 +31,24 @@ object AppSettings {
     var almanacShowsTraditional by Prefs.bool("almanacShowsTraditional", false)
     var hasOnboarded by Prefs.bool("hasOnboarded", false)
     var lastViewedSign by Prefs.int("lastViewedSign", -1)
+    var soundEnabled by Prefs.bool("soundEnabled", true)
+    /** 0…100 */
+    var soundVolume by Prefs.int("soundVolume", 70)
+    var dailyReminderEnabled by Prefs.bool("dailyReminderEnabled", false)
+    var reminderHour by Prefs.int("reminderHour", 8)
+    var reminderMinute by Prefs.int("reminderMinute", 0)
 
     /** 新版本加入的模块追加到末尾 */
     var homeCards: List<HomeCard>
         get() {
             val stored = homeCardKeys.value.mapNotNull { HomeCard.of(it) }
-            return stored + HomeCard.entries.filter { it !in stored }
+            val missing = HomeCard.entries.filter { it !in stored }
+            // 新模块按默认顺序插到「每日一句」前面
+            return if (HomeCard.QUOTE in stored) {
+                stored.takeWhile { it != HomeCard.QUOTE } + missing + stored.dropWhile { it != HomeCard.QUOTE }
+            } else {
+                stored + missing
+            }
         }
         set(value) { homeCardKeys.value = value.map { it.key } }
 

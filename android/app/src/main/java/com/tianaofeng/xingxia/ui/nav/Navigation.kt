@@ -62,6 +62,9 @@ import com.tianaofeng.xingxia.ui.screens.profile.ProfileListScreen
 import com.tianaofeng.xingxia.ui.screens.profile.SettingsScreen
 import com.tianaofeng.xingxia.ui.screens.profile.ThemeSettingsScreen
 import com.tianaofeng.xingxia.ui.screens.records.ComingSoonScreen
+import com.tianaofeng.xingxia.ui.screens.records.CountdownListScreen
+import com.tianaofeng.xingxia.ui.screens.records.FortuneCalendarScreen
+import com.tianaofeng.xingxia.ui.screens.records.MoodScreen
 import com.tianaofeng.xingxia.ui.screens.records.HistoryScreen
 import com.tianaofeng.xingxia.ui.screens.records.RecordsHubScreen
 import com.tianaofeng.xingxia.ui.screens.today.HomeEditorScreen
@@ -92,6 +95,9 @@ object Routes {
     const val THEMES = "themes"
     const val SETTINGS = "settings"
     const val HOME_EDITOR = "homeEditor"
+    const val MOOD = "mood"
+    const val COUNTDOWNS = "countdowns"
+    const val CALENDAR = "calendar"
 
     fun tool(kind: ToolKind) = "tool/${kind.id}"
     fun profileEditor(id: String? = null, onboarding: Boolean = false) = "profileEditor?id=${id ?: ""}&onboarding=$onboarding"
@@ -110,9 +116,9 @@ object Routes {
             "tarot" -> TAROT
             "answers" -> ANSWERS
             "history" -> HISTORY
-            "mood" -> comingSoon("心情打卡")
-            "countdowns" -> comingSoon("倒数日")
-            "calendar" -> comingSoon("运势日历")
+            "mood" -> MOOD
+            "countdowns" -> COUNTDOWNS
+            "calendar" -> CALENDAR
             else -> null
         }
     }
@@ -191,6 +197,9 @@ fun AppNavigation(pendingLink: MutableState<String?>) {
                 composable(Routes.THEMES) { ThemeSettingsScreen() }
                 composable(Routes.SETTINGS) { SettingsScreen() }
                 composable(Routes.HOME_EDITOR) { HomeEditorScreen() }
+                composable(Routes.MOOD) { MoodScreen() }
+                composable(Routes.COUNTDOWNS) { CountdownListScreen() }
+                composable(Routes.CALENDAR) { FortuneCalendarScreen() }
                 composable("tool/{id}") { entry ->
                     val kind = ToolKind.of(entry.arguments?.getString("id"))
                     if (kind != null) ToolScreen(kind) else ComingSoonScreen("工具")

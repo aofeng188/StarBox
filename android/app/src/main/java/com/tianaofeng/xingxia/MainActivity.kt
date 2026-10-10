@@ -25,6 +25,9 @@ import androidx.core.view.WindowCompat
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.CosmicBackground
 import com.tianaofeng.xingxia.ui.components.HapticsHost
+import com.tianaofeng.xingxia.ui.components.SoundEngine
+import com.tianaofeng.xingxia.system.ReminderScheduler
+import com.tianaofeng.xingxia.system.Widgets
 import com.tianaofeng.xingxia.ui.nav.AppNavigation
 import com.tianaofeng.xingxia.ui.nav.Routes
 import com.tianaofeng.xingxia.ui.theme.AppearanceMode
@@ -37,6 +40,13 @@ class XingXiaApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         Store.init(this)
+        SoundEngine.prepare(this)
+        val app = this
+        Store.onDataChanged = {
+            Widgets.updateAll(app)
+            ReminderScheduler.reschedule(app)
+        }
+        ReminderScheduler.reschedule(this)
     }
 }
 
@@ -48,6 +58,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) pendingLink.value = Routes.fromUri(intent?.data)
         setContent { XingXiaRoot(pendingLink) }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // 离开 App 时刷新小组件（主题、档案、日期都可能变了）
+        Widgets.updateAll(this)
     }
 
     override fun onNewIntent(intent: Intent) {

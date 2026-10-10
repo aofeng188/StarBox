@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.tianaofeng.xingxia.core.CountdownKind
 import com.tianaofeng.xingxia.core.DateText
 import com.tianaofeng.xingxia.core.DayKey
 import com.tianaofeng.xingxia.data.Store
@@ -55,38 +56,34 @@ fun RecordsHubScreen() {
     val palette = LocalPalette.current
     Screen(title = "记录", isRoot = true) {
         val records = Store.records.items
-        GlassCard(onClick = { navigator.open(Routes.HISTORY) }) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                ToolIcon(Icons.Rounded.History, listOf(hex(0x8B5CF6), hex(0x3B82F6)), 48.dp)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text("决策历史", style = Fonts.headline)
-                    SecondaryText("共 ${records.size} 条 · 求签、塔罗与各种随机工具的结果", style = Fonts.caption)
-                }
+        MoodCheckInCard { navigator.open(Routes.MOOD) }
+        WeekMoodCard { navigator.open(Routes.MOOD) }
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            val today = DayKey.today
+            RecordTile(
+                Icons.Rounded.CalendarMonth, listOf(palette.accent, palette.accentSecondary), "运势日历",
+                "${today.month}月", "每日运势一览", Modifier.weight(1f),
+            ) { navigator.open(Routes.CALENDAR) }
+            val upcoming = Store.countdowns.items
+                .filter { it.kindValue != CountdownKind.ANNIVERSARY }
+                .map { it to it.status() }
+                .filter { !it.second.isPast }
+                .minByOrNull { it.second.days }
+            val caption = upcoming?.let { (c, s) -> if (s.isToday) "${c.title} 就是今天" else "${c.title} 还有${s.days}天" } ?: "添加重要日子"
+            RecordTile(
+                Icons.Rounded.HourglassEmpty, listOf(hex(0x22D3EE), hex(0x6366F1)), "倒数日",
+                "${Store.countdowns.items.size}", caption, Modifier.weight(1f),
+            ) { navigator.open(Routes.COUNTDOWNS) }
+        }
+        GlassCard(onClick = { navigator.open(Routes.HISTORY) }, spacing = 10.dp) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionHeader("决策历史", subtitle = "共 ${records.size} 条", icon = Icons.Rounded.History, modifier = Modifier.weight(1f))
                 Icon(Icons.Rounded.ChevronRight, null, tint = palette.tertiaryText)
             }
-        }
-        if (records.isNotEmpty()) {
-            GlassCard(spacing = 10.dp) {
-                SectionHeader("最近", icon = Icons.Rounded.History)
-                for (record in records.takeLast(5).reversed()) RecordRow(record.tool, record.title, record.result, record.date)
-            }
-        }
-        val upcoming = listOf(
-            Triple("心情打卡", "心情 × 运势相关度", Icons.Rounded.SentimentSatisfied) to listOf(hex(0xFBBF24), hex(0xF97316)),
-            Triple("倒数日", "生日、纪念日、假期倒计时", Icons.Rounded.HourglassEmpty) to listOf(hex(0x34D399), hex(0x06B6D4)),
-            Triple("运势日历", "每天的运势走势图", Icons.Rounded.CalendarMonth) to listOf(hex(0xF472B6), hex(0x8B5CF6)),
-        )
-        SectionHeader("即将推出", icon = Icons.Rounded.Construction)
-        for ((info, colors) in upcoming) {
-            val (title, subtitle, icon) = info
-            GlassCard(onClick = { navigator.open(Routes.comingSoon(title)) }) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    ToolIcon(icon, colors, 40.dp)
-                    Column(Modifier.weight(1f)) {
-                        Text(title, style = Fonts.headline)
-                        SecondaryText(subtitle, style = Fonts.caption)
-                    }
-                }
+            if (records.isEmpty()) {
+                SecondaryText("用过的随机工具结果都会自动记在这里")
+            } else {
+                for (record in records.takeLast(4).reversed()) RecordRow(record.tool, record.title, record.result, record.date)
             }
         }
     }
