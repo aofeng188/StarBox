@@ -70,7 +70,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tianaofeng.xingxia.core.ContentLibrary
 import com.tianaofeng.xingxia.core.TrueRandom
+import com.tianaofeng.xingxia.data.CustomPrompt
 import com.tianaofeng.xingxia.data.Prefs
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.BigActionButton
 import com.tianaofeng.xingxia.ui.components.CircleIconButton
@@ -81,6 +85,8 @@ import com.tianaofeng.xingxia.ui.components.GlassButton
 import com.tianaofeng.xingxia.ui.components.GlassCard
 import com.tianaofeng.xingxia.ui.components.GradientText
 import com.tianaofeng.xingxia.ui.components.Haptics
+import com.tianaofeng.xingxia.ui.components.SoundEffect
+import com.tianaofeng.xingxia.ui.components.SoundEngine
 import com.tianaofeng.xingxia.ui.components.OnShake
 import com.tianaofeng.xingxia.ui.components.Screen
 import com.tianaofeng.xingxia.ui.components.SecondaryText
@@ -122,6 +128,8 @@ fun CoinScreen() {
         flipping = true
         result = null
         Haptics.impact()
+        SoundEngine.play(SoundEffect.WHOOSH, 0.6f)
+        SoundEngine.play(SoundEffect.COIN_FLIP, 0.7f)
         val spins = TrueRandom.int(5..7) * 360f
         val current = angle.value % 360f
         val target = angle.value - current + spins + if (isHeads) 0f else 180f
@@ -129,6 +137,7 @@ fun CoinScreen() {
         scope.launch {
             lift.animateTo(-280f, tween(550, easing = FastOutSlowInEasing))
             lift.animateTo(0f, tween(600, easing = CubicBezierEasing(0.5f, 0f, 1f, 1f)))
+            SoundEngine.play(SoundEffect.COIN_LAND)
             Haptics.heavy()
             lift.animateTo(-24f, tween(120))
             lift.animateTo(0f, tween(150))
@@ -295,11 +304,13 @@ fun DiceScreen() {
         rolling = true
         settled = false
         Haptics.impact()
+        SoundEngine.play(SoundEffect.WHOOSH, 0.5f)
         val final = List(count) { TrueRandom.int(1..6) }
         scope.launch {
             launch { spin.snapTo(0f); spin.animateTo(720f, tween(900, easing = FastOutSlowInEasing)) }
             repeat(12) { step ->
                 for (i in faces.indices) faces[i] = TrueRandom.int(1..6)
+                SoundEngine.play(SoundEffect.DICE_HIT, 0.3f + step * 0.05f)
                 Haptics.selection()
                 delay(40L + step * 8)
             }
@@ -464,10 +475,12 @@ fun NumberScreen() {
             val top = maxOf(9, final.maxOf { it.value })
             repeat(14) { step ->
                 balls = final.map { Ball(TrueRandom.int(1..top), it.special) }
+                SoundEngine.play(SoundEffect.TICK, 0.4f)
                 if (step % 2 == 0) Haptics.selection()
                 delay(45L + step * 6)
             }
             balls = final
+            SoundEngine.play(SoundEffect.POP)
             Haptics.success()
             rolling = false
             val text = final.joinToString(" ") { if (it.special) "[%02d]".format(it.value) else "${it.value}" }
@@ -638,16 +651,19 @@ fun RpsScreen() {
             1 -> {
                 myScore++; wins++
                 resultText = "你赢了！"; resultColor = hex(0x34D399)
+                SoundEngine.play(SoundEffect.SUCCESS)
                 Haptics.success()
             }
             -1 -> {
                 aiScore++; losses++
                 resultText = "你输了"; resultColor = hex(0xFB7185)
+                SoundEngine.play(SoundEffect.FAIL)
                 Haptics.error()
             }
             else -> {
                 draws++
                 resultText = "平局"; resultColor = palette.secondaryText
+                SoundEngine.play(SoundEffect.TAP)
                 Haptics.tap()
             }
         }
@@ -671,6 +687,7 @@ fun RpsScreen() {
         scope.launch {
             for (word in listOf("石头", "剪刀", "布！")) {
                 chant = word
+                SoundEngine.play(SoundEffect.DRUM, 0.5f)
                 Haptics.impact()
                 repeat(3) {
                     shuffleHand = TrueRandom.pick(Hand.entries)
@@ -773,16 +790,19 @@ fun TruthDareScreen() {
     val reveal = remember { Animatable(1f) }
     val scope = rememberCoroutineScope()
     val levels = listOf("轻松", "进阶", "刺激")
+    var managing by remember { mutableStateOf(false) }
 
     fun draw(which: String) {
         val content = ContentLibrary.truthDare
-        val pool = (if (which == "truth") content.truth else content.dare)[level.coerceIn(0, 2)]
+        val custom = Store.customPrompts.items.filter { it.kind == which && it.level <= level }.map { it.text }
+        val pool = (if (which == "truth") content.truth else content.dare)[level.coerceIn(0, 2)] + custom
         val candidates = pool.filter { it !in recent }.ifEmpty { pool }
         val picked = TrueRandom.pick(candidates)
         kind = which
         prompt = picked
         recent.add(picked)
         if (recent.size > 20) recent.removeAt(0)
+        SoundEngine.play(SoundEffect.CARD_FLIP)
         Haptics.success()
         scope.launch {
             reveal.snapTo(0.6f)
@@ -791,7 +811,16 @@ fun TruthDareScreen() {
         Store.log(ToolKind.TRUTH_DARE.id, if (which == "truth") "真心话" else "大冒险", picked)
     }
 
-    Screen(title = "真心话大冒险", horizontalAlignment = Alignment.CenterHorizontally) {
+    if (managing) {
+        CustomPromptsScreen { managing = false }
+        return
+    }
+
+    Screen(
+        title = "真心话大冒险",
+        horizontalAlignment = Alignment.CenterHorizontally,
+        actions = { CircleIconButton(Icons.Rounded.Edit, "自定义题目") { managing = true } },
+    ) {
         SegmentedPicker(listOf(0, 1, 2), level, { levels[it] }) { level = it }
         val isTruth = kind == "truth"
         val colors = when (kind) {
@@ -828,6 +857,48 @@ fun TruthDareScreen() {
             ChoiceButton("大冒险", Icons.Rounded.LocalFireDepartment, listOf(hex(0xF472B6), hex(0xEF4444)), Modifier.weight(1f)) { draw("dare") }
         }
         if (isTruth || kind != null) SecondaryText("最近抽过的题目会尽量避开", style = Fonts.caption)
+        val customCount = Store.customPrompts.items.size
+        SecondaryText(if (customCount > 0) "已加入 $customCount 道自定义题目（右上角管理）" else "右上角可以添加自己的题目", style = Fonts.caption)
+    }
+}
+
+@Composable
+private fun CustomPromptsScreen(onDone: () -> Unit) {
+    val palette = LocalPalette.current
+    var text by remember { mutableStateOf("") }
+    var kind by remember { mutableStateOf("truth") }
+    var level by remember { mutableIntStateOf(0) }
+    val levels = listOf("轻松", "进阶", "刺激")
+    Screen(title = "自定义题目", onBack = onDone) {
+        GlassCard {
+            SectionHeader("添加题目")
+            SegmentedPicker(listOf("truth", "dare"), kind, { if (it == "truth") "真心话" else "大冒险" }) { kind = it }
+            SegmentedPicker(listOf(0, 1, 2), level, { levels[it] }) { level = it }
+            GlassTextField(text, "写下你的题目", singleLine = false) { text = it }
+            BigActionButton("添加", Icons.Rounded.Add, enabled = text.isNotBlank()) {
+                Store.customPrompts.add(CustomPrompt(kind = kind, text = text.trim(), level = level))
+                text = ""
+                Haptics.success()
+            }
+        }
+        val prompts = Store.customPrompts.items.sortedByDescending { it.createdAt }
+        if (prompts.isNotEmpty()) {
+            GlassCard(spacing = 8.dp) {
+                SectionHeader("我的题目")
+                for (prompt in prompts) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text(prompt.text, style = Fonts.body)
+                            SecondaryText("${if (prompt.kind == "truth") "真心话" else "大冒险"} · ${levels[prompt.level.coerceIn(0, 2)]}", style = Fonts.caption)
+                        }
+                        CircleIconButton(Icons.Rounded.Delete, "删除", size = 32.dp) {
+                            Store.customPrompts.update { list -> list.filter { it.id != prompt.id } }
+                        }
+                    }
+                }
+            }
+        }
+        SecondaryText("自定义题目会和内置题目一起参与抽取（不超过当前尺度）。", style = Fonts.caption)
     }
 }
 

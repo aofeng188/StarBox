@@ -82,6 +82,13 @@ import com.tianaofeng.xingxia.core.Dish
 import com.tianaofeng.xingxia.core.TrueRandom
 import com.tianaofeng.xingxia.data.BlockedFood
 import com.tianaofeng.xingxia.data.FoodLog
+import com.tianaofeng.xingxia.data.FoodMenu
+import com.tianaofeng.xingxia.data.FoodMenuItem
+import com.tianaofeng.xingxia.ui.components.SoundEffect
+import com.tianaofeng.xingxia.ui.components.SoundEngine
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import com.tianaofeng.xingxia.data.Prefs
 import com.tianaofeng.xingxia.data.Roster
 import com.tianaofeng.xingxia.data.Store
@@ -129,6 +136,7 @@ private suspend fun <T> roll(pool: List<T>, final: T, steps: Int = 20, update: (
     var delayMs = 30.0
     repeat(steps) {
         update(TrueRandom.pick(pool))
+        SoundEngine.play(SoundEffect.TICK, 0.45f)
         Haptics.selection()
         delay(delayMs.toLong())
         delayMs *= 1.13
@@ -190,87 +198,144 @@ private fun foodWeight(name: String, logs: List<FoodLog>, smart: Boolean): Doubl
     }
 }
 
+/** 一个可被抽中的候选：内置菜品或自定义菜单里的一项 */
+private data class FoodCandidate(val emoji: String, val title: String, val subtitle: String, val weight: Double, val source: String)
+
+private enum class FoodSource(val label: String) { LIBRARY("美食库"), MENUS("我的菜单") }
+
 @Composable
 fun FoodScreen() {
     val palette = LocalPalette.current
     val scope = rememberCoroutineScope()
     var smart by Prefs.bool("food.smartDedupe", true)
+    var source by remember { mutableStateOf(FoodSource.LIBRARY) }
+    var menuId by Prefs.string("food.menu", "")
     var meal by remember { mutableStateOf(MealTime.current) }
     var cuisines by remember { mutableStateOf(setOf<String>()) }
     var tastes by remember { mutableStateOf(setOf<String>()) }
     var maxPrice by remember { mutableIntStateOf(3) }
-    var display by remember { mutableStateOf<Dish?>(null) }
-    var result by remember { mutableStateOf<Dish?>(null) }
+    var display by remember { mutableStateOf<FoodCandidate?>(null) }
+    var result by remember { mutableStateOf<FoodCandidate?>(null) }
     var rolling by remember { mutableStateOf(false) }
     var revealCount by remember { mutableIntStateOf(0) }
     var confetti by remember { mutableIntStateOf(0) }
     var showBlocked by remember { mutableStateOf(false) }
+    var editingMenuId by remember { mutableStateOf<String?>(null) }
 
     val allCuisines = remember { ContentLibrary.foods.map { it.cuisine }.distinct() }
-    val blockedNames = Store.blockedFoods.items.map { it.name }.toSet()
-    val pool = ContentLibrary.foods.filter { dish ->
-        (meal == MealTime.ANY || meal.code in dish.meals) &&
-            (cuisines.isEmpty() || dish.cuisine in cuisines) &&
-            (tastes.isEmpty() || dish.tastes.any { it in tastes }) &&
-            dish.price <= maxPrice &&
-            dish.name !in blockedNames
+    val menus = Store.foodMenus.items.sortedBy { it.createdAt }
+    val menu = menus.firstOrNull { it.id == menuId } ?: menus.firstOrNull()
+    val pool: List<FoodCandidate> = when (source) {
+        FoodSource.LIBRARY -> {
+            val blockedNames = Store.blockedFoods.items.map { it.name }.toSet()
+            val logs = Store.foodLogs.items
+            ContentLibrary.foods.filter { dish ->
+                (meal == MealTime.ANY || meal.code in dish.meals) &&
+                    (cuisines.isEmpty() || dish.cuisine in cuisines) &&
+                    (tastes.isEmpty() || dish.tastes.any { it in tastes }) &&
+                    dish.price <= maxPrice &&
+                    dish.name !in blockedNames
+            }.map { FoodCandidate(it.emoji, it.name, it.detail, foodWeight(it.name, logs, smart), "library") }
+        }
+        FoodSource.MENUS -> menu?.items.orEmpty().filter { it.weight > 0 }.map {
+            FoodCandidate(menu?.icon ?: "🍱", it.name, it.note.ifEmpty { menu?.name ?: "" }, it.weight, "menu")
+        }
     }
 
     fun pick() {
         if (pool.isEmpty() || rolling) return
-        val logs = Store.foodLogs.items
-        val index = TrueRandom.weightedIndex(pool.map { foodWeight(it.name, logs, smart) }) ?: 0
+        val index = TrueRandom.weightedIndex(pool.map { it.weight }) ?: 0
         val final = pool[index.coerceIn(0, pool.size - 1)]
         rolling = true
         result = null
+        SoundEngine.play(SoundEffect.WHOOSH, 0.6f)
         scope.launch {
             roll(pool, final) { display = it }
             rolling = false
             result = final
             display = null
             revealCount++
+            SoundEngine.play(SoundEffect.SUCCESS)
             Haptics.success()
-            Store.log(ToolKind.FOOD.id, meal.label, final.name)
+            Store.log(ToolKind.FOOD.id, if (source == FoodSource.LIBRARY) meal.label else menu?.name ?: source.label, final.title)
         }
     }
 
-    OnShake(enabled = !showBlocked) { pick() }
+    OnShake(enabled = !showBlocked && editingMenuId == null) { pick() }
 
     if (showBlocked) {
         BlockedFoodsScreen { showBlocked = false }
         return
+    }
+    editingMenuId?.let { id ->
+        val editing = Store.foodMenus.items.firstOrNull { it.id == id }
+        if (editing != null) {
+            FoodMenuEditor(editing) { editingMenuId = null }
+            return
+        }
     }
 
     Box(Modifier.fillMaxSize()) {
         Screen(title = "今天吃什么", actions = {
             TextAction("黑名单（${Store.blockedFoods.items.size}）") { showBlocked = true }
         }) {
-            ChipRow { for (item in MealTime.entries) SelectChip(item.label, meal == item) { meal = item } }
-            MultiChipPicker(allCuisines, cuisines, "全部菜系") { cuisines = it }
-            MultiChipPicker(TASTES, tastes, "任意口味") { tastes = it }
-            SegmentedPicker(listOf(1, 2, 3), maxPrice, { listOf("¥ 实惠", "¥¥ 以内", "不限价位")[it - 1] }) { maxPrice = it }
+            SegmentedPicker(FoodSource.entries, source, { it.label }) {
+                source = it
+                result = null
+                display = null
+            }
+            when (source) {
+                FoodSource.LIBRARY -> {
+                    ChipRow { for (item in MealTime.entries) SelectChip(item.label, meal == item) { meal = item } }
+                    MultiChipPicker(allCuisines, cuisines, "全部菜系") { cuisines = it }
+                    MultiChipPicker(TASTES, tastes, "任意口味") { tastes = it }
+                    SegmentedPicker(listOf(1, 2, 3), maxPrice, { listOf("¥ 实惠", "¥¥ 以内", "不限价位")[it - 1] }) { maxPrice = it }
+                }
+                FoodSource.MENUS -> ChipRow {
+                    for (item in menus) SelectChip("${item.icon} ${item.name} · ${item.items.size}", item.id == menu?.id) {
+                        menuId = item.id
+                        result = null
+                    }
+                    if (menu != null) CircleIconButton(Icons.Rounded.Edit, "编辑菜单", size = 34.dp) { editingMenuId = menu.id }
+                    CircleIconButton(Icons.Rounded.Add, "新建菜单", size = 34.dp) {
+                        val created = FoodMenu(name = "新菜单 ${menus.size + 1}")
+                        Store.foodMenus.add(created)
+                        menuId = created.id
+                        editingMenuId = created.id
+                    }
+                }
+            }
 
             GlassCard(Modifier.heightIn(min = 260.dp), padding = 24.dp, horizontalAlignment = Alignment.CenterHorizontally, spacing = 18.dp) {
                 val shown = display ?: result
                 if (shown != null) {
-                    RollingResult(shown.emoji, shown.name, shown.detail, rolling, revealCount)
+                    RollingResult(shown.emoji, shown.title, shown.subtitle, rolling, revealCount)
                 } else {
                     Text("🍽️", style = TextStyle(fontSize = 70.sp))
                     Text("今天吃点什么好呢？", style = Fonts.title2)
-                    SecondaryText("从 ${pool.size} 道菜里帮你挑一道")
+                    SecondaryText(
+                        when {
+                            source == FoodSource.LIBRARY -> "从 ${pool.size} 道菜里帮你挑一道"
+                            pool.isEmpty() -> "先在菜单里添加几家常去的店"
+                            else -> "从「${menu?.name}」的 ${pool.size} 个选项里挑"
+                        },
+                    )
                 }
                 val r = result
                 if (r != null && !rolling) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         GlassButton("就吃这个", Icons.Rounded.CheckCircle) {
-                            Store.foodLogs.update { (it + FoodLog(r.name, "library")).takeLast(500) }
+                            Store.foodLogs.update { (it + FoodLog(r.title, r.source)).takeLast(500) }
                             confetti++
+                            SoundEngine.play(SoundEffect.SPARKLE)
                             Haptics.success()
                         }
-                        GlassButton("不想吃", Icons.Rounded.ThumbDown) {
-                            Store.blockedFoods.add(BlockedFood(r.name))
-                            Haptics.error()
-                            result = null
+                        if (r.source == "library") {
+                            GlassButton("不想吃", Icons.Rounded.ThumbDown) {
+                                Store.blockedFoods.add(BlockedFood(r.title))
+                                Haptics.error()
+                                result = null
+                            }
                         }
                     }
                 }
@@ -279,8 +344,10 @@ fun FoodScreen() {
             BigActionButton(if (result == null) "帮我选！" else "换一个", Icons.Rounded.Casino, enabled = !rolling && pool.isNotEmpty()) { pick() }
             SecondaryText("摇一摇手机也可以", style = Fonts.caption, modifier = Modifier.align(Alignment.CenterHorizontally))
 
-            GlassCard(padding = 16.dp) {
-                ToggleRow("智能去重", smart, "最近几天吃过的会降低被抽中的概率") { smart = it }
+            if (source == FoodSource.LIBRARY) {
+                GlassCard(padding = 16.dp) {
+                    ToggleRow("智能去重", smart, "最近几天吃过的会降低被抽中的概率") { smart = it }
+                }
             }
 
             val logs = Store.foodLogs.items
@@ -306,6 +373,71 @@ fun FoodScreen() {
             }
         }
         Confetti(confetti)
+    }
+}
+
+@Composable
+private fun FoodMenuEditor(menu: FoodMenu, onDone: () -> Unit) {
+    val palette = LocalPalette.current
+    var newItem by remember { mutableStateOf("") }
+    var confirmDelete by remember { mutableStateOf(false) }
+    val icons = listOf("🍱", "🍜", "🍔", "🍕", "🍣", "🥗", "🍲", "🥟", "🍛", "🧋", "🏢", "🏠", "🎉", "💼")
+
+    fun save(transform: (FoodMenu) -> FoodMenu) {
+        Store.foodMenus.update { list -> list.map { if (it.id == menu.id) transform(it) else it } }
+    }
+
+    Screen(title = "编辑菜单", onBack = onDone, actions = { TextAction("完成", onClick = onDone) }) {
+        GlassCard {
+            GlassTextField(menu.name, "菜单名称") { name -> save { it.copy(name = name) } }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (icon in icons) {
+                    Box(
+                        Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(if (menu.icon == icon) palette.accent.copy(alpha = 0.3f) else Color.Transparent)
+                            .clickable { save { it.copy(icon = icon) } },
+                        contentAlignment = Alignment.Center,
+                    ) { Text(icon, style = Fonts.title2) }
+                }
+            }
+        }
+        GlassCard(spacing = 10.dp) {
+            SectionHeader("选项", subtitle = "权重越高越容易被抽中；0 表示暂时不参与")
+            for (item in menu.items) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GlassTextField(item.name, "选项", modifier = Modifier.weight(1f)) { name ->
+                        save { m -> m.copy(items = m.items.map { if (it.id == item.id) it.copy(name = name) else it }) }
+                    }
+                    Text("×${item.weight.toInt()}", style = Fonts.caption, color = palette.secondaryText)
+                    CircleIconButton(Icons.Rounded.Add, "加权", size = 32.dp, enabled = item.weight < 10) {
+                        save { m -> m.copy(items = m.items.map { if (it.id == item.id) it.copy(weight = it.weight + 1) else it }) }
+                    }
+                    CircleIconButton(Icons.Rounded.Delete, "删除", size = 32.dp) {
+                        save { m -> m.copy(items = m.items.filter { it.id != item.id }) }
+                    }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GlassTextField(newItem, "添加选项，如「楼下兰州拉面」", modifier = Modifier.weight(1f)) { newItem = it }
+                CircleIconButton(Icons.Rounded.Add, "添加", enabled = newItem.isNotBlank()) {
+                    val name = newItem.trim()
+                    save { it.copy(items = it.items + FoodMenuItem(name = name)) }
+                    newItem = ""
+                }
+            }
+        }
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            if (confirmDelete) {
+                GlassButton("确定删除「${menu.name}」", Icons.Rounded.Delete) {
+                    Store.foodMenus.update { list -> list.filter { it.id != menu.id } }
+                    onDone()
+                }
+            } else {
+                GlassButton("删除这个菜单", Icons.Rounded.Delete) { confirmDelete = true }
+            }
+        }
     }
 }
 
@@ -385,7 +517,10 @@ fun WheelScreen() {
             val index = wheelIndex(value.toDouble(), segments)
             if (index != lastIndex) {
                 lastIndex = index
-                if (spinning) Haptics.selection()
+                if (spinning) {
+                    SoundEngine.play(SoundEffect.TICK, 0.55f)
+                    Haptics.selection()
+                }
             }
         }
     }
@@ -405,12 +540,14 @@ fun WheelScreen() {
         val duration = min(7.0, max(3.2, delta / 1300 * 1.6))
         resultTitle = null
         spinning = true
+        SoundEngine.play(SoundEffect.WHOOSH, 0.5f)
         Haptics.impact()
         scope.launch {
             angle.animateTo(target, tween((duration * 1000).toInt(), easing = WheelEasing))
             spinning = false
             val picked = options[index]
             resultTitle = picked.title
+            SoundEngine.play(SoundEffect.SUCCESS)
             Haptics.success()
             confetti++
             Store.log(ToolKind.WHEEL.id, template?.name ?: "", picked.title)
@@ -694,6 +831,7 @@ fun GroupsScreen() {
             for (i in 1..maxOf(1, total)) {
                 delay(if (mode == GroupMode.ORDER) 90 else 220)
                 revealed = i
+                SoundEngine.play(SoundEffect.POP, 0.5f)
                 Haptics.selection()
             }
             Haptics.success()

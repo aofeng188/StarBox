@@ -97,6 +97,8 @@ import com.tianaofeng.xingxia.ui.components.Fonts
 import com.tianaofeng.xingxia.ui.components.GlassButton
 import com.tianaofeng.xingxia.ui.components.GlassCard
 import com.tianaofeng.xingxia.ui.components.Haptics
+import com.tianaofeng.xingxia.ui.components.SoundEffect
+import com.tianaofeng.xingxia.ui.components.SoundEngine
 import com.tianaofeng.xingxia.ui.components.OnShake
 import com.tianaofeng.xingxia.ui.components.Screen
 import com.tianaofeng.xingxia.ui.components.SecondaryText
@@ -144,12 +146,14 @@ fun StickScreen() {
 
     fun rattle() {
         lastRattle = System.currentTimeMillis()
+        SoundEngine.play(SoundEffect.STICK_RATTLE, 0.8f)
         Haptics.selection()
     }
 
     fun reveal() {
         val s = stick ?: return
         phase = StickPhase.REVEALED
+        SoundEngine.play(SoundEffect.CHIME)
         Haptics.success()
         if (s.isLucky) confetti++
         if (todayDraw == null && !isExtra) {
@@ -182,6 +186,7 @@ fun StickScreen() {
                 holding = false
                 phase = StickPhase.DROPPED
                 delay(350)
+                SoundEngine.play(SoundEffect.STICK_DROP)
                 Haptics.heavy()
             }
         }
@@ -325,6 +330,7 @@ private fun StickResult(stick: FortuneStick, wish: String, isExtra: Boolean, onA
     LaunchedEffect(stick.n) {
         delay(350)
         stamp.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow))
+        SoundEngine.play(SoundEffect.DRUM, 0.8f)
         Haptics.heavy()
     }
     Screen(title = "求签") {
@@ -477,10 +483,12 @@ fun TarotScreen() {
             repeat(6) {
                 delay(220)
                 shuffleSeed = it + 1
+                SoundEngine.play(SoundEffect.CARD_FLIP, 0.6f)
                 Haptics.selection()
             }
             delay(250)
             phase = TarotPhase.PICKING
+            SoundEngine.play(SoundEffect.WHOOSH)
         }
     }
 
@@ -495,9 +503,11 @@ fun TarotScreen() {
             delay(delayMs)
             if (slot in flipped) return@launch
             flipped.add(slot)
+            SoundEngine.play(SoundEffect.CARD_FLIP)
             Haptics.impact()
             if (flipped.size == picked.size) {
                 delay(400)
+                SoundEngine.play(SoundEffect.SPARKLE)
                 if (picked.all { !it.reversed }) confetti++
                 save()
             }
@@ -507,6 +517,7 @@ fun TarotScreen() {
     fun pick(entry: DrawnCard) {
         if (phase != TarotPhase.PICKING || picked.size >= spread.positions.size || entry in picked) return
         Haptics.impact()
+        SoundEngine.play(SoundEffect.CARD_FLIP)
         picked.add(entry)
         if (picked.size == spread.positions.size) {
             scope.launch {
@@ -769,6 +780,7 @@ fun AnswerBookScreen() {
         answer = TrueRandom.pick(ContentLibrary.answers)
         pressing = false
         isOpen = true
+        SoundEngine.play(SoundEffect.CHIME)
         Haptics.success()
         recent.add(0, answer)
         if (recent.size > 5) recent.removeAt(recent.size - 1)
@@ -776,6 +788,7 @@ fun AnswerBookScreen() {
     }
 
     fun close() {
+        SoundEngine.play(SoundEffect.CARD_FLIP)
         isOpen = false
         question = ""
         scope.launch { hold.snapTo(0f) }

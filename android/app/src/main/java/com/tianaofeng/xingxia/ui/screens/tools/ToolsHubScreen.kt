@@ -45,7 +45,6 @@ import com.tianaofeng.xingxia.ui.components.weight
 import com.tianaofeng.xingxia.ui.nav.LocalNavigator
 import com.tianaofeng.xingxia.ui.nav.Routes
 import com.tianaofeng.xingxia.ui.screens.divination.GlassTextField
-import com.tianaofeng.xingxia.ui.screens.records.ComingSoonScreen
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.hex
 
@@ -60,7 +59,10 @@ fun ToolScreen(kind: ToolKind) {
         ToolKind.DICE -> DiceScreen()
         ToolKind.TRUTH_DARE -> TruthDareScreen()
         ToolKind.RPS -> RpsScreen()
-        else -> ComingSoonScreen(kind.label)
+        ToolKind.LOTTERY -> LotteryScreen()
+        ToolKind.FINGER -> FingerScreen()
+        ToolKind.GENERATORS -> GeneratorsScreen()
+        ToolKind.SCRATCH -> ScratchScreen()
     }
 }
 

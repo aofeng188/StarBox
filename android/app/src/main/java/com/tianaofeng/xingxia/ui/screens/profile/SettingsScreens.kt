@@ -2,6 +2,27 @@ package com.tianaofeng.xingxia.ui.screens.profile
 
 import android.content.Context
 import android.os.PowerManager
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.rounded.Widgets
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.tianaofeng.xingxia.system.ReminderScheduler
+import com.tianaofeng.xingxia.ui.components.SoundEffect
+import com.tianaofeng.xingxia.ui.components.SoundEngine
+import com.tianaofeng.xingxia.ui.components.TextAction
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -212,23 +233,103 @@ private fun ThemeSwatch(theme: AppTheme, modifier: Modifier) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen() {
+    val context = LocalContext.current
+    val palette = LocalPalette.current
+    var showTime by remember { mutableStateOf(false) }
+    var permissionDenied by remember { mutableStateOf(false) }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            AppSettings.dailyReminderEnabled = true
+            ReminderScheduler.reschedule(context)
+        } else {
+            permissionDenied = true
+        }
+    }
+
     Screen(title = "设置") {
         GlassCard {
             SectionHeader("反馈")
+            ToggleRow("音效", AppSettings.soundEnabled, "摇签、翻牌、转盘等动作的音效") {
+                AppSettings.soundEnabled = it
+                if (it) SoundEngine.play(SoundEffect.POP)
+            }
+            if (AppSettings.soundEnabled) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("音量", style = Fonts.body)
+                    Slider(
+                        value = AppSettings.soundVolume / 100f,
+                        onValueChange = { AppSettings.soundVolume = (it * 100).toInt() },
+                        onValueChangeFinished = { SoundEngine.play(SoundEffect.TICK) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 12.dp),
+                        colors = SliderDefaults.colors(thumbColor = palette.accent, activeTrackColor = palette.accent),
+                    )
+                }
+            }
             ToggleRow("触感反馈", AppSettings.hapticsEnabled, "抽签、转盘、掷骰子时的震动") { AppSettings.hapticsEnabled = it }
             ToggleRow("摇一摇", AppSettings.shakeEnabled, "在求签、骰子、抛硬币等页面摇动手机触发") { AppSettings.shakeEnabled = it }
+        }
+        GlassCard {
+            SectionHeader("每日提醒")
+            ToggleRow("每天推送今日运势", AppSettings.dailyReminderEnabled, "按当前档案计算，点通知直接打开运势详解") { on ->
+                if (on && !ReminderScheduler.hasPermission(context) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    AppSettings.dailyReminderEnabled = on
+                    ReminderScheduler.reschedule(context)
+                }
+            }
+            if (AppSettings.dailyReminderEnabled) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { showTime = true }
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("提醒时间", style = Fonts.body, modifier = Modifier.weight(1f))
+                    Text("%02d:%02d".format(AppSettings.reminderHour, AppSettings.reminderMinute), style = Fonts.body, color = palette.accent)
+                }
+                TextAction("现在发一条试试") { ReminderScheduler.showToday(context) }
+            }
+            if (permissionDenied) {
+                SecondaryText("没有通知权限。可以在系统设置 ▸ 应用 ▸ 星匣 ▸ 通知 里打开。", style = Fonts.caption)
+            }
         }
         GlassCard {
             SectionHeader("显示")
             ToggleRow("背景动画", AppSettings.backgroundAnimation, "星空闪烁、星云流动和流星；关闭可省电") { AppSettings.backgroundAnimation = it }
         }
         GlassCard(spacing = 8.dp) {
-            SectionHeader("关于", icon = Icons.Rounded.Info)
-            SecondaryText("星匣 Android 版 1.0.0")
-            SecondaryText("运势与占卜内容为娱乐性质，仅供参考。所有数据只保存在本机，不联网、不收集任何信息。", style = Fonts.caption)
-            SecondaryText("音效、每日提醒、桌面小组件、心情与倒数日等功能会在后续版本加入。", style = Fonts.caption)
+            SectionHeader("桌面小组件与快捷方式", icon = Icons.Rounded.Widgets)
+            SecondaryText("长按桌面空白处 ▸ 小组件 ▸ 星匣，可以添加「今日运势」「星座运势」「倒数日」三种小组件。长按星匣图标还能直接打开今天吃什么、抛硬币、求签和今日运势。", style = Fonts.caption)
         }
+        GlassCard(spacing = 8.dp) {
+            SectionHeader("关于", icon = Icons.Rounded.Info)
+            SecondaryText("星匣 Android 版 1.1.0")
+            SecondaryText("运势与占卜内容为娱乐性质，仅供参考。所有数据只保存在本机，不联网、不收集任何信息。", style = Fonts.caption)
+        }
+    }
+
+    if (showTime) {
+        val state = rememberTimePickerState(initialHour = AppSettings.reminderHour, initialMinute = AppSettings.reminderMinute, is24Hour = true)
+        AlertDialog(
+            onDismissRequest = { showTime = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    AppSettings.reminderHour = state.hour
+                    AppSettings.reminderMinute = state.minute
+                    ReminderScheduler.reschedule(context)
+                    showTime = false
+                }) { Text("完成") }
+            },
+            dismissButton = { TextButton(onClick = { showTime = false }) { Text("取消") } },
+            title = { Text("提醒时间") },
+            text = { TimePicker(state = state) },
+        )
     }
 }

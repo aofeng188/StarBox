@@ -373,7 +373,6 @@ private object SeedData {
             }
         }
     }
-    }
 
     /** 第二阶段加入的工具的示例数据 */
     private fun seedV2() {
