@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 长按桌面图标出现的快捷方式（对应 iOS 的 Siri / 控制中心入口） -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="food" android:enabled="true" android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_food">
+        <intent android:action="android.intent.action.VIEW" android:data="xingxia://tool/food"
+            android:targetPackage="com.tianaofeng.xingxia" android:targetClass="com.tianaofeng.xingxia.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="coin" android:enabled="true" android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_coin">
+        <intent android:action="android.intent.action.VIEW" android:data="xingxia://tool/coin"
+            android:targetPackage="com.tianaofeng.xingxia" android:targetClass="com.tianaofeng.xingxia.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="stick" android:enabled="true" android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_stick">
+        <intent android:action="android.intent.action.VIEW" android:data="xingxia://stick"
+            android:targetPackage="com.tianaofeng.xingxia" android:targetClass="com.tianaofeng.xingxia.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="fortune" android:enabled="true" android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_fortune">
+        <intent android:action="android.intent.action.VIEW" android:data="xingxia://fortune"
+            android:targetPackage="com.tianaofeng.xingxia" android:targetClass="com.tianaofeng.xingxia.MainActivity" />
+    </shortcut>
+</shortcuts>
