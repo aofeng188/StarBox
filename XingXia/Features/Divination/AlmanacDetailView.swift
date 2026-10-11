@@ -115,7 +115,7 @@ struct AlmanacDetailView: View {
                 Text("黄历宜忌按「建除十二神」与「黄黑道值神」推算，仅作传统文化参考。")
                     .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.bottom, 30)
         }
         .cosmicBackground()

@@ -82,7 +82,7 @@ struct FortuneCalendarView: View {
                 }
                 .glassCard()
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.bottom, 30)
         }
         .cosmicBackground()

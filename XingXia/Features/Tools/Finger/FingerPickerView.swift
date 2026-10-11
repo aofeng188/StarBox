@@ -147,6 +147,7 @@ struct FingerPickerView: View {
         }
         .padding(14)
         .glassEffect(.regular, in: .rect(cornerRadius: 22))
+        .frame(maxWidth: 480)
         .padding(.horizontal, 16)
         .padding(.top, 8)
     }

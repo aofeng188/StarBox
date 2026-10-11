@@ -46,7 +46,7 @@ struct LotteryListView: View {
                 .buttonStyle(.glass)
                 Text("长按奖池可以编辑或删除").font(.caption).foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.bottom, 30)
         }
         .cosmicBackground()
@@ -162,7 +162,7 @@ struct LotteryDrawView: View {
                     .glassCard()
                 }
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.bottom, 30)
         }
         .overlay { ConfettiView(trigger: confetti) }

@@ -61,7 +61,7 @@ struct FortuneStickView: View {
     // MARK: 摇签舞台
 
     private var shakeStage: some View {
-        VStack(spacing: 22) {
+        StageScaffold(spacing: 22, minHeight: 500) {
             VStack(spacing: 8) {
                 Text(phase == .dropped ? "签已落地" : "心中默念所求之事")
                     .font(AppFont.serif(26, weight: .bold))
@@ -87,42 +87,39 @@ struct FortuneStickView: View {
                             .background(Capsule().fill(wish == item ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.primary.opacity(0.08))))
                         }
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 4)
                 }
                 .transition(.opacity)
             }
+        } stage: {
+            ScaleToFit(design: CGSize(width: 320, height: 360)) {
+                ZStack {
+                    // 光晕
+                    Circle()
+                        .fill(RadialGradient(colors: [Color(hex: 0xFFB347).opacity(0.45 + energy * 0.4), .clear], center: .center, startRadius: 0, endRadius: 190))
+                        .frame(width: 380, height: 380)
+                        .scaleEffect(1 + energy * 0.15)
+                        .blur(radius: 10)
 
-            Spacer(minLength: 0)
-
-            ZStack {
-                // 光晕
-                Circle()
-                    .fill(RadialGradient(colors: [Color(hex: 0xFFB347).opacity(0.45 + energy * 0.4), .clear], center: .center, startRadius: 0, endRadius: 190))
-                    .frame(width: 380, height: 380)
-                    .scaleEffect(1 + energy * 0.15)
-                    .blur(radius: 10)
-
-                if phase == .dropped, let stick {
-                    Button {
-                        reveal()
-                    } label: {
-                        SingleStick(number: stick.n, glowing: true)
+                    if phase == .dropped, let stick {
+                        Button {
+                            reveal()
+                        } label: {
+                            SingleStick(number: stick.n, glowing: true)
+                        }
+                        .buttonStyle(.plain)
+                        .rotationEffect(.degrees(stickOut ? -8 : -40))
+                        .offset(x: stickOut ? 0 : 40, y: stickOut ? 20 : -160)
+                        .scaleEffect(stickOut ? 1.1 : 0.6)
+                        .accessibilityLabel("签文已落地，点按解签")
+                    } else {
+                        StickTubeIllustration(size: 230, shake: wobble)
+                            .rotationEffect(.degrees(sin(wobble * 2.6) * (phase == .shaking ? 9 * min(1, 0.3 + energy) : 0)), anchor: .bottom)
+                            .offset(y: phase == .shaking ? CGFloat(sin(wobble * 5.1)) * 6 : 0)
                     }
-                    .buttonStyle(.plain)
-                    .rotationEffect(.degrees(stickOut ? -8 : -40))
-                    .offset(x: stickOut ? 0 : 40, y: stickOut ? 20 : -160)
-                    .scaleEffect(stickOut ? 1.1 : 0.6)
-                    .accessibilityLabel("签文已落地，点按解签")
-                } else {
-                    StickTubeIllustration(size: 230, shake: wobble)
-                        .rotationEffect(.degrees(sin(wobble * 2.6) * (phase == .shaking ? 9 * min(1, 0.3 + energy) : 0)), anchor: .bottom)
-                        .offset(y: phase == .shaking ? CGFloat(sin(wobble * 5.1)) * 6 : 0)
                 }
             }
-            .frame(height: 360)
-
-            Spacer(minLength: 0)
-
+        } bottom: {
             if phase != .dropped {
                 VStack(spacing: 12) {
                     // 进度
@@ -160,7 +157,6 @@ struct FortuneStickView: View {
                     .padding(.bottom, 30)
             }
         }
-        .frame(maxWidth: .infinity)
     }
 
     // MARK: 逻辑
@@ -348,7 +344,7 @@ struct StickResultView: View {
                 }
                 .padding(.bottom, 30)
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.top, 8)
         }
         .onAppear {

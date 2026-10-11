@@ -4,7 +4,11 @@ struct ToolsHubView: View {
     @Environment(AppSettings.self) private var settings
     @State private var search = ""
 
-    private let columns = [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
+    @State private var columnCount = 2
+
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 14), count: columnCount)
+    }
 
     var body: some View {
         ScrollView {
@@ -33,19 +37,21 @@ struct ToolsHubView: View {
                                     }
                                 }
                                 .padding(.vertical, 2)
+                                .padding(.horizontal, 16)
                             }
-                            .scrollClipDisabled()
+                            .pageBleed()
                         }
                     }
                     ForEach(ToolCategory.allCases) { category in
                         VStack(alignment: .leading, spacing: 12) {
                             SectionHeader(title: category.name, symbol: category.symbol)
                             let tools = ToolKind.tools(in: category)
+                            // 两栏且单数时最后一个做成通栏；其他列数直接排进网格
+                            let hasWideTile = columnCount == 2 && !tools.count.isMultiple(of: 2)
                             LazyVGrid(columns: columns, spacing: 14) {
-                                ForEach(tools.count.isMultiple(of: 2) ? tools : Array(tools.dropLast())) { tile($0) }
+                                ForEach(hasWideTile ? Array(tools.dropLast()) : tools) { tile($0) }
                             }
-                            // 单数时最后一个做成通栏
-                            if !tools.count.isMultiple(of: 2), let last = tools.last {
+                            if hasWideTile, let last = tools.last {
                                 wideTile(last)
                             }
                         }
@@ -58,7 +64,8 @@ struct ToolsHubView: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
+            .columnCount($columnCount, minimum: 158)
+            .pageContent(maxWidth: PageMetrics.gridWidth)
             .padding(.bottom, 30)
         }
         .cosmicBackground()

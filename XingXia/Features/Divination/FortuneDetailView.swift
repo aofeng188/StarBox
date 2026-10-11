@@ -114,7 +114,7 @@ struct FortuneDetailView: View {
 
                 QuoteCard(quote: fortune.quote)
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.bottom, 30)
         }
         .cosmicBackground()

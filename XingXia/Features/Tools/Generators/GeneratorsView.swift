@@ -25,7 +25,7 @@ struct GeneratorsView: View {
                 case .letter: LetterGenerator()
                 }
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.bottom, 30)
         }
         .cosmicBackground()

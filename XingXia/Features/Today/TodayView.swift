@@ -9,6 +9,8 @@ struct TodayView: View {
     @State private var showEditor = false
     @State private var showOnboarding = false
     @State private var today = DayKey.today
+    @State private var isWide = false
+    @State private var fold: ClosedRange<CGFloat>?
 
     var body: some View {
         let fortune = FortuneEngine.daily(for: app.birth, on: today)
@@ -23,18 +25,22 @@ struct TodayView: View {
                     SetupProfileBanner { showOnboarding = true }
                 }
 
-                ForEach(settings.homeCards.filter { !settings.hiddenHomeCards.contains($0) }) { card in
-                    switch card {
-                    case .fortune: FortuneHeroCard(fortune: fortune)
-                    case .almanac: AlmanacCard(fortune: fortune, almanac: almanac)
-                    case .horoscope: HoroscopeMiniCard()
-                    case .stick: StickMiniCard()
-                    case .quickTools: QuickToolsRow()
-                    case .countdown: CountdownStrip()
-                    case .mood: MoodCheckInCard()
-                    case .quote: QuoteCard(quote: fortune.quote)
+                // 宽屏（Duo 展开横持）排成两栏
+                ColumnsLayout(columns: isWide ? 2 : 1, spacing: 16, fold: fold) {
+                    ForEach(settings.homeCards.filter { !settings.hiddenHomeCards.contains($0) }) { card in
+                        switch card {
+                        case .fortune: FortuneHeroCard(fortune: fortune)
+                        case .almanac: AlmanacCard(fortune: fortune, almanac: almanac)
+                        case .horoscope: HoroscopeMiniCard()
+                        case .stick: StickMiniCard()
+                        case .quickTools: QuickToolsRow()
+                        case .countdown: CountdownStrip()
+                        case .mood: MoodCheckInCard()
+                        case .quote: QuoteCard(quote: fortune.quote)
+                        }
                     }
                 }
+                .foldGap($fold)
 
                 Button {
                     showEditor = true
@@ -46,7 +52,8 @@ struct TodayView: View {
                 .padding(.top, 4)
                 .padding(.bottom, 24)
             }
-            .padding(.horizontal, 16)
+            .isWideLayout($isWide)
+            .pageContent(maxWidth: PageMetrics.gridWidth)
         }
         .cosmicBackground()
         .navigationTitle("今日")

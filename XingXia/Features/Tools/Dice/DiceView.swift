@@ -238,7 +238,7 @@ struct DiceView: View {
     @State private var revealCount = 0
 
     var body: some View {
-        VStack(spacing: 14) {
+        StageScaffold(spacing: 14) {
             // 结果
             HStack(spacing: 10) {
                 if results.isEmpty || isRolling {
@@ -268,7 +268,7 @@ struct DiceView: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(results.isEmpty ? "还没有结果" : "点数 \(results.map(String.init).joined(separator: "、"))，合计 \(results.reduce(0, +))")
-
+        } stage: {
             RealityView { content in
                 world.build(into: &content, feltColor: UIColor(palette.isDark ? palette.backgroundBottom : palette.accent.opacity(0.85)))
                 world.setCount(count)
@@ -280,7 +280,7 @@ struct DiceView: View {
             .onTapGesture { roll() }
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel("骰子桌面，点按掷骰子")
-
+        } bottom: {
             HStack(spacing: 14) {
                 Stepper("骰子 \(count) 颗", value: $count, in: 1...6)
                     .onChange(of: count) { _, new in
@@ -306,7 +306,6 @@ struct DiceView: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
         .padding(.bottom, 12)
         .cosmicBackground()
         .navigationTitle("3D 骰子")

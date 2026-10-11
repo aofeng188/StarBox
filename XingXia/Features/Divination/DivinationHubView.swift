@@ -3,66 +3,75 @@ import SwiftUI
 struct DivinationHubView: View {
     @Environment(AppState.self) private var app
     @Environment(\.palette) private var palette
+    @State private var isWide = false
+    @State private var fold: ClosedRange<CGFloat>?
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 14) {
-                NavigationLink(value: AppRoute.stick) {
-                    HeroCard(title: "摇签筒", subtitle: "心诚则灵 · 一日一签", detail: "默念心中所求，摇动手机，抽出今天的指引",
-                             colors: [Color(hex: 0xB91C1C), Color(hex: 0xF59E0B)]) {
-                        StickTubeIllustration(size: 96)
-                    }
-                }
-                .buttonStyle(.pressableCard)
-
-                HStack(spacing: 14) {
-                    NavigationLink(value: AppRoute.tarot) {
-                        SmallHeroCard(title: "塔罗占卜", subtitle: "大阿卡纳 · 三种牌阵", colors: [Color(hex: 0x6D28D9), Color(hex: 0x2563EB)]) {
-                            TarotBackMini()
+            // 宽屏（Duo 展开横持）左右两栏，其余上下排
+            ColumnsLayout(columns: isWide ? 2 : 1, spacing: 14, fold: fold) {
+                VStack(spacing: 14) {
+                    NavigationLink(value: AppRoute.stick) {
+                        HeroCard(title: "摇签筒", subtitle: "心诚则灵 · 一日一签", detail: "默念心中所求，摇动手机，抽出今天的指引",
+                                 colors: [Color(hex: 0xB91C1C), Color(hex: 0xF59E0B)]) {
+                            StickTubeIllustration(size: 96)
                         }
                     }
                     .buttonStyle(.pressableCard)
-                    NavigationLink(value: AppRoute.answers) {
-                        SmallHeroCard(title: "答案之书", subtitle: "默念问题 · 翻开一页", colors: [Color(hex: 0xD97706), Color(hex: 0x92400E)]) {
-                            Image(systemName: "book.closed.fill")
-                                .font(.system(size: 44))
-                                .foregroundStyle(LinearGradient(colors: [Color(hex: 0xF5B83D), Color(hex: 0xB45309)], startPoint: .top, endPoint: .bottom))
-                                .shadow(color: Color(hex: 0xF5B83D).opacity(0.7), radius: 12)
+
+                    HStack(spacing: 14) {
+                        NavigationLink(value: AppRoute.tarot) {
+                            SmallHeroCard(title: "塔罗占卜", subtitle: "大阿卡纳 · 三种牌阵", colors: [Color(hex: 0x6D28D9), Color(hex: 0x2563EB)]) {
+                                TarotBackMini()
+                            }
                         }
+                        .buttonStyle(.pressableCard)
+                        NavigationLink(value: AppRoute.answers) {
+                            SmallHeroCard(title: "答案之书", subtitle: "默念问题 · 翻开一页", colors: [Color(hex: 0xD97706), Color(hex: 0x92400E)]) {
+                                Image(systemName: "book.closed.fill")
+                                    .font(.system(size: 44))
+                                    .foregroundStyle(LinearGradient(colors: [Color(hex: 0xF5B83D), Color(hex: 0xB45309)], startPoint: .top, endPoint: .bottom))
+                                    .shadow(color: Color(hex: 0xF5B83D).opacity(0.7), radius: 12)
+                            }
+                        }
+                        .buttonStyle(.pressableCard)
                     }
-                    .buttonStyle(.pressableCard)
                 }
 
-                NavigationLink(value: AppRoute.horoscope) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            SectionHeader(title: "星座运势", subtitle: "今日 · 明日 · 本周 · 本月", symbol: "moon.stars.fill")
-                            Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-                        }
-                        CardHScroll {
-                            HStack(spacing: 12) {
-                                ForEach(ZodiacSign.allCases) { sign in
-                                    VStack(spacing: 4) {
-                                        ZodiacBadge(sign: sign, size: 44)
-                                        Text(sign.shortName).font(.caption2).foregroundStyle(.secondary)
+                VStack(spacing: 14) {
+                    NavigationLink(value: AppRoute.horoscope) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                SectionHeader(title: "星座运势", subtitle: "今日 · 明日 · 本周 · 本月", symbol: "moon.stars.fill")
+                                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                            }
+                            CardHScroll {
+                                HStack(spacing: 12) {
+                                    ForEach(ZodiacSign.allCases) { sign in
+                                        VStack(spacing: 4) {
+                                            ZodiacBadge(sign: sign, size: 44)
+                                            Text(sign.shortName).font(.caption2).foregroundStyle(.secondary)
+                                        }
                                     }
                                 }
                             }
+                            .allowsHitTesting(false)
                         }
-                        .allowsHitTesting(false)
+                        .glassCard(interactive: true, clipped: true)
                     }
-                    .glassCard(interactive: true, clipped: true)
-                }
-                .buttonStyle(.pressableCard)
+                    .buttonStyle(.pressableCard)
 
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
-                    MiniTile(route: .fortune, symbol: "sparkles", title: "运势详解", subtitle: "五维运势与幸运指南", colors: [palette.accent, palette.accentSecondary])
-                    MiniTile(route: .almanac, symbol: "calendar.badge.clock", title: "黄历", subtitle: "农历 · 节气 · 宜忌", colors: [Color(hex: 0xEF4444), Color(hex: 0xF59E0B)])
-                    MiniTile(route: .birthChart, symbol: "circle.hexagongrid.fill", title: "命盘", subtitle: "八字 · 星盘三巨头", colors: [Color(hex: 0xA78BFA), Color(hex: 0xEC4899)])
-                    MiniTile(route: .compatibility, symbol: "heart.circle.fill", title: "缘分配对", subtitle: "星座 + 生肖", colors: [Color(hex: 0xFB7185), Color(hex: 0xF43F5E)])
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
+                        MiniTile(route: .fortune, symbol: "sparkles", title: "运势详解", subtitle: "五维运势与幸运指南", colors: [palette.accent, palette.accentSecondary])
+                        MiniTile(route: .almanac, symbol: "calendar.badge.clock", title: "黄历", subtitle: "农历 · 节气 · 宜忌", colors: [Color(hex: 0xEF4444), Color(hex: 0xF59E0B)])
+                        MiniTile(route: .birthChart, symbol: "circle.hexagongrid.fill", title: "命盘", subtitle: "八字 · 星盘三巨头", colors: [Color(hex: 0xA78BFA), Color(hex: 0xEC4899)])
+                        MiniTile(route: .compatibility, symbol: "heart.circle.fill", title: "缘分配对", subtitle: "星座 + 生肖", colors: [Color(hex: 0xFB7185), Color(hex: 0xF43F5E)])
+                    }
                 }
             }
-            .padding(.horizontal, 16)
+            .foldGap($fold)
+            .isWideLayout($isWide)
+            .pageContent(maxWidth: PageMetrics.gridWidth)
             .padding(.bottom, 30)
         }
         .cosmicBackground()

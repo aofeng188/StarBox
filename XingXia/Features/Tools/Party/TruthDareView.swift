@@ -72,7 +72,7 @@ struct TruthDareView: View {
                     .font(.subheadline)
                     .padding(.top, 4)
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.bottom, 30)
         }
         .cosmicBackground()

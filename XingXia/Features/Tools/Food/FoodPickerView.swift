@@ -110,7 +110,7 @@ struct FoodPickerView: View {
 
                 recentSection
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.bottom, 30)
         }
         .overlay { ConfettiView(trigger: confetti) }
@@ -168,7 +168,7 @@ struct FoodPickerView: View {
                     }
                     .padding(.horizontal, 16)
                 }
-                .padding(.horizontal, -16)
+                .pageBleed()
                 ChipPicker(options: FoodLibrary.cuisines, selection: $cuisines, allLabel: "全部菜系")
                 HStack {
                     ChipPicker(options: FoodLibrary.tastes, selection: $tastes, allLabel: "任意口味")
@@ -215,7 +215,7 @@ struct FoodPickerView: View {
                     }
                     .padding(.horizontal, 16)
                 }
-                .padding(.horizontal, -16)
+                .pageBleed()
             }
         case .nearby:
             HStack {

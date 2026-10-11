@@ -26,6 +26,13 @@ struct RootView: View {
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { _ in
+            // 折叠 / 展开会把窗口换到另一块屏幕：等转场结束，再让系统重新确认支持的方向
+            Task {
+                try? await Task.sleep(for: .milliseconds(400))
+                AppDelegate.refreshSupportedOrientations()
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 themes.refresh()

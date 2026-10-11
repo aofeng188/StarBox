@@ -55,7 +55,7 @@ struct WheelListView: View {
                         }
                         .padding(.horizontal, 16)
                     }
-                    .padding(.horizontal, -16)
+                    .pageBleed()
 
                     wheel
                         .padding(.top, 8)
@@ -104,7 +104,7 @@ struct WheelListView: View {
                     EmptyHint(symbol: "circle.dashed", title: "还没有转盘", message: "点右上角新建一个吧")
                 }
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.bottom, 30)
         }
         .scrollDisabled(dragStartAngle != nil)

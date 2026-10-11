@@ -41,7 +41,7 @@ struct CountdownListView: View {
                     EmptyHint(symbol: "hourglass", title: "还没有倒数日", message: "生日、纪念日、假期、考试……重要的日子都可以记在这里")
                 }
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.bottom, 30)
         }
         .cosmicBackground()

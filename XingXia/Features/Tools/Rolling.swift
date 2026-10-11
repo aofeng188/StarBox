@@ -79,7 +79,7 @@ struct ChipPicker: View {
             }
             .padding(.horizontal, 16)
         }
-        .padding(.horizontal, -16)
+        .pageBleed()
     }
 
     private func chip(_ title: String, isOn: Bool, action: @escaping () -> Void) -> some View {

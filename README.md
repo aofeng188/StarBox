@@ -3,6 +3,7 @@
 一个「深空液态玻璃」风格的 iOS 日常百宝箱：运势、星座、求签、塔罗，以及各种帮你做决定的随机小工具。全部离线运行，数据只保存在本机。
 
 - 系统要求：iOS 26 及以上（使用原生 Liquid Glass）
+- 已适配 iPhone Duo：外屏、内屏横持 / 竖持、半折叠都有对应排版（需用 Xcode 27.1 及以上构建）
 - 开发环境：Xcode 26/27，SwiftUI + SwiftData + RealityKit + WidgetKit + App Intents
 - 无第三方依赖，不需要额外下载 Metal 工具链
 
@@ -20,7 +21,7 @@
 
 ## 不用 Xcode 安装（未签名 IPA）
 
-[Releases](../../releases) 里提供未签名的 `XingXia-1.0.2-unsigned.ipa`。它**不能**直接点开安装，需要用侧载工具配合你自己的 Apple ID 重新签名：
+[Releases](../../releases) 里提供未签名的 `XingXia-1.0.3-unsigned.ipa`。它**不能**直接点开安装，需要用侧载工具配合你自己的 Apple ID 重新签名：
 
 1. 在电脑上安装 Sideloadly、AltStore 或 SideStore 中的任意一个。
 2. 用工具打开下载的 IPA，登录 Apple ID，选择你的 iPhone 后安装。

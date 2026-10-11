@@ -14,7 +14,7 @@ struct BirthChartView: View {
         ScrollView {
             if let profile {
                 content(profile)
-                    .padding(.horizontal, 16)
+                    .pageContent()
                     .padding(.bottom, 30)
             } else {
                 EmptyHint(symbol: "person.crop.circle.badge.questionmark", title: "还没有档案",
@@ -256,7 +256,7 @@ struct CompatibilityView: View {
                 }
                 .glassCard()
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.bottom, 30)
         }
         .cosmicBackground()

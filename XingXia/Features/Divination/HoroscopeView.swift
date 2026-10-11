@@ -40,7 +40,7 @@ struct HoroscopeView: View {
                     .onChange(of: sign) { _, new in withAnimation { proxy.scrollTo(new, anchor: .center) } }
                     .onAppear { proxy.scrollTo(sign, anchor: .center) }
                 }
-                .padding(.horizontal, -16)
+                .pageBleed()
 
                 Picker("时间", selection: $period.animation(.snappy)) {
                     ForEach(HoroscopePeriod.allCases) { Text($0.name).tag($0) }
@@ -133,7 +133,7 @@ struct HoroscopeView: View {
                 }
                 .buttonStyle(.glass)
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.bottom, 30)
         }
         .cosmicBackground()

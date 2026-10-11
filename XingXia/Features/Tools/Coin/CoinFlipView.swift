@@ -16,77 +16,76 @@ struct CoinFlipView: View {
     @State private var question = ""
 
     var body: some View {
-        VStack(spacing: 18) {
+        StageScaffold {
             TextField("想决定什么？（可选）", text: $question)
                 .padding(12)
                 .glassEffect(.regular, in: .capsule)
                 .padding(.top, 8)
+        } stage: {
+            VStack(spacing: 0) {
+                ScaleToFit(design: CGSize(width: 320, height: 320)) {
+                    ZStack {
+                        // 落地阴影
+                        Ellipse()
+                            .fill(.black.opacity(palette.isDark ? 0.5 : 0.2))
+                            .frame(width: 150, height: 26)
+                            .blur(radius: 8)
+                            .offset(y: 120)
+                            .keyframeAnimator(initialValue: 1.0, trigger: tossTrigger) { view, scale in
+                                view.scaleEffect(scale).opacity(scale)
+                            } keyframes: { _ in
+                                CubicKeyframe(0.35, duration: 0.55)
+                                CubicKeyframe(1.0, duration: 0.6)
+                                CubicKeyframe(0.85, duration: 0.12)
+                                CubicKeyframe(1.0, duration: 0.15)
+                            }
 
-            Spacer(minLength: 0)
-
-            ZStack {
-                // 落地阴影
-                Ellipse()
-                    .fill(.black.opacity(palette.isDark ? 0.5 : 0.2))
-                    .frame(width: 150, height: 26)
-                    .blur(radius: 8)
-                    .offset(y: 120)
-                    .keyframeAnimator(initialValue: 1.0, trigger: tossTrigger) { view, scale in
-                        view.scaleEffect(scale).opacity(scale)
-                    } keyframes: { _ in
-                        CubicKeyframe(0.35, duration: 0.55)
-                        CubicKeyframe(1.0, duration: 0.6)
-                        CubicKeyframe(0.85, duration: 0.12)
-                        CubicKeyframe(1.0, duration: 0.15)
+                        CoinView(angle: angle)
+                            .frame(width: 190, height: 190)
+                            .keyframeAnimator(initialValue: CoinToss(), trigger: tossTrigger) { view, toss in
+                                view
+                                    .scaleEffect(toss.scale)
+                                    .offset(y: toss.lift)
+                            } keyframes: { _ in
+                                KeyframeTrack(\.lift) {
+                                    CubicKeyframe(-280, duration: 0.55)
+                                    CubicKeyframe(0, duration: 0.6)
+                                    CubicKeyframe(-24, duration: 0.12)
+                                    CubicKeyframe(0, duration: 0.15)
+                                }
+                                KeyframeTrack(\.scale) {
+                                    CubicKeyframe(1.25, duration: 0.55)
+                                    CubicKeyframe(1.0, duration: 0.6)
+                                }
+                            }
+                            .gesture(DragGesture(minimumDistance: 20).onEnded { value in
+                                if value.translation.height < -40 { flip() }
+                            })
+                            .onTapGesture { flip() }
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(result.map { $0 ? "正面" : "反面" } ?? "硬币")
+                            .accessibilityHint("点按抛硬币")
+                            .accessibilityAddTraits(.isButton)
                     }
-
-                CoinView(angle: angle)
-                    .frame(width: 190, height: 190)
-                    .keyframeAnimator(initialValue: CoinToss(), trigger: tossTrigger) { view, toss in
-                        view
-                            .scaleEffect(toss.scale)
-                            .offset(y: toss.lift)
-                    } keyframes: { _ in
-                        KeyframeTrack(\.lift) {
-                            CubicKeyframe(-280, duration: 0.55)
-                            CubicKeyframe(0, duration: 0.6)
-                            CubicKeyframe(-24, duration: 0.12)
-                            CubicKeyframe(0, duration: 0.15)
-                        }
-                        KeyframeTrack(\.scale) {
-                            CubicKeyframe(1.25, duration: 0.55)
-                            CubicKeyframe(1.0, duration: 0.6)
-                        }
-                    }
-                    .gesture(DragGesture(minimumDistance: 20).onEnded { value in
-                        if value.translation.height < -40 { flip() }
-                    })
-                    .onTapGesture { flip() }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(result.map { $0 ? "正面" : "反面" } ?? "硬币")
-                    .accessibilityHint("点按抛硬币")
-                    .accessibilityAddTraits(.isButton)
-            }
-            .frame(height: 320)
-
-            Group {
-                if let result, !isFlipping {
-                    VStack(spacing: 4) {
-                        GradientText(text: result ? "正面" : "反面", font: .system(size: 44, weight: .heavy, design: .rounded))
-                        if !question.isEmpty {
-                            Text(result ? "「\(question)」→ 做！" : "「\(question)」→ 算了吧").font(.subheadline).foregroundStyle(.secondary)
-                        }
-                        if streak > 1 { Text("已经连续 \(streak) 次\(result ? "正面" : "反面")了").font(.caption).foregroundStyle(.tint) }
-                    }
-                    .transition(.scale.combined(with: .opacity))
-                } else {
-                    Text(isFlipping ? "" : "点按、上滑或摇一摇").font(.subheadline).foregroundStyle(.secondary)
                 }
+
+                Group {
+                    if let result, !isFlipping {
+                        VStack(spacing: 4) {
+                            GradientText(text: result ? "正面" : "反面", font: .system(size: 44, weight: .heavy, design: .rounded))
+                            if !question.isEmpty {
+                                Text(result ? "「\(question)」→ 做！" : "「\(question)」→ 算了吧").font(.subheadline).foregroundStyle(.secondary)
+                            }
+                            if streak > 1 { Text("已经连续 \(streak) 次\(result ? "正面" : "反面")了").font(.caption).foregroundStyle(.tint) }
+                        }
+                        .transition(.scale.combined(with: .opacity))
+                    } else {
+                        Text(isFlipping ? "" : "点按、上滑或摇一摇").font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }
+                .frame(height: 90)
             }
-            .frame(height: 90)
-
-            Spacer(minLength: 0)
-
+        } bottom: {
             HStack(spacing: 12) {
                 StatPill(title: "正面", value: headsCount, total: headsCount + tailsCount, color: Color(hex: 0xF5B83D))
                 StatPill(title: "反面", value: tailsCount, total: headsCount + tailsCount, color: Color(hex: 0x94A3B8))
@@ -104,7 +103,6 @@ struct CoinFlipView: View {
             BigActionButton(title: "抛硬币", symbol: "hand.point.up.fill", isEnabled: !isFlipping) { flip() }
                 .padding(.bottom, 12)
         }
-        .padding(.horizontal, 16)
         .cosmicBackground()
         .navigationTitle("抛硬币")
         .navigationBarTitleDisplayMode(.inline)

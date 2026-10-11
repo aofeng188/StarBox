@@ -47,7 +47,7 @@ struct RPSView: View {
     @State private var transitions: [Int: [Int]] = [:]
 
     var body: some View {
-        VStack(spacing: 18) {
+        StageScaffold {
             Picker("赛制", selection: $match) {
                 ForEach(Match.allCases) { Text($0.name).tag($0) }
             }
@@ -66,24 +66,26 @@ struct RPSView: View {
                 scoreColumn(title: smartAI ? "星匣·读心" : "星匣", score: aiScore)
             }
             .glassCard(padding: 16)
-
+        } stage: {
             // 对战区
-            HStack(spacing: 0) {
-                handBubble(myHand?.emoji ?? "🤔", flipped: false)
-                Spacer()
-                handBubble(isPlaying ? shuffleHand.emoji : (aiHand?.emoji ?? "🤖"), flipped: true)
+            ScaleToFit(design: CGSize(width: 350, height: 232)) {
+                VStack(spacing: 18) {
+                    HStack(spacing: 0) {
+                        handBubble(myHand?.emoji ?? "🤔", flipped: false)
+                        Spacer()
+                        handBubble(isPlaying ? shuffleHand.emoji : (aiHand?.emoji ?? "🤖"), flipped: true)
+                    }
+                    .padding(.horizontal, 20)
+                    .frame(height: 170)
+
+                    Text(isPlaying ? chant : resultText)
+                        .font(.system(size: 30, weight: .heavy, design: .rounded))
+                        .foregroundStyle(isPlaying ? AnyShapeStyle(.primary) : AnyShapeStyle(resultColor))
+                        .contentTransition(.numericText())
+                        .frame(height: 44)
+                }
             }
-            .padding(.horizontal, 20)
-            .frame(height: 170)
-
-            Text(isPlaying ? chant : resultText)
-                .font(.system(size: 30, weight: .heavy, design: .rounded))
-                .foregroundStyle(isPlaying ? AnyShapeStyle(.primary) : AnyShapeStyle(resultColor))
-                .contentTransition(.numericText())
-                .frame(height: 44)
-
-            Spacer(minLength: 0)
-
+        } bottom: {
             if matchOver {
                 Button("再来一场", systemImage: "arrow.counterclockwise") { resetMatch() }
                     .buttonStyle(.glassProminent)
@@ -123,7 +125,6 @@ struct RPSView: View {
                 .font(.caption).foregroundStyle(.secondary)
                 .padding(.bottom, 12)
         }
-        .padding(.horizontal, 16)
         .overlay { ConfettiView(trigger: confetti) }
         .cosmicBackground()
         .navigationTitle("石头剪刀布")

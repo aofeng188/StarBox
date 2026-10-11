@@ -47,7 +47,7 @@ struct MeView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 30)
             }
-            .padding(.horizontal, 16)
+            .pageContent()
         }
         .cosmicBackground()
         .navigationTitle("我的")

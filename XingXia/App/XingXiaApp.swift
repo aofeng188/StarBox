@@ -4,6 +4,7 @@ import UserNotifications
 
 @main
 struct XingXiaApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var appState = AppState.shared
     @State private var settings = AppSettings.shared
     @State private var themes = ThemeManager.shared
@@ -23,6 +24,9 @@ struct XingXiaApp: App {
         WindowGroup {
             ThemedRoot {
                 RootView()
+                    #if DEBUG
+                    .task { DebugLaunchRoute.apply() }
+                    #endif
             }
             .environment(appState)
             .environment(settings)

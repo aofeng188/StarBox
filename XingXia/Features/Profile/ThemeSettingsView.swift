@@ -5,7 +5,7 @@ struct ThemeSettingsView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.palette) private var palette
 
-    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+    private let columns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
 
     var body: some View {
         @Bindable var themes = themes
@@ -92,7 +92,7 @@ struct ThemeSettingsView: View {
                 }
                 .glassCard()
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.bottom, 30)
         }
         .cosmicBackground()

@@ -93,7 +93,7 @@ struct GroupShuffleView: View {
 
                 if !output.isEmpty { results }
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.bottom, 30)
         }
         .scrollDismissesKeyboard(.interactively)

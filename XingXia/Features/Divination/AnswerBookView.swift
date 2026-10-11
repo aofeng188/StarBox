@@ -68,7 +68,7 @@ struct AnswerBookView: View {
                     .glassCard()
                 }
             }
-            .padding(.horizontal, 20)
+            .pageContent(padding: 20)
             .padding(.bottom, 30)
         }
         .cosmicBackground()

@@ -151,7 +151,7 @@ struct TarotView: View {
                 BigActionButton(title: "开始洗牌", symbol: "sparkles") { startShuffle() }
                     .padding(.top, 6)
             }
-            .padding(.horizontal, 20)
+            .pageContent(padding: 20)
             .padding(.bottom, 30)
         }
     }
@@ -160,7 +160,9 @@ struct TarotView: View {
 
     private var table: some View {
         GeometryReader { proxy in
-            let width = proxy.size.width
+            // 矮屏（Duo 外屏、展开横持）上把牌位和间距按高度收一收；宽屏上扇形不跟着无限摊开
+            let k = min(1, max(0.62, proxy.size.height / 540))
+            let width = min(proxy.size.width, 560)
             VStack(spacing: 0) {
                 VStack(spacing: 6) {
                     Text(phase == .shuffling ? "洗牌中…" : "凭直觉抽取 \(spread.positions.count) 张牌")
@@ -170,7 +172,7 @@ struct TarotView: View {
                             .contentTransition(.numericText())
                     }
                 }
-                .padding(.top, 16)
+                .padding(.top, 16 * k)
 
                 // 牌位
                 HStack(spacing: 14) {
@@ -185,14 +187,14 @@ struct TarotView: View {
                                         .matchedGeometryEffect(id: picked[slot].deckIndex, in: namespace)
                                 }
                             }
-                            .frame(width: 84, height: 136)
+                            .frame(width: 84 * k, height: 136 * k)
                             Text(spread.positions[slot]).font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }
-                .padding(.top, 24)
+                .padding(.top, 24 * k)
 
-                Spacer()
+                Spacer(minLength: 0)
 
                 // 扇形牌堆
                 ZStack {
@@ -216,8 +218,8 @@ struct TarotView: View {
                         }
                     }
                 }
-                .frame(height: 220)
-                .padding(.bottom, 60)
+                .frame(height: 220 * max(k, 0.8))
+                .padding(.bottom, 60 * k)
             }
             .frame(maxWidth: .infinity)
         }
@@ -256,7 +258,7 @@ struct TarotView: View {
                     summary
                 }
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.bottom, 30)
         }
     }

@@ -72,7 +72,7 @@ struct RecordsHubView: View {
                 }
                 .buttonStyle(.pressableCard)
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.bottom, 30)
         }
         .cosmicBackground()

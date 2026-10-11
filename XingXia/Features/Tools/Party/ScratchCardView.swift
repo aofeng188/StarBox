@@ -71,7 +71,7 @@ struct ScratchCardView: View {
                         }
                         .padding(.horizontal, 16)
                     }
-                    .padding(.horizontal, -16)
+                    .pageBleed()
                 }
 
                 card
@@ -101,7 +101,7 @@ struct ScratchCardView: View {
                     .glassCard()
                 }
             }
-            .padding(.horizontal, 16)
+            .pageContent()
             .padding(.bottom, 30)
         }
         .scrollDisabled(!revealed && !strokes.isEmpty)
