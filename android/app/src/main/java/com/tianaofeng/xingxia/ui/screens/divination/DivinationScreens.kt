@@ -590,7 +590,7 @@ fun HoroscopeScreen() {
                         .clearAndSetSemantics {
                             contentDescription = item.label
                             role = Role.Button
-                            selected = item == sign
+                            this.selected = item == sign
                         },
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
