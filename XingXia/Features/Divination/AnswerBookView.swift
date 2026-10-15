@@ -74,6 +74,7 @@ struct AnswerBookView: View {
         .cosmicBackground()
         .navigationTitle("答案之书")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .onShake { if !isOpen { open() } }
     }
 
@@ -151,6 +152,7 @@ struct AnswerBookView: View {
         rippleTrigger += 1
         SoundEngine.shared.play(.chime)
         Haptics.reveal()
+        Announce.post("答案：\(answer)")
         recent.insert(answer, at: 0)
         if recent.count > 5 { recent.removeLast() }
         HistoryLog.add(context, tool: "answers", title: question, result: answer)

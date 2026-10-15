@@ -11,6 +11,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.tianaofeng.xingxia.core.SeededGenerator
 import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
@@ -22,21 +25,26 @@ import kotlin.math.sin
 
 /**
  * 动态星空背景：缓慢流动的星云光斑 + 闪烁星点 + 偶尔划过的流星。
- * 浅色模式下变成柔和的晨曦光斑。关闭「背景动画」时保持静止。
+ * 浅色模式下变成柔和的晨曦光斑。关闭「背景动画」或系统省电模式下保持静止；
+ * 只在页面可见（STARTED）时以 15fps 刷新，退到后台就停。
  */
 @Composable
 fun CosmicBackground(modifier: Modifier = Modifier) {
     val palette = LocalPalette.current
-    val animate = AppSettings.backgroundAnimation
-    val time by produceState(0.0, animate) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val powerSave = rememberPowerSaveMode()
+    val animate = AppSettings.backgroundAnimation && !powerSave
+    val time by produceState(0.0, animate, lifecycle) {
         if (!animate) {
             value = 0.0
             return@produceState
         }
         val start = System.nanoTime()
-        while (true) {
-            value = (System.nanoTime() - start) / 1e9 + 1.0
-            delay(33)
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                value = (System.nanoTime() - start) / 1e9 + 1.0
+                delay(66)
+            }
         }
     }
     Canvas(modifier.fillMaxSize()) {

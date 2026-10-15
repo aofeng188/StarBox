@@ -38,7 +38,14 @@ final class AppSettings {
         reminderMinute = defaults.integer(forKey: "reminderMinute")
         almanacShowsTraditional = defaults.bool(forKey: "almanacShowsTraditional")
         hasOnboarded = defaults.bool(forKey: "hasOnboarded")
-        favoriteTools = defaults.stringArray(forKey: "favoriteTools") ?? ["food", "coin", "wheel", "dice"]
+        var favorites = defaults.stringArray(forKey: "favoriteTools") ?? ["food", "coin", "wheel", "dice"]
+        // 答案之书以前固定在首页快捷工具末尾，现在改成普通收藏项：升级后第一次启动补进收藏，保持原样，之后可以移除
+        if !defaults.bool(forKey: "answersFavoriteMigrated") {
+            if !favorites.contains(FavoriteTool.answersID) { favorites.append(FavoriteTool.answersID) }
+            defaults.set(favorites, forKey: "favoriteTools")
+            defaults.set(true, forKey: "answersFavoriteMigrated")
+        }
+        favoriteTools = favorites
 
         let stored = (defaults.stringArray(forKey: "homeCards") ?? []).compactMap(HomeCard.init(rawValue:))
         // 新版本加入的模块追加到末尾
@@ -48,6 +55,10 @@ final class AppSettings {
         SoundEngine.shared.isEnabled = soundEnabled
         SoundEngine.shared.volume = Float(soundVolume)
         Haptics.isEnabled = hapticsEnabled
+    }
+
+    func isFavorite(_ toolID: String) -> Bool {
+        favoriteTools.contains(toolID)
     }
 
     func toggleFavorite(_ toolID: String) {

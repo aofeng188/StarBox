@@ -117,6 +117,8 @@ import com.tianaofeng.xingxia.ui.screens.common.stickLevelColor
 import com.tianaofeng.xingxia.ui.screens.common.stickLevelInk
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.hex
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -159,7 +161,8 @@ fun StickScreen() {
         if (todayDraw == null && !isExtra) {
             Store.stickDraws.add(StickDraw(today.rawValue, Store.primary?.id, s.n))
         }
-        Store.log("stick", "求$wish", "${s.numberText} ${s.levelDisplayName} · ${s.title}")
+        // 「综合」是默认所求，不写进标题，历史里只显示「求签」
+        Store.log("stick", if (wish == "综合") "" else "求$wish", "${s.numberText} ${s.levelDisplayName} · ${s.title}")
     }
 
     OnShake(enabled = phase == StickPhase.IDLE || phase == StickPhase.SHAKING) {
@@ -185,10 +188,16 @@ fun StickScreen() {
                 stick = ContentLibrary.stick(TrueRandom.int(1..ContentLibrary.sticks.size))
                 holding = false
                 phase = StickPhase.DROPPED
-                delay(350)
-                SoundEngine.play(SoundEffect.STICK_DROP)
-                Haptics.heavy()
             }
+        }
+    }
+
+    // 落地反馈单独放：上面的循环以 phase 为 key，切到 DROPPED 时就被取消了
+    LaunchedEffect(phase) {
+        if (phase == StickPhase.DROPPED) {
+            delay(350)
+            SoundEngine.play(SoundEffect.STICK_DROP)
+            Haptics.heavy()
         }
     }
 
@@ -421,7 +430,42 @@ private enum class TarotSpread(val label: String, val positions: List<String>, v
     SINGLE("单张指引", listOf("今日指引"), "抽一张牌，获得今天的提示", Icons.Rounded.CropPortrait),
     TIME("时间之流", listOf("过去", "现在", "未来"), "看清事情的来龙去脉", Icons.Rounded.Schedule),
     LOVE("情感关系", listOf("你的状态", "对方的状态", "关系走向"), "了解两个人之间的能量", Icons.Rounded.Favorite),
-    ADVICE("问题解答", listOf("现状", "阻碍", "建议"), "针对一个具体问题给出方向", Icons.Rounded.QuestionAnswer),
+    ADVICE("问题解答", listOf("现状", "阻碍", "建议"), "针对一个具体问题给出方向", Icons.Rounded.QuestionAnswer);
+
+    /**
+     * 每个牌位补充哪一行（与 iOS 一致）：收尾的牌给建议，情感牌阵的两人状态给感情，
+     * 「现在 / 现状」按问题的话题补感情或事业，问题没提到就不补，免得每张牌都挂同一类话
+     */
+    fun aspect(slot: Int, question: String): TarotAspect? = when (this) {
+        SINGLE -> TarotAspect.ADVICE
+        TIME -> if (slot == 2) TarotAspect.ADVICE else if (slot == 1) TarotAspect.topic(question) else null
+        LOVE -> if (slot == 2) TarotAspect.ADVICE else TarotAspect.LOVE
+        ADVICE -> if (slot == 2) TarotAspect.ADVICE else if (slot == 0) TarotAspect.topic(question) else null
+    }
+}
+
+/** 牌面主释义之外补充的一行 */
+private enum class TarotAspect(val label: String) {
+    LOVE("感情"), CAREER("事业"), ADVICE("建议");
+
+    /** 逆位缺字段时为 null，整行隐藏 */
+    fun text(card: TarotCard, reversed: Boolean): String? = when (this) {
+        LOVE -> card.loveFor(reversed)
+        CAREER -> card.careerFor(reversed)
+        ADVICE -> card.adviceFor(reversed)
+    }
+
+    companion object {
+        private val loveWords = listOf("感情", "恋", "喜欢", "爱情", "对象", "男友", "女友", "男朋友", "女朋友", "前任", "暧昧", "复合", "表白", "结婚", "分手", "桃花", "脱单", "约会")
+        private val careerWords = listOf("工作", "事业", "职", "面试", "升职", "加薪", "跳槽", "老板", "同事", "项目", "生意", "创业", "offer")
+
+        /** 从问题里粗略判断话题；没提到感情或工作时返回 null */
+        fun topic(question: String): TarotAspect? = when {
+            loveWords.any { it in question } -> LOVE
+            careerWords.any { it in question } -> CAREER
+            else -> null
+        }
+    }
 }
 
 private enum class TarotPhase { SETUP, SHUFFLING, PICKING, READING }
@@ -467,19 +511,33 @@ fun TarotScreen() {
     val flipped = remember { mutableStateListOf<Int>() }
     var shuffleSeed by remember { mutableIntStateOf(0) }
     var confetti by remember { mutableIntStateOf(0) }
+    // 洗牌、入场、翻牌的延迟任务；重新开始或再洗一次时全部取消，免得旧任务把页面拉回去
+    val pending = remember { mutableListOf<Job>() }
+
+    fun launchStep(block: suspend CoroutineScope.() -> Unit) {
+        pending.removeAll { !it.isActive }
+        pending += scope.launch(block = block)
+    }
+
+    fun cancelPending() {
+        pending.forEach { it.cancel() }
+        pending.clear()
+    }
 
     fun reset() {
+        cancelPending()
         phase = TarotPhase.SETUP
         picked.clear()
         flipped.clear()
     }
 
     fun startShuffle() {
+        cancelPending()
         deck = TrueRandom.shuffled(ContentLibrary.tarot).mapIndexed { i, card -> DrawnCard(i, card, TrueRandom.bool()) }
         picked.clear()
         flipped.clear()
         phase = TarotPhase.SHUFFLING
-        scope.launch {
+        launchStep {
             repeat(6) {
                 delay(220)
                 shuffleSeed = it + 1
@@ -499,9 +557,9 @@ fun TarotScreen() {
 
     fun flip(slot: Int, delayMs: Long = 0) {
         if (slot in flipped) return
-        scope.launch {
+        launchStep {
             delay(delayMs)
-            if (slot in flipped) return@launch
+            if (slot in flipped) return@launchStep
             flipped.add(slot)
             SoundEngine.play(SoundEffect.CARD_FLIP)
             Haptics.impact()
@@ -520,7 +578,7 @@ fun TarotScreen() {
         SoundEngine.play(SoundEffect.CARD_FLIP)
         picked.add(entry)
         if (picked.size == spread.positions.size) {
-            scope.launch {
+            launchStep {
                 delay(700)
                 phase = TarotPhase.READING
             }
@@ -543,7 +601,7 @@ fun TarotScreen() {
                                     .clip(CircleShape)
                                     .then(if (selected) Modifier.background(palette.accentBrush) else Modifier.background(palette.accent.copy(alpha = 0.12f))),
                                 contentAlignment = Alignment.Center,
-                            ) { Icon(item.icon, null, Modifier.size(20.dp), tint = if (selected) Color.White else palette.accent) }
+                            ) { Icon(item.icon, null, Modifier.size(20.dp), tint = if (selected) palette.onAccent else palette.ink(palette.accent)) }
                             Column(Modifier.weight(1f)) {
                                 Text("${item.label} · ${item.positions.size} 张", style = Fonts.headline)
                                 SecondaryText(item.detail, style = Fonts.caption)
@@ -617,8 +675,8 @@ fun TarotScreen() {
                     GlassButton("全部翻开", Icons.Rounded.Layers) { picked.indices.forEach { flip(it, it * 250L) } }
                     SecondaryText("点按牌面逐张翻开", style = Fonts.caption)
                 } else {
-                    picked.forEachIndexed { slot, entry -> TarotInterpretation(spread, slot, entry) }
-                    TarotSummary(picked)
+                    picked.forEachIndexed { slot, entry -> TarotInterpretation(spread, slot, entry, question) }
+                    if (picked.isNotEmpty()) TarotSummary(picked)
                 }
             }
         }
@@ -710,15 +768,12 @@ private fun TarotCardFace(card: TarotCard, modifier: Modifier) {
 }
 
 @Composable
-private fun TarotInterpretation(spread: TarotSpread, slot: Int, entry: DrawnCard) {
+private fun TarotInterpretation(spread: TarotSpread, slot: Int, entry: DrawnCard, question: String) {
     val palette = LocalPalette.current
     val card = entry.card
-    val extra: Pair<String, String>? = when {
-        spread == TarotSpread.LOVE -> "感情" to card.love
-        spread == TarotSpread.ADVICE && slot == 2 -> "建议" to card.advice
-        spread == TarotSpread.SINGLE -> "建议" to card.advice
-        else -> null
-    }
+    // 逆位只用逆位释义，缺字段就不显示，绝不拿正位内容顶替
+    val keywords = card.keywordsFor(entry.reversed)
+    val extra = spread.aspect(slot, question)?.let { aspect -> aspect.text(card, entry.reversed)?.let { aspect.label to it } }
     GlassCard(spacing = 10.dp) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -733,12 +788,14 @@ private fun TarotInterpretation(spread: TarotSpread, slot: Int, entry: DrawnCard
             Text(
                 if (entry.reversed) "逆位" else "正位",
                 style = Fonts.caption.weight(FontWeight.SemiBold),
-                color = if (entry.reversed) hex(0xFB7185) else hex(0x34D399),
+                color = if (entry.reversed) palette.negative else palette.positive,
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { for (k in card.keywords) TagChip(k) }
+        if (!keywords.isNullOrEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { for (k in keywords) TagChip(k) }
+        }
         Text(if (entry.reversed) card.reversed else card.upright, style = Fonts.subheadline)
-        SecondaryText(extra?.let { "${it.first}：${it.second}" } ?: "事业：${card.career}")
+        if (extra != null) SecondaryText("${extra.first}：${extra.second}")
     }
 }
 

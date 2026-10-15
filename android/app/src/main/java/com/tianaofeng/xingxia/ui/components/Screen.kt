@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -34,9 +36,12 @@ import androidx.compose.ui.unit.dp
 import com.tianaofeng.xingxia.ui.nav.LocalNavigator
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 
+/** 平板、折叠屏、横屏下正文的最大宽度（与 iOS 的 readableWidth 一致） */
+val ReadableWidth = 640.dp
+
 /**
  * 页面骨架：透明顶栏（返回 + 标题 + 操作）+ 可滚动内容。
- * 背景星空由根布局统一绘制。
+ * 背景星空由根布局统一绘制。正文限宽居中；不滚动的页面也避让底部导航栏。
  */
 @Composable
 fun Screen(
@@ -59,17 +64,25 @@ fun Screen(
             .imePadding(),
     ) {
         TopBar(title, isRoot, back, actions)
-        val body = Modifier
-            .fillMaxWidth()
-            .weight(1f)
-            .then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier)
-            .padding(horizontal = 16.dp)
-        Column(body, verticalArrangement = Arrangement.spacedBy(spacing), horizontalAlignment = horizontalAlignment) {
-            content()
-            if (scrollable) {
-                // 根页面底部要给悬浮底栏留出空间
-                Spacer(Modifier.height(if (isRoot) 96.dp else 24.dp))
-                Spacer(Modifier.navigationBarsPadding())
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            val body = Modifier
+                .widthIn(max = ReadableWidth)
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier.navigationBarsPadding())
+                .padding(horizontal = 16.dp)
+            Column(body, verticalArrangement = Arrangement.spacedBy(spacing), horizontalAlignment = horizontalAlignment) {
+                content()
+                if (scrollable) {
+                    // 根页面底部要给悬浮底栏留出空间
+                    Spacer(Modifier.height(if (isRoot) 96.dp else 24.dp))
+                    Spacer(Modifier.navigationBarsPadding())
+                }
             }
         }
     }

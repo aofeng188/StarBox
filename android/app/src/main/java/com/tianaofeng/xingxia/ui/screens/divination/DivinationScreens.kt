@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Tag
 import androidx.compose.material.icons.rounded.Waves
 import androidx.compose.material.icons.rounded.WbSunny
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.DatePicker
@@ -64,20 +65,26 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tianaofeng.xingxia.core.AlmanacDay
+import com.tianaofeng.xingxia.core.Astronomy
+import com.tianaofeng.xingxia.core.DailyFortune
 import com.tianaofeng.xingxia.core.DateText
 import com.tianaofeng.xingxia.core.DayKey
 import com.tianaofeng.xingxia.core.FortuneCategory
 import com.tianaofeng.xingxia.core.FortuneEngine
+import com.tianaofeng.xingxia.core.FortuneInsightKind
 import com.tianaofeng.xingxia.core.HoroscopeEngine
 import com.tianaofeng.xingxia.core.HoroscopePeriod
+import com.tianaofeng.xingxia.core.LunarDate
 import com.tianaofeng.xingxia.core.SolarTerms
 import com.tianaofeng.xingxia.core.StarRating
 import com.tianaofeng.xingxia.core.ZodiacSign
+import com.tianaofeng.xingxia.core.roundHalfAway
 import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.ColorDot
@@ -101,6 +108,7 @@ import com.tianaofeng.xingxia.ui.components.TextAction
 import com.tianaofeng.xingxia.ui.components.ToolIcon
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
+import com.tianaofeng.xingxia.ui.components.shareText
 import com.tianaofeng.xingxia.ui.components.weight
 import com.tianaofeng.xingxia.ui.nav.LocalNavigator
 import com.tianaofeng.xingxia.ui.nav.Routes
@@ -129,7 +137,7 @@ fun DivinationHubScreen() {
         GlassCard(tint = hex(0xB91C1C, 0.12f), onClick = { navigator.open(Routes.STICK) }) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("心诚则灵 · 一日一签", style = Fonts.caption.weight(FontWeight.SemiBold), color = hex(0xF59E0B))
+                    Text("心诚则灵 · 一日一签", style = Fonts.caption.weight(FontWeight.SemiBold), color = palette.ink(hex(0xF59E0B)))
                     Text("摇签筒", style = Fonts.title)
                     SecondaryText("默念心中所求，摇动手机，抽出今天的指引")
                 }
@@ -205,8 +213,20 @@ fun FortuneDetailScreen() {
     val day = DayKey.today.adding(offset)
     val birth = Store.birth
     val fortune = remember(day, birth) { FortuneEngine.daily(birth, day) }
+    // 看的不是今天时，文案里的「今日」改成「昨日 / 明日」
+    val dayWord = relativeDayWord(offset)
+    val context = LocalContext.current
+    val moonPhase = remember(day) { moonPhaseOf(day) }
+    val moonText = "${dayWord}月相为${moonPhase.first}，月亮行经${fortune.moonSign.label}。"
 
-    Screen(title = "运势详解") {
+    Screen(
+        title = "运势详解",
+        actions = {
+            CircleIconButton(Icons.Rounded.Share, "分享") {
+                shareText(context, fortuneShareText(fortune, Store.primary?.name), "我的${DateText.monthDay(day)}运势")
+            }
+        },
+    ) {
         SegmentedPicker(listOf(-1, 0, 1), offset, { listOf("昨天", "今天", "明天")[it + 1] }) { offset = it }
 
         GlassCard(padding = 22.dp, horizontalAlignment = Alignment.CenterHorizontally, spacing = 14.dp) {
@@ -219,16 +239,15 @@ fun FortuneDetailScreen() {
 
         if (fortune.insights.isNotEmpty()) {
             GlassCard {
-                SectionHeader("运势解读", subtitle = "依据你的八字与今日天象", icon = Icons.Rounded.Explore)
-                val icons = listOf(Icons.Rounded.WbSunny, Icons.Rounded.Pets, Icons.Rounded.NightsStay)
+                SectionHeader("运势解读", subtitle = "依据你的八字与${dayWord}天象", icon = Icons.Rounded.Explore)
                 fortune.insights.forEachIndexed { index, text ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        GradientIcon(icons[minOf(index, 2)], size = 20.dp)
-                        Text(text, style = Fonts.subheadline)
-                    }
+                    InsightRow(text.forDay(dayWord)) { GradientIcon(fortune.insightKinds.getOrNull(index).icon, size = 20.dp) }
                 }
+                // 月亮星座那条解读总在最后，月相紧跟其后
+                InsightRow(moonText) { Text(moonPhase.second, style = Fonts.subheadline) }
             }
         } else {
+            GlassCard { InsightRow(moonText) { Text(moonPhase.second, style = Fonts.subheadline) } }
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 GlassButton("填写生日后可查看基于八字与星座的专属解读", Icons.Rounded.Lock) { navigator.open(Routes.PROFILES) }
             }
@@ -244,7 +263,7 @@ fun FortuneDetailScreen() {
                             .clip(CircleShape)
                             .background(palette.accentBrush),
                         contentAlignment = Alignment.Center,
-                    ) { Icon(category.icon, null, Modifier.size(16.dp), tint = Color.White) }
+                    ) { Icon(category.icon, null, Modifier.size(16.dp), tint = palette.onAccent) }
                     Text(category.label, style = Fonts.headline)
                     StarRatingView(StarRating.stars(value), size = 11.dp)
                     Box(Modifier.weight(1f))
@@ -263,7 +282,7 @@ fun FortuneDetailScreen() {
                 LuckyCellData("喜神方位", fortune.luckyDirection, "财神 ${fortune.wealthDirection}") { GradientIcon(Icons.Rounded.Explore, 28.dp) },
                 LuckyCellData("吉时", fortune.luckyHour.hourName, fortune.luckyHour.hourRange) { GradientIcon(Icons.Rounded.AccessTime, 28.dp) },
                 LuckyCellData("幸运物", fortune.luckyItem, "带在身边") { GradientIcon(Icons.Rounded.Redeem, 28.dp) },
-                LuckyCellData("贵人星座", fortune.noblemanSign.label, "今日月亮在${fortune.moonSign.shortName}") {
+                LuckyCellData("贵人星座", fortune.noblemanSign.label, "${dayWord}月亮在${fortune.moonSign.shortName}") {
                     Text(fortune.noblemanSign.glyph, style = Fonts.title.copy(brush = palette.accentBrush))
                 },
             )
@@ -285,6 +304,54 @@ fun FortuneDetailScreen() {
 }
 
 private class LuckyCellData(val title: String, val value: String, val caption: String, val icon: @Composable () -> Unit)
+
+/** 解读图标按来源取，不按顺序：生肖提示为空时月亮那条不会配上爪印 */
+private val FortuneInsightKind?.icon: ImageVector
+    get() = when (this) {
+        FortuneInsightKind.STEM -> Icons.Rounded.WbSunny
+        FortuneInsightKind.BRANCH -> Icons.Rounded.Pets
+        FortuneInsightKind.MOON -> Icons.Rounded.NightsStay
+        null -> Icons.Rounded.AutoAwesome
+    }
+
+@Composable
+private fun InsightRow(text: String, icon: @Composable () -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) { icon() }
+        Text(text, style = Fonts.subheadline)
+    }
+}
+
+/** 八相月相（名称, 图案）。moonPhase 为日月黄经差 / 360：0 新月、0.25 上弦、0.5 满月、0.75 下弦，按最近的一相取（与 iOS 一致） */
+private fun moonPhaseOf(day: DayKey): Pair<String, String> {
+    val phases = listOf("新月" to "🌑", "娥眉月" to "🌒", "上弦月" to "🌓", "盈凸月" to "🌔", "满月" to "🌕", "亏凸月" to "🌖", "下弦月" to "🌗", "残月" to "🌘")
+    return phases[(Astronomy.moonPhase(day.noon) * 8).roundHalfAway().toInt() % 8]
+}
+
+/** 分享用的运势摘要，内容与 iOS 的分享卡一致 */
+private fun fortuneShareText(fortune: DailyFortune, name: String?): String = buildString {
+    val day = fortune.day
+    appendLine("星匣 · ${DateText.monthDay(day)}运势")
+    val lunar = LunarDate.of(day)?.let { " · 农历${it.text}" } ?: ""
+    appendLine("${day.year}年$lunar · ${DateText.weekday(day)}")
+    appendLine("${fortune.score} 分 · ${fortune.levelName}")
+    appendLine(fortune.summary)
+    appendLine("宜 ${fortune.funYi.joinToString(" ")}")
+    appendLine("忌 ${fortune.funJi.take(2).joinToString(" ")}")
+    append("幸运色 ${fortune.luckyColor.name} · 幸运数字 ${fortune.luckyNumber}")
+    if (!name.isNullOrBlank() && name != "我") append("\n—— 来自 $name 的分享")
+}
+
+/** 相对今天的称呼：0 今日、-1 昨日、1 明日，其余为当日 */
+private fun relativeDayWord(daysFromToday: Int): String = when (daysFromToday) {
+    0 -> "今日"
+    -1 -> "昨日"
+    1 -> "明日"
+    else -> "当日"
+}
+
+/** 把文案里的「今日」换成所看那天的称呼（只在界面层替换，不改 JSON） */
+private fun String.forDay(dayWord: String): String = if (dayWord == "今日") this else replace("今日", dayWord)
 
 @Composable
 private fun LuckyCell(data: LuckyCellData, modifier: Modifier) {
@@ -319,6 +386,8 @@ fun AlmanacDetailScreen() {
     val almanac = remember(day) { AlmanacDay(day) }
     val birth = Store.birth
     val fortune = remember(day, birth) { FortuneEngine.daily(birth, day) }
+    // 翻到别的日期时，「今日」改成「昨日 / 明日 / 当日」
+    val dayWord = relativeDayWord(DayKey.today.daysTo(day))
 
     fun move(delta: Int) {
         Haptics.selection()
@@ -379,7 +448,7 @@ fun AlmanacDetailScreen() {
             Triple("喜神方位", almanac.joyDirection, Icons.Rounded.SentimentSatisfied),
             Triple("财神方位", almanac.wealthDirection, Icons.Rounded.Paid),
             Triple("日柱纳音", almanac.day.nayin, Icons.Rounded.Waves),
-            Triple("今日冲", "属${almanac.clashAnimal.animal}的朋友多注意", Icons.Rounded.Shield),
+            Triple("${dayWord}冲", "属${almanac.clashAnimal.animal}的朋友多注意", Icons.Rounded.Shield),
         )
         for (row in infos.chunked(2)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -403,7 +472,7 @@ fun AlmanacDetailScreen() {
         GlassCard {
             SectionHeader("节气", icon = Icons.Rounded.Spa)
             val current = almanac.solarTerm ?: SolarTerms.previous(day)
-            Text(if (almanac.solarTerm != null) "今日 ${current.name}" else "当前节气 · ${current.name}", style = Fonts.headline)
+            Text(if (almanac.solarTerm != null) "$dayWord ${current.name}" else "当前节气 · ${current.name}", style = Fonts.headline)
             SecondaryText(SolarTerms.BLURBS[current.name] ?: "")
             HorizontalDivider(color = palette.subtle(0.12f))
             val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
@@ -537,7 +606,8 @@ fun HoroscopeScreen() {
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            LuckyBubble("幸运色", Modifier.weight(1f)) {
+            // 和运势卡按五行算的「幸运色」区分开
+            LuckyBubble("星座幸运色", Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     ColorDot(horoscope.luckyColor.toColor(), 12.dp)
                     Text(horoscope.luckyColor.name, style = Fonts.subheadline.weight(FontWeight.SemiBold), maxLines = 1)

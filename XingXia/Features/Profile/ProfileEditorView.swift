@@ -31,6 +31,8 @@ struct ProfileEditorView: View {
     @State private var birthTime = Calendar.current.date(from: DateComponents(hour: 12, minute: 0)) ?? Date()
     @State private var cityID = "beijing"
     @State private var showDeleteConfirm = false
+    /// 从「出生城市」返回时 onAppear 会再触发一次，只在第一次出现时读档案，不能覆盖没保存的修改
+    @State private var loaded = false
 
     static let avatars = ["🌟", "🌙", "☀️", "🪐", "🌸", "🍀", "🔥", "💧", "🦊", "🐱", "🐶", "🐼",
                           "🐰", "🦄", "🐯", "🐲", "🐻", "🐧", "🐳", "🦋", "🍑", "🍓", "🧸", "🎈"]
@@ -69,6 +71,7 @@ struct ProfileEditorView: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("头像 \(emoji)")
+                            .accessibilityAddTraits(avatar == emoji ? .isSelected : [])
                         }
                     }
                     .padding(.vertical, 4)
@@ -206,6 +209,8 @@ struct ProfileEditorView: View {
     }
 
     private func load() {
+        guard !loaded else { return }
+        loaded = true
         guard let profile else {
             if isOnboarding || profiles.isEmpty { relation = "自己" } else { relation = "朋友" }
             return

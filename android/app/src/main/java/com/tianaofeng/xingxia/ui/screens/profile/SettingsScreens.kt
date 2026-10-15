@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.tianaofeng.xingxia.BuildConfig
 import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.rememberMinuteClock
@@ -302,15 +303,15 @@ fun SettingsScreen() {
         }
         GlassCard {
             SectionHeader("显示")
-            ToggleRow("背景动画", AppSettings.backgroundAnimation, "星空闪烁、星云流动和流星；关闭可省电") { AppSettings.backgroundAnimation = it }
+            ToggleRow("背景动画", AppSettings.backgroundAnimation, "星空闪烁、星云流动和流星；关闭可省电，系统省电模式下会自动暂停") { AppSettings.backgroundAnimation = it }
         }
         GlassCard(spacing = 8.dp) {
             SectionHeader("桌面小组件与快捷方式", icon = Icons.Rounded.Widgets)
-            SecondaryText("长按桌面空白处 ▸ 小组件 ▸ 星匣，可以添加「今日运势」「星座运势」「倒数日」三种小组件。长按星匣图标还能直接打开今天吃什么、抛硬币、求签和今日运势。", style = Fonts.caption)
+            SecondaryText("长按桌面空白处 ▸ 小组件 ▸ 星匣，可以添加「今日运势」「星座运势」「倒数日」三种小组件；星座运势和倒数日可以选择要显示的星座或日子，之后长按小组件能重新设置。长按星匣图标还能直接打开今天吃什么、抛硬币、求签和今日运势。", style = Fonts.caption)
         }
         GlassCard(spacing = 8.dp) {
             SectionHeader("关于", icon = Icons.Rounded.Info)
-            SecondaryText("星匣 Android 版 1.1.0")
+            SecondaryText("星匣 Android 版 ${BuildConfig.VERSION_NAME}")
             SecondaryText("运势与占卜内容为娱乐性质，仅供参考。所有数据只保存在本机，不联网、不收集任何信息。", style = Fonts.caption)
         }
     }

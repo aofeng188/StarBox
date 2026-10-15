@@ -6,22 +6,31 @@ import SwiftData
 struct FortuneHeroCard: View {
     let fortune: DailyFortune
     @Environment(\.palette) private var palette
+    @Environment(\.dynamicTypeSize) private var typeSize
+    // 分数环（连同环里的分数）和等级字跟随系统字号放大，设上限免得撑爆卡片
+    @ScaledMetric(relativeTo: .title) private var ringSize: CGFloat = 112
+    @ScaledMetric(relativeTo: .largeTitle) private var levelSize: CGFloat = 34
 
     var body: some View {
+        let isLarge = typeSize.isAccessibilitySize
+        let ring = min(ringSize, 160)
+        // 超大字号时分数环放上面、文字放下面，摘要才有足够宽度
+        let header = isLarge ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14))
+                             : AnyLayout(HStackLayout(alignment: .center, spacing: 18))
         NavigationLink(value: AppRoute.fortune) {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .center, spacing: 18) {
-                    ScoreRing(score: fortune.score, size: 112, lineWidth: 11, label: "运势指数")
+                header {
+                    ScoreRing(score: fortune.score, size: ring, lineWidth: ring * 11 / 112, label: "运势指数")
                     VStack(alignment: .leading, spacing: 6) {
                         Text(fortune.isPersonalized ? "专属运势" : "今日运势")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
-                        GradientText(text: fortune.levelName, font: .system(size: 34, weight: .heavy, design: .rounded))
+                        GradientText(text: fortune.levelName, font: .system(size: min(levelSize, 48), weight: .heavy, design: .rounded))
                         StarRatingView(stars: fortune.stars, size: 13)
                         Text(fortune.summary)
                             .font(.subheadline)
                             .foregroundStyle(.primary.opacity(0.85))
-                            .lineLimit(3)
+                            .lineLimit(typeSize >= .xLarge ? nil : 3)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -41,25 +50,49 @@ struct FortuneHeroCard: View {
 
                 Divider().opacity(0.4)
 
-                HStack(spacing: 0) {
-                    LuckyItem(title: "幸运色") {
-                        HStack(spacing: 5) {
-                            Circle()
-                                .fill(Color(fortune.luckyColor))
-                                .frame(width: 14, height: 14)
-                                .overlay(Circle().strokeBorder(.white.opacity(0.5), lineWidth: 1))
-                                .shadow(color: Color(fortune.luckyColor).opacity(0.8), radius: 4)
-                            Text(fortune.luckyColor.name)
-                        }
+                // 超大字号时四项排成两行，免得挤成一团
+                if isLarge {
+                    VStack(spacing: 12) {
+                        HStack(spacing: 0) { luckyColorItem; luckyNumberItem }
+                        HStack(spacing: 0) { luckyDirectionItem; luckyHourItem }
                     }
-                    LuckyItem(title: "幸运数字") { Text("\(fortune.luckyNumber)").monospacedDigit() }
-                    LuckyItem(title: "喜神方位") { Text(fortune.luckyDirection) }
-                    LuckyItem(title: "吉时") { Text(fortune.luckyHour.hourName) }
+                } else {
+                    HStack(spacing: 0) {
+                        luckyColorItem
+                        luckyNumberItem
+                        luckyDirectionItem
+                        luckyHourItem
+                    }
                 }
             }
             .glassCard(interactive: true)
         }
         .buttonStyle(.pressableCard)
+    }
+
+    private var luckyColorItem: some View {
+        LuckyItem(title: "幸运色") {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(Color(fortune.luckyColor))
+                    .frame(width: 14, height: 14)
+                    .overlay(Circle().strokeBorder(.white.opacity(0.5), lineWidth: 1))
+                    .shadow(color: Color(fortune.luckyColor).opacity(0.8), radius: 4)
+                Text(fortune.luckyColor.name)
+            }
+        }
+    }
+
+    private var luckyNumberItem: some View {
+        LuckyItem(title: "幸运数字") { Text("\(fortune.luckyNumber)").monospacedDigit() }
+    }
+
+    private var luckyDirectionItem: some View {
+        LuckyItem(title: "喜神方位") { Text(fortune.luckyDirection) }
+    }
+
+    private var luckyHourItem: some View {
+        LuckyItem(title: "吉时") { Text(fortune.luckyHour.hourName) }
     }
 }
 
@@ -147,13 +180,15 @@ struct AlmanacCard: View {
 struct YiJiRow: View {
     let isYi: Bool
     let items: [String]
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let color = isYi ? Color(hex: 0x34D399) : Color(hex: 0xFB7185)
+        // 语义色按深浅模式取色，徽章上的字按底色深浅选黑或白，保证对比度
+        let color = isYi ? Color.positive(scheme) : Color.negative(scheme)
         HStack(alignment: .top, spacing: 12) {
             Text(isYi ? "宜" : "忌")
                 .font(AppFont.serif(18, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(color.readableForeground)
                 .frame(width: 34, height: 34)
                 .background(Circle().fill(color.gradient))
                 .shadow(color: color.opacity(0.6), radius: 6)
@@ -175,16 +210,19 @@ struct YiJiRow: View {
 // MARK: - 星座
 
 struct HoroscopeMiniCard: View {
+    let today: DayKey
     @Environment(AppState.self) private var app
     @AppStorage("lastViewedSign", store: AppGroup.defaults) private var lastViewedSign = -1
     @Environment(\.palette) private var palette
 
     var body: some View {
         let sign = currentSign
-        let horoscope = HoroscopeEngine.horoscope(sign, period: .today)
+        let horoscope = HoroscopeEngine.horoscope(sign, period: .today, reference: today)
         NavigationLink(value: AppRoute.horoscope) {
             HStack(spacing: 16) {
+                // 旁边已有星座名，徽章不再重复朗读
                 ZodiacBadge(sign: sign, size: 64)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 5) {
                     HStack {
                         Text(sign.name).font(.headline)
@@ -194,10 +232,8 @@ struct HoroscopeMiniCard: View {
                     Text(horoscope.comment)
                         .font(.subheadline)
                         .foregroundStyle(.primary.opacity(0.85))
-                    FlowLayout(spacing: 6) {
-                        TagChip(text: "速配 \(horoscope.matchSign.shortName)", symbol: "heart.fill")
-                        ColorDotChip(named: horoscope.luckyColor)
-                    }
+                    // 星座幸运色和运势卡的幸运色是两套算法，首页只留运势卡那个，避免两个幸运色打架
+                    TagChip(text: "速配 \(horoscope.matchSign.shortName)", symbol: "heart.fill")
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right").foregroundStyle(.tertiary)
@@ -240,14 +276,16 @@ struct ZodiacBadge: View {
 // MARK: - 今日一签
 
 struct StickMiniCard: View {
+    let today: DayKey
     @Environment(\.colorScheme) private var scheme
     @Environment(AppState.self) private var app
     @Query(sort: \StickDraw.date, order: .reverse) private var draws: [StickDraw]
     @Environment(\.palette) private var palette
 
     var body: some View {
-        let today = DayKey.today.rawValue
-        let draw = draws.first { $0.dayKey == today && $0.profileID == app.primary?.id }
+        // 只认当前档案今天的签：给家人朋友求的签记在他们自己的档案下
+        let profileID = app.primary?.id
+        let draw = draws.first { $0.dayKey == today.rawValue && $0.profileID == profileID }
         NavigationLink(value: AppRoute.stick) {
             HStack(spacing: 16) {
                 ZStack {
@@ -293,15 +331,17 @@ struct StickMiniCard: View {
 
 struct QuickToolsRow: View {
     @Environment(AppSettings.self) private var settings
+    @Environment(\.palette) private var palette
+    @State private var showEditor = false
 
     var body: some View {
-        let tools = settings.favoriteTools.compactMap(ToolKind.init(rawValue:))
+        let tools = settings.favoriteTools.compactMap(FavoriteTool.init(id:))
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "快捷工具", subtitle: "在百宝箱长按工具可收藏", symbol: "bolt.fill")
+            SectionHeader(title: "快捷工具", subtitle: "工具页右上角点星标收藏", symbol: "bolt.fill")
             CardHScroll {
                 HStack(spacing: 14) {
                     ForEach(tools) { tool in
-                        NavigationLink(value: AppRoute.tool(tool)) {
+                        NavigationLink(value: tool.route) {
                             VStack(spacing: 6) {
                                 ToolIcon(symbol: tool.symbol, colors: tool.colors, size: 54)
                                 Text(tool.name)
@@ -313,25 +353,41 @@ struct QuickToolsRow: View {
                         }
                         .buttonStyle(.pressableCard)
                     }
-                    NavigationLink(value: AppRoute.answers) {
+                    Button {
+                        showEditor = true
+                    } label: {
                         VStack(spacing: 6) {
-                            ToolIcon(symbol: "book.fill", colors: [Color(hex: 0xF5B83D), Color(hex: 0xB45309)], size: 54)
-                            Text("答案之书").font(.caption2).foregroundStyle(.primary)
+                            RoundedRectangle(cornerRadius: 54 * 0.3, style: .continuous)
+                                .strokeBorder(palette.accent.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                                .frame(width: 54, height: 54)
+                                .overlay {
+                                    Image(systemName: "plus")
+                                        .font(.title2.weight(.semibold))
+                                        .foregroundStyle(palette.ink(palette.accent))
+                                }
+                            Text("添加")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
                         .frame(width: 66)
+                        .contentShape(.rect)
                     }
                     .buttonStyle(.pressableCard)
+                    .accessibilityLabel("管理快捷工具")
                 }
                 .padding(.vertical, 4)
             }
         }
         .glassCard(clipped: true)
+        .sheet(isPresented: $showEditor) { FavoriteToolsEditor() }
     }
 }
 
 // MARK: - 倒数日
 
 struct CountdownStrip: View {
+    let today: DayKey
     @Query(sort: \Countdown.createdAt) private var countdowns: [Countdown]
     @Environment(\.palette) private var palette
 
@@ -358,7 +414,7 @@ struct CountdownStrip: View {
                 CardHScroll {
                     HStack(spacing: 12) {
                         ForEach(shown) { countdown in
-                            CountdownChip(countdown: countdown)
+                            CountdownChip(countdown: countdown, today: today)
                         }
                     }
                 }
@@ -370,11 +426,15 @@ struct CountdownStrip: View {
 
 struct CountdownChip: View {
     let countdown: Countdown
+    let today: DayKey
     @Environment(\.palette) private var palette
+    @ScaledMetric(relativeTo: .title) private var numberSize: CGFloat = 30
 
     var body: some View {
-        let status = countdown.status()
+        let status = countdown.status(today: today)
+        // 底色、描边用原色；文字用 ink 版本，浅色模式下粉彩色才看得清
         let color = palette.color(at: countdown.colorIndex)
+        let ink = palette.inkColor(at: countdown.colorIndex)
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Text(countdown.emoji)
@@ -383,12 +443,12 @@ struct CountdownChip: View {
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(status.prefix).font(.caption2).foregroundStyle(.secondary)
                 if status.isToday && countdown.kindValue != .anniversary {
-                    Text(status.suffix).font(.title2.bold()).foregroundStyle(color)
+                    Text(status.suffix).font(.title2.bold()).foregroundStyle(ink)
                 } else {
                     Text("\(status.days)")
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .font(.system(size: min(numberSize, 48), weight: .bold, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(color)
+                        .foregroundStyle(ink)
                     Text(status.suffix).font(.caption2).foregroundStyle(.secondary)
                 }
             }
@@ -404,12 +464,14 @@ struct CountdownChip: View {
 // MARK: - 心情
 
 struct MoodCheckInCard: View {
+    /// 由父视图传入并在零点、回到前台时刷新，跨天后不会把心情记到昨天
+    let today: DayKey
     @Environment(\.modelContext) private var context
     @Query(sort: \MoodEntry.date, order: .reverse) private var moods: [MoodEntry]
 
     var body: some View {
-        let today = DayKey.today.rawValue
-        let entry = moods.first { $0.dayKey == today }
+        let key = today.rawValue
+        let entry = moods.first { $0.dayKey == key }
         VStack(alignment: .leading, spacing: 14) {
             NavigationLink(value: AppRoute.mood) {
                 HStack {
@@ -419,11 +481,12 @@ struct MoodCheckInCard: View {
             }
             .buttonStyle(.plain)
             MoodPicker(selected: entry?.mood) { mood in
-                if let entry {
-                    entry.mood = mood.rawValue
-                    entry.date = Date()
+                // 点下时重新查一次，不用 body 里可能已过期的 entry
+                if let current = moods.first(where: { $0.dayKey == key }) {
+                    current.mood = mood.rawValue
+                    current.date = Date()
                 } else {
-                    context.insert(MoodEntry(dayKey: today, mood: mood.rawValue))
+                    context.insert(MoodEntry(dayKey: key, mood: mood.rawValue))
                 }
                 try? context.save()
             }

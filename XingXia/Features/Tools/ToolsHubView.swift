@@ -15,14 +15,14 @@ struct ToolsHubView: View {
             VStack(alignment: .leading, spacing: 22) {
                 let matches = ToolKind.allCases.filter(matchesSearch)
                 if search.isEmpty {
-                    let favorites = settings.favoriteTools.compactMap(ToolKind.init(rawValue:))
+                    let favorites = settings.favoriteTools.compactMap(FavoriteTool.init(id:))
                     if !favorites.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             SectionHeader(title: "我的收藏", symbol: "star.fill")
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
                                     ForEach(favorites) { tool in
-                                        NavigationLink(value: AppRoute.tool(tool)) {
+                                        NavigationLink(value: tool.route) {
                                             HStack(spacing: 10) {
                                                 ToolIcon(symbol: tool.symbol, colors: tool.colors, size: 36)
                                                 Text(tool.name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
@@ -33,7 +33,7 @@ struct ToolsHubView: View {
                                             .glassEffect(.regular.interactive(), in: .capsule)
                                         }
                                         .buttonStyle(.pressableCard)
-                                        .contextMenu { favoriteButton(tool) }
+                                        .contextMenu { favoriteButton(tool.id) }
                                     }
                                 }
                                 .padding(.vertical, 2)
@@ -84,14 +84,14 @@ struct ToolsHubView: View {
                 HStack(alignment: .top) {
                     ToolIcon(symbol: tool.symbol, colors: tool.colors, size: 48)
                     Spacer()
-                    if settings.favoriteTools.contains(tool.rawValue) {
+                    if settings.isFavorite(tool.rawValue) {
                         Image(systemName: "star.fill").font(.caption).foregroundStyle(.yellow)
                             .accessibilityLabel("已收藏")
                     }
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(tool.name).font(.headline).foregroundStyle(.primary)
-                    Text(tool.subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(tool.subtitle).font(.caption).subtleForeground().lineLimit(1)
                 }
             }
             .glassCard(padding: 16, tint: tool.colors[0].opacity(0.08), interactive: true)
@@ -101,7 +101,7 @@ struct ToolsHubView: View {
             .clipShape(.rect(cornerRadius: 28))
         }
         .buttonStyle(.pressableCard)
-        .contextMenu { favoriteButton(tool) }
+        .contextMenu { favoriteButton(tool.rawValue) }
     }
 
     private func wideTile(_ tool: ToolKind) -> some View {
@@ -111,11 +111,12 @@ struct ToolsHubView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(tool.name).font(.headline).foregroundStyle(.primary)
-                        if settings.favoriteTools.contains(tool.rawValue) {
+                        if settings.isFavorite(tool.rawValue) {
                             Image(systemName: "star.fill").font(.caption2).foregroundStyle(.yellow)
+                                .accessibilityLabel("已收藏")
                         }
                     }
-                    Text(tool.subtitle).font(.caption).foregroundStyle(.secondary)
+                    Text(tool.subtitle).font(.caption).subtleForeground()
                 }
                 Spacer()
                 Image(systemName: "chevron.right").foregroundStyle(.tertiary)
@@ -127,14 +128,14 @@ struct ToolsHubView: View {
             .clipShape(.rect(cornerRadius: 28))
         }
         .buttonStyle(.pressableCard)
-        .contextMenu { favoriteButton(tool) }
+        .contextMenu { favoriteButton(tool.rawValue) }
     }
 
     @ViewBuilder
-    private func favoriteButton(_ tool: ToolKind) -> some View {
-        let isFavorite = settings.favoriteTools.contains(tool.rawValue)
+    private func favoriteButton(_ id: String) -> some View {
+        let isFavorite = settings.isFavorite(id)
         Button(isFavorite ? "取消收藏" : "收藏到首页", systemImage: isFavorite ? "star.slash" : "star") {
-            settings.toggleFavorite(tool.rawValue)
+            settings.toggleFavorite(id)
             Haptics.success()
         }
     }

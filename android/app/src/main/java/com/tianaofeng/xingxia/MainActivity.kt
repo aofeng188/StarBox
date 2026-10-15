@@ -1,10 +1,8 @@
 package com.tianaofeng.xingxia
 
 import android.app.Application
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.os.PowerManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -25,7 +23,9 @@ import androidx.core.view.WindowCompat
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.CosmicBackground
 import com.tianaofeng.xingxia.ui.components.HapticsHost
+import com.tianaofeng.xingxia.ui.components.SensitiveClipboard
 import com.tianaofeng.xingxia.ui.components.SoundEngine
+import com.tianaofeng.xingxia.ui.components.rememberPowerSaveMode
 import com.tianaofeng.xingxia.system.ReminderScheduler
 import com.tianaofeng.xingxia.system.Widgets
 import com.tianaofeng.xingxia.ui.nav.AppNavigation
@@ -47,6 +47,7 @@ class XingXiaApplication : Application() {
             ReminderScheduler.reschedule(app)
         }
         ReminderScheduler.reschedule(this)
+        ReminderScheduler.scheduleDayChange(this)
     }
 }
 
@@ -70,6 +71,12 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         Routes.fromUri(intent.data)?.let { pendingLink.value = it }
     }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // 拷贝的密码在后台到期时读不到剪贴板，回到前台再检查一次
+        if (hasFocus) SensitiveClipboard.clearIfExpired(this, hasFocus = true)
+    }
 }
 
 /** 当前时间，每分钟刷新一次（「按时段切换」等主题规则依赖时间） */
@@ -84,15 +91,12 @@ fun rememberMinuteClock(): LocalDateTime {
     return now
 }
 
-private fun isPowerSave(context: Context): Boolean =
-    (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isPowerSaveMode == true
-
 @Composable
 fun XingXiaRoot(pendingLink: MutableState<String?>) {
     val context = LocalContext.current
     val now = rememberMinuteClock()
     val systemDark = isSystemInDarkTheme()
-    val (theme, _) = ThemeManager.resolve(now, Store.birth, isPowerSave(context))
+    val (theme, _) = ThemeManager.resolve(now, Store.birth, rememberPowerSaveMode())
     val dark = when (ThemeManager.appearance) {
         AppearanceMode.SYSTEM -> systemDark
         AppearanceMode.LIGHT -> false

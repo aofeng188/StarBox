@@ -97,6 +97,8 @@ final class ThemeManager {
     private(set) var current: AppTheme = .nebula
     /// 当前主题的来由，展示在主题设置页
     private(set) var reason: String = ""
+    /// 系统低电量模式。星空背景据此暂停动画
+    private(set) var isLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
 
     private var launchRandomID: String
     private var birth: BirthInfo?
@@ -118,7 +120,11 @@ final class ThemeManager {
         refresh()
 
         NotificationCenter.default.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main) { _ in
-            Task { @MainActor in ThemeManager.shared.refresh() }
+            Task { @MainActor in
+                let manager = ThemeManager.shared
+                manager.isLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+                manager.refresh()
+            }
         }
     }
 
@@ -183,7 +189,7 @@ final class ThemeManager {
     }
 
     private func festivalTheme(_ day: DayKey) -> (AppTheme, String)? {
-        let festivals = Festivals.on(day, lunar: LunarDate(day.date))
+        let festivals = Festivals.on(day, lunar: LunarDate(day))
         let table: [(String, AppTheme)] = [
             ("春节", .redGiant), ("除夕", .redGiant), ("元宵节", .redGiant), ("中秋节", .solarGold),
             ("七夕", .sakura), ("情人节", .sakura), ("圣诞节", .aurora), ("平安夜", .aurora), ("万圣夜", .eventHorizon),

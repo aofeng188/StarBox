@@ -40,25 +40,39 @@ extension Countdown {
 
     var originDay: DayKey { DayKey(date) }
 
+    /// 农历生日是否记录了出生年份。没记录时 date 存的是创建当天（旧数据里没动过「出生年份参考」的也是这样），不显示年龄。
+    var knowsBirthYear: Bool {
+        !(isLunar && kindValue == .birthday && originDay == DayKey(createdAt))
+    }
+
     func nextOccurrence(from today: DayKey = .today) -> DayKey {
         let repeats = repeatsYearly || kindValue == .birthday
+        if isLunar {
+            // 不重复的农历日子：取不早于 date（创建日，或编辑器保存时写入的换算结果）的第一个对应公历日期
+            return Self.lunarOccurrence(month: lunarMonth, day: lunarDay, onOrAfter: repeats ? today : originDay) ?? originDay
+        }
         guard repeats else { return originDay }
         for year in (today.year - 1)...(today.year + 2) {
-            let candidate: DayKey?
-            if isLunar {
-                let date = LunarDate.solarDate(gregorianYear: year, month: lunarMonth, day: lunarDay, isLeap: false)
-                    ?? LunarDate.solarDate(gregorianYear: year, month: lunarMonth, day: lunarDay - 1, isLeap: false)
-                candidate = date.map { DayKey($0) }
-            } else {
-                let origin = originDay
-                var day = origin.day
-                // 2 月 29 日在平年按 2 月 28 日算
-                if origin.month == 2 && day == 29 && !Self.isLeapYear(year) { day = 28 }
-                candidate = DayKey(year: year, month: origin.month, day: day)
-            }
-            if let candidate, candidate >= today { return candidate }
+            let origin = originDay
+            var day = origin.day
+            // 2 月 29 日在平年按 2 月 28 日算
+            if origin.month == 2 && day == 29 && !Self.isLeapYear(year) { day = 28 }
+            let candidate = DayKey(year: year, month: origin.month, day: day)
+            if candidate >= today { return candidate }
         }
         return originDay
+    }
+
+    /// 农历某月某日在 start 当天或之后第一次出现的公历日期；小月没有三十时按廿九算
+    static func lunarOccurrence(month: Int, day: Int, onOrAfter start: DayKey) -> DayKey? {
+        for year in (start.year - 1)...(start.year + 2) {
+            let date = LunarDate.solarDate(gregorianYear: year, month: month, day: day, isLeap: false)
+                ?? LunarDate.solarDate(gregorianYear: year, month: month, day: day - 1, isLeap: false)
+            guard let date else { continue }
+            let candidate = DayKey(date)
+            if candidate >= start { return candidate }
+        }
+        return nil
     }
 
     func status(today: DayKey = .today) -> CountdownStatus {
@@ -93,7 +107,10 @@ extension Countdown {
             let left = today.days(to: next)
             let age = next.year - originDay.year
             let calendarName = isLunar ? "农历\(LunarDate.monthNames[max(0, lunarMonth - 1)])月\(LunarDate.dayNames[max(0, lunarDay - 1)])" : DateText.monthDay(originDay)
-            let caption = age > 0 ? "\(calendarName) · 即将 \(age) 岁" : calendarName
+            var caption = calendarName
+            if knowsBirthYear && age > 0 {
+                caption += left == 0 ? " · \(age) 岁生日" : " · 即将 \(age) 岁"
+            }
             return CountdownStatus(days: left, prefix: left == 0 ? "生日" : "还有", suffix: left == 0 ? "快乐" : "天",
                                    caption: caption, targetDay: next, isToday: left == 0)
         }

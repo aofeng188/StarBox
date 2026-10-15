@@ -74,6 +74,8 @@ struct FoodMenuEditor: View {
                                     .background(Circle().fill(menu.icon == icon ? Color.accentColor.opacity(0.3) : .clear))
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("图标 \(icon)")
+                            .accessibilityAddTraits(menu.icon == icon ? .isSelected : [])
                         }
                     }
                 }
@@ -111,7 +113,9 @@ struct FoodMenuEditor: View {
     private func add() {
         let name = newItem.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
-        let item = FoodMenuItem(name: name, sortIndex: (menu.items?.count ?? 0))
+        // 接在现有最大序号后面，删除过选项也不会和已有项重号
+        let nextIndex = ((menu.items ?? []).map(\.sortIndex).max() ?? -1) + 1
+        let item = FoodMenuItem(name: name, sortIndex: nextIndex)
         item.menu = menu
         context.insert(item)
         try? context.save()

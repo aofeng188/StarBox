@@ -6,13 +6,13 @@ struct RouteDestination: View {
 
     var body: some View {
         switch route {
-        case .tool(let tool): ToolDestination(tool: tool)
+        case .tool(let tool): ToolDestination(tool: tool).favoriteToggle(.tool(tool))
         case .fortune: FortuneDetailView()
         case .almanac: AlmanacDetailView()
         case .horoscope: HoroscopeView()
         case .stick: FortuneStickView()
         case .tarot: TarotView()
-        case .answers: AnswerBookView()
+        case .answers: AnswerBookView().favoriteToggle(.answers)
         case .birthChart: BirthChartView()
         case .compatibility: CompatibilityView()
         case .countdowns: CountdownListView()
@@ -44,5 +44,33 @@ struct ToolDestination: View {
         case .scratch: ScratchCardView()
         case .rps: RPSView()
         }
+    }
+}
+
+extension View {
+    /// 工具页右上角的收藏星标（统一在路由处加，不用逐个改工具页）
+    func favoriteToggle(_ item: FavoriteTool) -> some View {
+        toolbar {
+            ToolbarItem(placement: .topBarTrailing) { FavoriteToggleButton(item: item) }
+        }
+    }
+}
+
+/// 切换「收藏到首页快捷工具」
+struct FavoriteToggleButton: View {
+    let item: FavoriteTool
+    @Environment(AppSettings.self) private var settings
+
+    var body: some View {
+        let isFavorite = settings.isFavorite(item.id)
+        Button {
+            settings.toggleFavorite(item.id)
+            Haptics.selection()
+            Announce.post(isFavorite ? "已取消收藏" : "已收藏到首页快捷工具")
+        } label: {
+            Label(isFavorite ? "取消收藏" : "收藏到首页", systemImage: isFavorite ? "star.fill" : "star")
+        }
+        .symbolEffect(.bounce, value: isFavorite)
+        .accessibilityValue(isFavorite ? "已收藏" : "未收藏")
     }
 }

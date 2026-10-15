@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FortuneDetailView: View {
     @Environment(AppState.self) private var app
+    @Environment(ThemeManager.self) private var themes
     @Environment(\.palette) private var palette
     @State private var offset = 0
     @State private var shareImage: Image?
@@ -9,6 +10,10 @@ struct FortuneDetailView: View {
     var body: some View {
         let day = DayKey.today.adding(days: offset)
         let fortune = FortuneEngine.daily(for: app.birth, on: day)
+        // 看的不是今天时，文案里的「今日」改成「昨日 / 明日」
+        let dayWord = Self.dayWord(offset)
+        let moonPhase = FortuneMoonPhase(Astronomy.moonPhase(day.date))
+        let moonText = "\(dayWord)月相为\(moonPhase.name)，月亮行经\(fortune.moonSign.name)。"
 
         ScrollView {
             VStack(spacing: 16) {
@@ -37,18 +42,18 @@ struct FortuneDetailView: View {
 
                 if !fortune.insights.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        SectionHeader(title: "运势解读", subtitle: "依据你的八字与今日天象", symbol: "scope")
+                        SectionHeader(title: "运势解读", subtitle: "依据你的八字与\(dayWord)天象", symbol: "scope")
                         ForEach(Array(fortune.insights.enumerated()), id: \.offset) { index, text in
-                            HStack(alignment: .top, spacing: 10) {
-                                Image(systemName: ["sun.and.horizon.fill", "pawprint.fill", "moon.fill"][min(index, 2)])
-                                    .foregroundStyle(palette.accentGradient)
-                                    .frame(width: 22)
-                                Text(text).font(.subheadline).lineSpacing(3)
-                            }
+                            FortuneInsightRow(symbol: Self.symbol(for: fortune.insightKinds[safe: index]),
+                                              text: dayWord == "今日" ? text : text.replacingOccurrences(of: "今日", with: dayWord))
                         }
+                        // 月亮星座那条解读总在最后，月相紧跟其后
+                        FortuneInsightRow(symbol: moonPhase.symbol, text: moonText)
                     }
                     .glassCard()
                 } else {
+                    FortuneInsightRow(symbol: moonPhase.symbol, text: moonText)
+                        .glassCard()
                     NavigationLink(value: AppRoute.profiles) {
                         Label("填写生日后可查看基于八字与星座的专属解读", systemImage: "lock.fill")
                             .font(.subheadline)
@@ -63,7 +68,7 @@ struct FortuneDetailView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             Image(systemName: category.symbol)
-                                .foregroundStyle(.white)
+                                .foregroundStyle(palette.onAccent)
                                 .frame(width: 30, height: 30)
                                 .background(Circle().fill(palette.accentGradient))
                             Text(category.name).font(.headline)
@@ -98,7 +103,7 @@ struct FortuneDetailView: View {
                         LuckyCell(title: "幸运物", value: fortune.luckyItem, caption: "带在身边") {
                             Image(systemName: "gift.fill").font(.title).foregroundStyle(palette.accentGradient)
                         }
-                        LuckyCell(title: "贵人星座", value: fortune.noblemanSign.name, caption: "今日月亮在\(fortune.moonSign.shortName)") {
+                        LuckyCell(title: "贵人星座", value: fortune.noblemanSign.name, caption: "\(dayWord)月亮在\(fortune.moonSign.shortName)") {
                             Text(fortune.noblemanSign.glyph).font(.title).foregroundStyle(palette.accentGradient)
                         }
                     }
@@ -122,20 +127,76 @@ struct FortuneDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if let shareImage {
-                    ShareLink(item: shareImage, preview: SharePreview("我的今日运势", image: shareImage)) {
+                    ShareLink(item: shareImage, preview: SharePreview("我的\(DateText.monthDay(day))运势", image: shareImage)) {
                         Image(systemName: "square.and.arrow.up")
                     }
                 }
             }
         }
-        .task(id: offset) { renderShareImage(fortune: fortune) }
+        // 换日期或主题切换后重新渲染分享图
+        .task(id: "\(offset)-\(themes.current.id)") { renderShareImage(fortune: fortune) }
     }
 
     @MainActor
     private func renderShareImage(fortune: DailyFortune) {
-        let renderer = ImageRenderer(content: FortuneShareCard(fortune: fortune, name: app.primary?.name).environment(\.palette, palette))
+        // ImageRenderer 不一定带上页面的环境值，主题显式传入；分享图是白字，统一用主题的深色版本
+        let card = FortuneShareCard(fortune: fortune, name: app.primary?.name, theme: themes.current.dark)
+        let renderer = ImageRenderer(content: card)
         renderer.scale = 3
         if let image = renderer.uiImage { shareImage = Image(uiImage: image) }
+    }
+
+    private static func dayWord(_ offset: Int) -> String {
+        switch offset {
+        case 0: "今日"
+        case -1: "昨日"
+        case 1: "明日"
+        default: "当日"
+        }
+    }
+
+    private static func symbol(for kind: FortuneInsightKind?) -> String {
+        switch kind {
+        case .stem?: "sun.and.horizon.fill"
+        case .branch?: "pawprint.fill"
+        case .moon?: "moon.fill"
+        case nil: "sparkles"
+        }
+    }
+}
+
+private struct FortuneInsightRow: View {
+    let symbol: String
+    let text: String
+    @Environment(\.palette) private var palette
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: symbol)
+                .foregroundStyle(palette.accentGradient)
+                .frame(width: 22)
+                .accessibilityHidden(true)
+            Text(text).font(.subheadline).lineSpacing(3)
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+/// 八相月相。Astronomy.moonPhase 返回日月黄经差 / 360：0 新月、0.25 上弦、0.5 满月、0.75 下弦，按最近的一相取
+private enum FortuneMoonPhase: Int {
+    case new, waxingCrescent, firstQuarter, waxingGibbous, full, waningGibbous, lastQuarter, waningCrescent
+
+    init(_ phase: Double) {
+        self = FortuneMoonPhase(rawValue: Int((phase * 8).rounded()) % 8) ?? .new
+    }
+
+    var name: String {
+        ["新月", "娥眉月", "上弦月", "盈凸月", "满月", "亏凸月", "下弦月", "残月"][rawValue]
+    }
+
+    var symbol: String {
+        ["moonphase.new.moon", "moonphase.waxing.crescent", "moonphase.first.quarter", "moonphase.waxing.gibbous",
+         "moonphase.full.moon", "moonphase.waning.gibbous", "moonphase.last.quarter", "moonphase.waning.crescent"][rawValue]
     }
 }
 
@@ -165,15 +226,17 @@ private struct LuckyCell<Icon: View>: View {
 struct FortuneShareCard: View {
     let fortune: DailyFortune
     let name: String?
-    @Environment(\.palette) private var palette
+    /// 当前主题的深色版本（卡片是深底白字）
+    let theme: ThemePalette
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("星匣 · 今日运势").font(.headline).foregroundStyle(.white.opacity(0.8))
-            Text(DateText.full(fortune.day)).font(.subheadline).foregroundStyle(.white.opacity(0.6))
+            Text("星匣 · \(DateText.monthDay(fortune.day))运势").font(.headline).foregroundStyle(.white.opacity(0.8))
+            Text("\(fortune.day.year)年 · 农历\(LunarDate(fortune.day.date).text) · \(DateText.weekday(fortune.day))")
+                .font(.subheadline).foregroundStyle(.white.opacity(0.6))
             Text("\(fortune.score)")
                 .font(.system(size: 88, weight: .heavy, design: .rounded))
-                .foregroundStyle(palette.accentGradient)
+                .foregroundStyle(theme.accentGradient)
             Text(fortune.levelName).font(.system(size: 36, weight: .bold)).foregroundStyle(.white)
             Text(fortune.summary).font(.body).foregroundStyle(.white.opacity(0.9)).multilineTextAlignment(.center)
             HStack(spacing: 20) {
@@ -192,9 +255,9 @@ struct FortuneShareCard: View {
         .frame(width: 360)
         .background {
             ZStack {
-                LinearGradient(colors: [Color(hex: 0x0B0720), Color(hex: 0x2A0F4F)], startPoint: .top, endPoint: .bottom)
-                Circle().fill(palette.nebula[0].opacity(0.6)).frame(width: 260).blur(radius: 70).offset(x: -100, y: -160)
-                Circle().fill(palette.nebula[1].opacity(0.5)).frame(width: 220).blur(radius: 70).offset(x: 120, y: 160)
+                theme.backgroundGradient
+                Circle().fill(theme.nebula[0].opacity(0.6)).frame(width: 260).blur(radius: 70).offset(x: -100, y: -160)
+                Circle().fill(theme.nebula[1].opacity(0.5)).frame(width: 220).blur(radius: 70).offset(x: 120, y: 160)
             }
         }
         .clipShape(.rect(cornerRadius: 32))

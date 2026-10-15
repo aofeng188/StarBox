@@ -58,35 +58,46 @@ private struct ColorGenerator: View {
 
             HStack(spacing: 6) {
                 ForEach(Array(colors.enumerated()), id: \.offset) { index, color in
-                    Button {
-                        UIPasteboard.general.string = color.hexString
-                        copied = index
-                        Haptics.success()
-                    } label: {
-                        VStack(spacing: 6) {
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(Color(color))
-                                .frame(height: 220)
-                                .overlay(alignment: .top) {
-                                    Button {
-                                        if locked.contains(index) { locked.remove(index) } else { locked.insert(index) }
-                                    } label: {
-                                        Image(systemName: locked.contains(index) ? "lock.fill" : "lock.open")
-                                            .font(.caption)
-                                            .padding(6)
-                                            .background(Circle().fill(.black.opacity(0.25)))
-                                            .foregroundStyle(.white)
-                                    }
-                                    .padding(8)
-                                    .accessibilityLabel(locked.contains(index) ? "解锁颜色" : "锁定颜色")
-                                }
-                                .shadow(color: Color(color).opacity(0.5), radius: 8)
-                            Text(color.name.isEmpty ? " " : color.name).font(.caption.weight(.semibold)).lineLimit(1).foregroundStyle(.primary)
-                            Text(copied == index ? "已拷贝" : color.hexString).font(.caption2.monospaced()).foregroundStyle(.secondary)
-                                .minimumScaleFactor(0.7)
+                    let isLocked = locked.contains(index)
+                    // 锁头和拷贝按钮并列叠放，不嵌在拷贝按钮里：点锁头不会误拷贝，读屏也能单独聚焦
+                    ZStack(alignment: .top) {
+                        Button {
+                            UIPasteboard.general.string = color.hexString
+                            copied = index
+                            Haptics.success()
+                        } label: {
+                            VStack(spacing: 6) {
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(Color(color))
+                                    .frame(height: 220)
+                                    .shadow(color: Color(color).opacity(0.5), radius: 8)
+                                Text(color.name.isEmpty ? " " : color.name).font(.caption.weight(.semibold)).lineLimit(1).foregroundStyle(.primary)
+                                Text(copied == index ? "已拷贝" : color.hexString).font(.caption2.monospaced()).foregroundStyle(.secondary)
+                                    .minimumScaleFactor(0.7)
+                            }
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(color.name.isEmpty ? color.hexString : "\(color.name) \(color.hexString)")
+                        .accessibilityValue(isLocked ? "已锁定" : "")
+                        .accessibilityHint(copied == index ? "已拷贝" : "点按拷贝色值")
+
+                        Button {
+                            if isLocked { locked.remove(index) } else { locked.insert(index) }
+                            Haptics.selection()
+                        } label: {
+                            Image(systemName: isLocked ? "lock.fill" : "lock.open")
+                                .font(.caption)
+                                .padding(6)
+                                .background(Circle().fill(.black.opacity(0.25)))
+                                .foregroundStyle(.white)
+                                .frame(minWidth: 44, minHeight: 44)
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 2)
+                        .accessibilityLabel(isLocked ? "解锁" : "锁定")
+                        .accessibilityValue(color.name.isEmpty ? color.hexString : color.name)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .glassCard(padding: 12)
@@ -254,6 +265,7 @@ private struct NameGenerator: View {
     @State private var surname = ""
     @State private var names: [String] = []
     @State private var copied: String?
+    @FocusState private var editingSurname: Bool
 
     var body: some View {
         VStack(spacing: 14) {
@@ -266,6 +278,7 @@ private struct NameGenerator: View {
 
             if [.chineseMale, .chineseFemale, .chineseAny].contains(style) {
                 TextField("指定姓氏（可选）", text: $surname)
+                    .focused($editingSurname)
                     .padding(12)
                     .glassEffect(.regular, in: .capsule)
                     .onSubmit { generate() }
@@ -294,7 +307,7 @@ private struct NameGenerator: View {
             BigActionButton(title: "换一批", symbol: "text.badge.star") { generate() }
         }
         .onAppear { if names.isEmpty { generate() } }
-        .onShake { generate() }
+        .onShake(isEnabled: !editingSurname) { generate() }
     }
 
     private func generate() {

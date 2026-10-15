@@ -11,6 +11,8 @@ struct FortuneStick: Decodable, Identifiable, Hashable {
     var id: Int { n }
     var levelInfo: StickLevel { StickLevel(rawValue: level) ?? .middle }
     var numberText: String { "第\(StickLibrary.chineseNumber(n))签" }
+    /// 读屏播报用，例如「第 12 签，上上签，云开见月」
+    var spokenText: String { "第 \(n) 签，\(levelInfo.displayName)，\(title)" }
 
     /// 各方面的断语（按签等从断语库中稳定地选取）
     var areas: [(String, String)] {

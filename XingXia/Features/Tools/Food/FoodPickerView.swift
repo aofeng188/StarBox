@@ -36,6 +36,8 @@ struct FoodPickerView: View {
     @State private var isRolling = false
     @State private var revealCount = 0
     @State private var confetti = 0
+    /// 已经点过「就吃这个」的结果，避免重复记录
+    @State private var acceptedTitle: String?
 
     @State private var nearby: [MKMapItem] = []
     @State private var userLocation: CLLocation?
@@ -52,6 +54,7 @@ struct FoodPickerView: View {
                     ForEach(Source.allCases) { Text($0.name).tag($0) }
                 }
                 .pickerStyle(.segmented)
+                .disabled(isRolling)
 
                 filters
 
@@ -70,9 +73,11 @@ struct FoodPickerView: View {
 
                     if let result, !isRolling {
                         HStack(spacing: 10) {
-                            Button("就吃这个", systemImage: "checkmark.circle.fill") { accept(result) }
+                            Button(acceptedTitle == result.title ? "已记录" : "就吃这个", systemImage: "checkmark.circle.fill") { accept(result) }
                                 .buttonStyle(.glassProminent)
                                 .tint(palette.accent)
+                                .foregroundStyle(palette.onAccent)
+                                .disabled(acceptedTitle == result.title)
                             if let item = result.mapItem {
                                 Button("导航", systemImage: "location.fill") {
                                     item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
@@ -128,7 +133,7 @@ struct FoodPickerView: View {
         }
         .sheet(isPresented: $showMenus) { FoodMenusView() }
         .sheet(isPresented: $showBlocked) { BlockedFoodsView() }
-        .onShake { if !isRolling && !pool.isEmpty { roll() } }
+        .onShake(isEnabled: !showMenus && !showBlocked) { if !isRolling && !pool.isEmpty { roll() } }
         .onChange(of: source) { _, new in
             result = nil
             display = nil
@@ -159,7 +164,7 @@ struct FoodPickerView: View {
                                     .fixedSize()
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 7)
-                                    .foregroundStyle(meal == item ? .white : .primary)
+                                    .foregroundStyle(meal == item ? palette.onAccent : .primary)
                                     .background(Capsule().fill(meal == item ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.primary.opacity(0.07))))
                             }
                             .buttonStyle(.plain)
@@ -194,6 +199,7 @@ struct FoodPickerView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(menus) { menu in
+                            let isOn = currentMenu?.id == menu.id
                             Button {
                                 menuID = menu.id
                                 result = nil
@@ -202,10 +208,12 @@ struct FoodPickerView: View {
                                 Text("\(menu.icon) \(menu.name) · \(menu.items?.count ?? 0)")
                                     .font(.subheadline.weight(.medium))
                                     .padding(.horizontal, 12).padding(.vertical, 8)
-                                    .foregroundStyle(menuID == menu.id ? .white : .primary)
-                                    .background(Capsule().fill(menuID == menu.id ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.primary.opacity(0.07))))
+                                    .foregroundStyle(isOn ? palette.onAccent : .primary)
+                                    .background(Capsule().fill(isOn ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.primary.opacity(0.07))))
                             }
                             .buttonStyle(.plain)
+                            .disabled(isRolling)
+                            .accessibilityAddTraits(isOn ? .isSelected : [])
                         }
                         Button { showMenus = true } label: {
                             Image(systemName: "pencil").padding(9).background(Circle().fill(.primary.opacity(0.07)))
@@ -286,6 +294,11 @@ struct FoodPickerView: View {
 
     // MARK: 数据
 
+    /// 实际用来抽的菜单（还没选过或选中的已删除时用第一个）
+    private var currentMenu: FoodMenu? {
+        menus.first { $0.id == menuID } ?? menus.first
+    }
+
     private var pool: [Candidate] {
         switch source {
         case .library:
@@ -294,7 +307,7 @@ struct FoodPickerView: View {
                 .filter { !blockedNames.contains($0.name) }
                 .map { Candidate(emoji: $0.emoji, title: $0.name, subtitle: $0.detail, source: "library") }
         case .menus:
-            let menu = menus.first { $0.id == menuID } ?? menus.first
+            let menu = currentMenu
             return (menu?.sortedItems ?? []).filter { $0.weight > 0 }.map {
                 Candidate(emoji: menu?.icon ?? "🍱", title: $0.name, subtitle: $0.note.isEmpty ? (menu?.name ?? "") : $0.note, source: "menu")
             }
@@ -306,7 +319,7 @@ struct FoodPickerView: View {
     private var candidateHint: String {
         switch source {
         case .library: "从 \(pool.count) 道菜里帮你挑一道"
-        case .menus: pool.isEmpty ? "先在菜单里添加几家常去的店" : "从「\((menus.first { $0.id == menuID } ?? menus.first)?.name ?? "")」的 \(pool.count) 个选项里挑"
+        case .menus: pool.isEmpty ? "先在菜单里添加几家常去的店" : "从「\(currentMenu?.name ?? "")」的 \(pool.count) 个选项里挑"
         case .nearby: nearby.isEmpty ? "需要定位权限来查找附近的餐厅" : "从附近 \(nearby.count) 家店里挑一家"
         }
     }
@@ -325,17 +338,22 @@ struct FoodPickerView: View {
     }
 
     private func roll() {
+        guard !isRolling else { return }
         let candidates = pool
         guard !candidates.isEmpty else { return }
         let weights: [Double] = switch source {
         case .library: candidates.map { FoodLibrary.weight(for: $0.title, logs: logs, smart: smartDedupe) }
-        case .menus: ((menus.first { $0.id == menuID } ?? menus.first)?.sortedItems ?? []).filter { $0.weight > 0 }.map(\.weight)
+        case .menus: (currentMenu?.sortedItems ?? []).filter { $0.weight > 0 }.map(\.weight)
         case .nearby: candidates.map { _ in 1 }
         }
         let index = TrueRandom.weightedIndex(weights) ?? 0
         let final = candidates[min(index, candidates.count - 1)]
+        // 开始时记下来源和餐段，滚动中改了筛选也按这一次记录
+        let tool = source == .nearby ? "nearby" : ToolKind.food.rawValue
+        let title = source == .library ? meal.name : source.name
         isRolling = true
         result = nil
+        acceptedTitle = nil
         SoundEngine.shared.play(.whoosh, volume: 0.6)
         Task {
             await Roller.roll(pool: candidates, final: final) { display = $0 }
@@ -345,12 +363,14 @@ struct FoodPickerView: View {
             revealCount += 1
             SoundEngine.shared.play(.success)
             Haptics.success()
-            HistoryLog.add(context, tool: source == .nearby ? "nearby" : ToolKind.food.rawValue,
-                           title: source == .library ? meal.name : source.name, result: final.title)
+            Announce.post("帮你选了：\(final.title)")
+            HistoryLog.add(context, tool: tool, title: title, result: final.title)
         }
     }
 
     private func accept(_ candidate: Candidate) {
+        guard acceptedTitle != candidate.title else { return }
+        acceptedTitle = candidate.title
         context.insert(FoodLog(name: candidate.title, source: candidate.source))
         try? context.save()
         confetti += 1

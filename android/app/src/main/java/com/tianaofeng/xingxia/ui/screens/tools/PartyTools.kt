@@ -1,11 +1,5 @@
 package com.tianaofeng.xingxia.ui.screens.tools
 
-import android.content.ClipData
-import android.content.ClipDescription
-import android.content.ClipboardManager
-import android.content.Context
-import android.os.Build
-import android.os.PersistableBundle
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -127,6 +121,7 @@ import com.tianaofeng.xingxia.ui.components.SoundEngine
 import com.tianaofeng.xingxia.ui.components.StepperRow
 import com.tianaofeng.xingxia.ui.components.TextAction
 import com.tianaofeng.xingxia.ui.components.ToggleRow
+import com.tianaofeng.xingxia.ui.components.copyText
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.weight
@@ -272,7 +267,20 @@ private fun LotteryDraw(pool: LotteryPool, onBack: () -> Unit, onEdit: () -> Uni
                         SecondaryText(if (results.size == 1) "恭喜抽中" else "本轮抽中 ${results.size} 个")
                         for (r in results) GradientText(r, style = if (results.size == 1) Fonts.display(30, FontWeight.Black) else Fonts.headline, textAlign = TextAlign.Center)
                     }
-                    else -> Text(if (available.isEmpty()) "奖品已经抽完啦" else "准备好了吗？", style = Fonts.title3)
+                    available.isNotEmpty() -> Text("准备好了吗？", style = Fonts.title3)
+                    // 奖池为空、权重全为 0、抽完了，分别给出提示
+                    pool.items.isEmpty() -> {
+                        Text("先添加奖品", style = Fonts.title3)
+                        SecondaryText("点右上角的编辑按钮添加奖品", style = Fonts.caption)
+                    }
+                    pool.items.none { it.weight > 0 } -> {
+                        Text("没有可抽的奖品", style = Fonts.title3)
+                        SecondaryText("所有奖品的权重都是 0，去编辑里调高一些", style = Fonts.caption)
+                    }
+                    else -> {
+                        Text("奖品已经抽完啦", style = Fonts.title3)
+                        SecondaryText("点奖池右上角的「重置」恢复数量", style = Fonts.caption)
+                    }
                 }
             }
             GlassCard(padding = 14.dp) { StepperRow("一次抽 $drawCount 个", drawCount, 1..10) { drawCount = it } }
@@ -669,17 +677,6 @@ fun GeneratorsScreen() {
     }
 }
 
-private fun copyText(context: Context, text: String, sensitive: Boolean = false) {
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    val clip = ClipData.newPlainText("星匣", text)
-    if (sensitive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        // 标记为敏感内容，系统不会在剪贴板预览里显示密码
-        clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
-    }
-    clipboard.setPrimaryClip(clip)
-    Haptics.success()
-}
-
 private enum class ColorStyle(val label: String) { HARMONY("随机和谐"), ANALOGOUS("邻近色"), COMPLEMENTARY("互补色"), TRADITIONAL("中国传统色") }
 
 private fun hsvColor(h: Double, s: Double, v: Double): NamedColor {
@@ -850,7 +847,7 @@ private fun PasswordGenerator() {
         ToggleRow("排除易混淆字符（0 O 1 l I）", noSimilar) { noSimilar = it }
     }
     BigActionButton("生成新密码", Icons.Rounded.Key, enabled = charset.isNotEmpty()) { generate() }
-    SecondaryText("使用系统加密级随机数生成，仅在本机生成，不会上传。", style = Fonts.caption)
+    SecondaryText("使用系统加密级随机数生成，仅在本机生成，不会上传。拷贝的密码 60 秒后会从剪贴板清除。", style = Fonts.caption)
 }
 
 private enum class NameStyle(val label: String) {
@@ -1093,7 +1090,7 @@ fun ScratchScreen() {
                     verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
                 ) {
                     Text(if (isBlank) "🙂" else "🎁", style = TextStyle(fontSize = 34.sp))
-                    Text(prize, style = Fonts.display(28, FontWeight.Black), color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 20.dp))
+                    Text(prize, style = Fonts.display(28, FontWeight.Black), color = if (isBlank) Color.White else palette.onAccent, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 20.dp))
                 }
                 val coatingAlpha by animateFloatAsState(if (revealed) 0f else 1f, tween(600), label = "coating")
                 if (coatingAlpha > 0f) {

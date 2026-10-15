@@ -21,12 +21,19 @@ struct LunarDate: Hashable, Sendable {
         }
     }()
 
-    init(_ date: Date) {
-        let c = Calendar.chineseLocal.dateComponents([.year, .month, .day], from: date)
+    /// 公历某一天对应的农历。只按年月日换算（取北京时间当天中午），与设备时区无关。
+    init(_ key: DayKey) {
+        let noon = Calendar.gregorianBeijing.date(from: DateComponents(year: key.year, month: key.month, day: key.day, hour: 12)) ?? key.date
+        let c = Calendar.chineseLocal.dateComponents([.year, .month, .day], from: noon)
         cycleYear = c.year ?? 1
         month = c.month ?? 1
         day = c.day ?? 1
         isLeapMonth = c.isLeapMonth ?? false
+    }
+
+    /// 某个时刻在设备本地日历上所在那一天的农历
+    init(_ date: Date) {
+        self.init(DayKey(date))
     }
 
     var yearGanZhi: GanZhi { GanZhi(cycleYear - 1) }
@@ -35,8 +42,8 @@ struct LunarDate: Hashable, Sendable {
     var text: String { monthName + dayName }
     var fullText: String { "\(yearGanZhi.name)\(yearGanZhi.branch.animal)年 \(text)" }
 
-    /// 由农历年月日换算公历（gregorianYear 指农历年开始所在的公历年）
-    static func solarDate(gregorianYear: Int, month: Int, day: Int, isLeap: Bool) -> Date? {
+    /// 由农历年月日换算公历日期（gregorianYear 指农历年开始所在的公历年），不存在的日期返回 nil
+    static func solarDay(gregorianYear: Int, month: Int, day: Int, isLeap: Bool) -> DayKey? {
         let offset = gregorianYear - 1984
         let era = 78 + Int(floor(Double(offset) / 60))
         let year = ((offset % 60) + 60) % 60 + 1
@@ -48,10 +55,17 @@ struct LunarDate: Hashable, Sendable {
         components.isLeapMonth = isLeap
         components.hour = 12
         guard let date = Calendar.chineseLocal.date(from: components) else { return nil }
+        // 得到的是北京时间中午，必须按北京时间取公历年月日
+        let key = DayKey(date, calendar: .gregorianBeijing)
         // 校验：防止不存在的日期（如没有三十的小月）被自动顺延
-        let check = LunarDate(date)
+        let check = LunarDate(key)
         guard check.month == month, check.day == day, check.isLeapMonth == isLeap else { return nil }
-        return date
+        return key
+    }
+
+    /// 同 `solarDay`，返回那一天本地时区的中午，`DayKey(_:)` 换回来就是正确的公历日期
+    static func solarDate(gregorianYear: Int, month: Int, day: Int, isLeap: Bool) -> Date? {
+        solarDay(gregorianYear: gregorianYear, month: month, day: day, isLeap: isLeap)?.date
     }
 }
 
@@ -139,7 +153,7 @@ struct AlmanacDay: Sendable {
 
     init(_ key: DayKey) {
         self.key = key
-        lunar = LunarDate(key.date)
+        lunar = LunarDate(key)
         day = GanZhi.ofDay(key)
         let monthIndex = SolarTerms.monthIndex(of: key)
         var ganzhiYear = key.year
@@ -220,7 +234,7 @@ enum Festivals {
         if let name = solar[key.month * 100 + key.day] { result.append(name) }
         if !lunar.isLeapMonth, let name = lunarTable[lunar.month * 100 + lunar.day] { result.append(name) }
         // 除夕：明天是正月初一
-        let tomorrow = LunarDate(key.adding(days: 1).date)
+        let tomorrow = LunarDate(key.adding(days: 1))
         if tomorrow.month == 1 && tomorrow.day == 1 && !tomorrow.isLeapMonth { result.append("除夕") }
         // 母亲节：五月第二个周日；父亲节：六月第三个周日
         if key.weekday == 0 {

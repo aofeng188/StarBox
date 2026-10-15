@@ -33,6 +33,16 @@ enum FortuneCategory: String, CaseIterable, Identifiable, Codable, Sendable {
     }
 }
 
+/// 运势解读的来源，与 `DailyFortune.insights` 一一对应
+enum FortuneInsightKind: String, Sendable {
+    /// 日干与八字日主
+    case stem
+    /// 生肖与地支
+    case branch
+    /// 月亮星座
+    case moon
+}
+
 /// 某人某天的运势
 struct DailyFortune: Sendable {
     let day: DayKey
@@ -55,6 +65,8 @@ struct DailyFortune: Sendable {
     let funJi: [String]
     let quote: String
     let insights: [String]
+    /// 与 insights 一一对应
+    let insightKinds: [FortuneInsightKind]
     let moonSign: ZodiacSign
     let isPersonalized: Bool
 
@@ -87,6 +99,7 @@ enum FortuneEngine {
         var base = rng.gaussian(mean: 69, deviation: 12)
         var mods = Dictionary(uniqueKeysWithValues: FortuneCategory.allCases.map { ($0, 0.0) })
         var insights: [String] = []
+        var insightKinds: [FortuneInsightKind] = []
         let favorable: WuXing
         var nobleman = ZodiacSign(rawValue: rng.int(below: 12))!
 
@@ -111,11 +124,15 @@ enum FortuneEngine {
                 insights.append(template
                     .replacingOccurrences(of: "{day}", with: "\(almanac.day.name)日属\(today.name)")
                     .replacingOccurrences(of: "{master}", with: "\(bazi.dayMaster.name)\(master.name)"))
+                insightKinds.append(.stem)
             }
 
             let branchRelation = almanac.day.branch.relation(to: bazi.year.branch)
             base += Double(branchRelation.score)
-            if let note = content.branchNotes[Self.key(branchRelation)], !note.isEmpty { insights.append(note) }
+            if let note = content.branchNotes[Self.key(branchRelation)], !note.isEmpty {
+                insights.append(note)
+                insightKinds.append(.branch)
+            }
 
             let sunSign = ZodiacSign.sunSign(of: birth)
             let aspect = AspectKind(distance: sunSign.distance(to: moonSign))
@@ -130,7 +147,10 @@ enum FortuneEngine {
             }
             base += aspectScore
             mods[.love]! += aspectScore * 1.2
-            if let note = content.moonNotes[Self.key(aspect)], !note.isEmpty { insights.append(note) }
+            if let note = content.moonNotes[Self.key(aspect)], !note.isEmpty {
+                insights.append(note)
+                insightKinds.append(.moon)
+            }
 
             favorable = bazi.favorableElement
             nobleman = rng.pick(sunSign.trines + sunSign.sextiles)
@@ -155,6 +175,8 @@ enum FortuneEngine {
 
         var number = rng.pick(favorable.numbers) + 10 * rng.int(0...3)
         if number == 0 { number = 10 }
+        // 季节性幸运物先按公历月份过滤，抽取时机和次数不变
+        let items = content.items(inMonth: day.month)
 
         return DailyFortune(
             day: day,
@@ -169,13 +191,14 @@ enum FortuneEngine {
             luckyDirection: almanac.joyDirection,
             wealthDirection: almanac.wealthDirection,
             luckyHour: EarthlyBranch(13 - almanac.day.branch.index),
-            luckyItem: rng.pick(content.items),
+            luckyItem: rng.pick(items),
             noblemanSign: nobleman,
             favorableElement: favorable,
             funYi: rng.pick(content.funYi, count: 3),
             funJi: rng.pick(content.funJi, count: 3),
             quote: rng.pick(content.quotes),
             insights: insights,
+            insightKinds: insightKinds,
             moonSign: moonSign,
             isPersonalized: birth != nil
         )

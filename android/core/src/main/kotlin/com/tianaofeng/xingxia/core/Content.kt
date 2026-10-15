@@ -22,9 +22,15 @@ data class FortuneContent(
     val funJi: List<String>,
     val quotes: List<String>,
     val items: List<String>,
+    /** 季节性幸运物只在列出的公历月份出现；不在表里的全年可选（键可缺省） */
+    val itemMonths: Map<String, List<Int>> = emptyMap(),
 ) {
     @Serializable
     data class Level(val min: Int, val name: String, val summaries: List<String>)
+
+    /** 某个公历月份可选的幸运物，保持 items 原有顺序；过滤后为空时退回全部（与 iOS items(inMonth:) 一致） */
+    fun itemsFor(month: Int): List<String> =
+        items.filter { itemMonths[it]?.contains(month) ?: true }.ifEmpty { items }
 }
 
 @Serializable
@@ -139,9 +145,22 @@ data class TarotCard(
     val love: String,
     val career: String,
     val advice: String,
+    // 逆位释义（可缺省）
+    val keywordsReversed: List<String>? = null,
+    val loveReversed: String? = null,
+    val careerReversed: String? = null,
+    val adviceReversed: String? = null,
 ) {
     /** 每张牌的主色调：限定在深蓝 → 紫 → 品红的「宝石色」区间 */
     val hue: Double get() = 0.55 + ((id * 7) % 22) / 22.0 * 0.4
+
+    // 逆位只取逆位字段，缺失时返回 null，界面隐藏对应内容，绝不拿正位释义顶替
+    fun keywordsFor(reversed: Boolean): List<String>? =
+        if (reversed) keywordsReversed?.takeIf { it.isNotEmpty() } else keywords
+
+    fun loveFor(reversed: Boolean): String? = if (reversed) loveReversed?.takeIf { it.isNotBlank() } else love
+    fun careerFor(reversed: Boolean): String? = if (reversed) careerReversed?.takeIf { it.isNotBlank() } else career
+    fun adviceFor(reversed: Boolean): String? = if (reversed) adviceReversed?.takeIf { it.isNotBlank() } else advice
 }
 
 /** 内置菜品 */

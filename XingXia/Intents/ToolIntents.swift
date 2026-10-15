@@ -110,7 +110,10 @@ struct HoroscopeIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
         let resolved = sign?.sign ?? ProfileSnapshot.load().map { ZodiacSign.sunSign(of: $0.birth) } ?? .aries
         let horoscope = HoroscopeEngine.horoscope(resolved, period: .today)
-        return .result(dialog: IntentDialog(stringLiteral: "\(resolved.name)今日\(Int(horoscope.stars.rounded())) 星。\(horoscope.overview)"),
+        // 按半星播报，与 App 里的星级一致：整数不带 .0，如「4 星」「3.5 星」
+        let stars = horoscope.stars
+        let starsText = stars == stars.rounded() ? String(Int(stars)) : String(format: "%.1f", stars)
+        return .result(dialog: IntentDialog(stringLiteral: "\(resolved.name)今日 \(starsText) 星。\(horoscope.overview)"),
                        view: IntentSnippet(emoji: resolved.glyph, title: "\(resolved.name) · \(horoscope.score) 分", subtitle: horoscope.comment))
     }
 }

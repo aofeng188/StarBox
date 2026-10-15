@@ -76,6 +76,8 @@ private struct CountdownHero: View {
     var body: some View {
         let status = countdown.status()
         let color = palette.color(at: countdown.colorIndex)
+        // 色块装饰用原色，文字和数字用调过明暗的版本，浅色模式下粉彩色也读得清
+        let ink = palette.inkColor(at: countdown.colorIndex)
         VStack(spacing: 10) {
             HStack {
                 Text(countdown.emoji).font(.title)
@@ -87,12 +89,12 @@ private struct CountdownHero: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(status.prefix).font(.title3).foregroundStyle(.secondary)
                 if status.isToday && countdown.kindValue != .anniversary {
-                    Text(status.suffix).font(.system(size: 64, weight: .heavy, design: .rounded)).foregroundStyle(color)
+                    Text(status.suffix).font(.system(size: 64, weight: .heavy, design: .rounded)).foregroundStyle(ink)
                 } else {
                     Text("\(status.days)")
                         .font(.system(size: 84, weight: .heavy, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(LinearGradient(colors: [color, color.opacity(0.6)], startPoint: .top, endPoint: .bottom))
+                        .foregroundStyle(LinearGradient(colors: [ink, ink.opacity(0.75)], startPoint: .top, endPoint: .bottom))
                         .shadow(color: color.opacity(0.5), radius: 16)
                     Text(status.suffix).font(.title3).foregroundStyle(.secondary)
                 }
@@ -112,6 +114,7 @@ private struct CountdownRow: View {
     var body: some View {
         let status = countdown.status()
         let color = palette.color(at: countdown.colorIndex)
+        let ink = palette.inkColor(at: countdown.colorIndex)
         HStack(spacing: 14) {
             Text(countdown.emoji)
                 .font(.title2)
@@ -128,10 +131,10 @@ private struct CountdownRow: View {
             VStack(alignment: .trailing, spacing: 0) {
                 Text(status.prefix).font(.caption2).foregroundStyle(.secondary)
                 if status.isToday && countdown.kindValue != .anniversary {
-                    Text(status.suffix).font(.title3.bold()).foregroundStyle(color)
+                    Text(status.suffix).font(.title3.bold()).foregroundStyle(ink)
                 } else {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text("\(status.days)").font(.system(size: 30, weight: .bold, design: .rounded)).monospacedDigit().foregroundStyle(color)
+                        Text("\(status.days)").font(.system(size: 30, weight: .bold, design: .rounded)).monospacedDigit().foregroundStyle(ink)
                         Text(status.suffix).font(.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -156,6 +159,8 @@ struct CountdownEditor: View {
     @State private var lunarMonth = 1
     @State private var lunarDay = 1
     @State private var repeatsYearly = false
+    /// 农历生日是否记录出生年份（打开才显示年龄）
+    @State private var recordsBirthYear = false
     @State private var colorIndex = 0
     @State private var pinned = false
     @State private var confirmDelete = false
@@ -174,6 +179,8 @@ struct CountdownEditor: View {
                                     .background(Circle().fill(emoji == item ? palette.accent.opacity(0.3) : .clear))
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("图标 \(item)")
+                            .accessibilityAddTraits(emoji == item ? .isSelected : [])
                         }
                     }
                 }
@@ -196,7 +203,17 @@ struct CountdownEditor: View {
                         ForEach(1...30, id: \.self) { Text(LunarDate.dayNames[$0 - 1]).tag($0) }
                     }
                     if kind == .birthday {
-                        DatePicker("出生年份参考", selection: $date, displayedComponents: .date)
+                        Toggle("记录出生年份", isOn: $recordsBirthYear.animation())
+                        if recordsBirthYear {
+                            DatePicker("公历出生日期", selection: $date, in: ...Date(), displayedComponents: .date)
+                        }
+                    }
+                    if let preview = lunarPreview {
+                        LabeledContent {
+                            Text("\(DateText.full(preview.day)) \(DateText.weekday(preview.day))")
+                        } label: {
+                            Text(preview.label)
+                        }
                     }
                 } else {
                     DatePicker(kind == .birthday ? "生日" : (kind == .anniversary ? "开始日期" : "目标日期"), selection: $date, displayedComponents: .date)
@@ -212,14 +229,24 @@ struct CountdownEditor: View {
             .glassRows()
 
             Section("样式") {
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     ForEach(0..<6, id: \.self) { index in
+                        let fill = palette.color(at: index)
+                        let isSelected = colorIndex == index
                         Button { colorIndex = index } label: {
-                            Circle().fill(palette.color(at: index)).frame(width: 30, height: 30)
-                                .overlay(Circle().strokeBorder(.white, lineWidth: colorIndex == index ? 3 : 0))
+                            // 选中：外圈描边 + 对勾，浅色粉彩上也看得出来
+                            Circle().fill(fill).frame(width: 30, height: 30)
+                                .overlay {
+                                    if isSelected {
+                                        Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(fill.readableForeground)
+                                    }
+                                }
+                                .padding(3)
+                                .overlay(Circle().strokeBorder(.primary, lineWidth: isSelected ? 2 : 0))
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("颜色 \(index + 1)")
+                        .accessibilityLabel("颜色 \(index + 1)，\(Self.colorName(fill))")
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
                     }
                 }
                 Toggle("置顶到首页", isOn: $pinned)
@@ -256,9 +283,11 @@ struct CountdownEditor: View {
 
     private var footer: String {
         switch kind {
-        case .countdown: "倒数到目标日期还有多少天；勾选「每年重复」可以用于节日。"
+        case .countdown:
+            isLunar ? "不重复时倒数到最近一次的这个农历日子；勾选「每年重复」可以用于农历节日。" : "倒数到目标日期还有多少天；勾选「每年重复」可以用于节日。"
         case .anniversary: "从开始日期起已经过了多少天，可以每年提醒周年。"
-        case .birthday: "生日每年自动重复，支持农历生日。"
+        case .birthday:
+            isLunar ? "农历生日每年自动重复；打开「记录出生年份」才会显示年龄。" : "生日每年自动重复，支持农历生日。"
         }
     }
 
@@ -272,17 +301,29 @@ struct CountdownEditor: View {
         lunarMonth = countdown.lunarMonth
         lunarDay = countdown.lunarDay
         repeatsYearly = countdown.repeatsYearly
+        recordsBirthYear = countdown.knowsBirthYear
         colorIndex = countdown.colorIndex
         pinned = countdown.pinned
     }
 
     private func save() {
+        let lunar = isLunar && kind != .anniversary
+        // 在改动模型之前算好，lunarTargetDay 要和原来的设置比较
+        let lunarTarget = lunar && kind == .countdown && !repeatsYearly ? lunarTargetDay() : nil
         let target = countdown ?? Countdown(title: title, emoji: emoji, date: date, kind: kind.rawValue)
         target.title = title.trimmingCharacters(in: .whitespaces)
         target.emoji = emoji
         target.kind = kind.rawValue
-        target.date = DayKey(date).date
-        target.isLunar = isLunar && kind != .anniversary
+        if let lunarTarget {
+            // 不重复的农历倒数日：存换算出的公历日期，列表、首页和小组件都以它为准
+            target.date = lunarTarget.date
+        } else if lunar && kind == .birthday && !recordsBirthYear {
+            // 没记录出生年份：存创建当天，表示「未设置」，不显示年龄
+            target.date = DayKey(target.createdAt).date
+        } else {
+            target.date = DayKey(date).date
+        }
+        target.isLunar = lunar
         target.lunarMonth = lunarMonth
         target.lunarDay = lunarDay
         target.repeatsYearly = kind == .birthday ? true : repeatsYearly
@@ -293,5 +334,39 @@ struct CountdownEditor: View {
         WidgetCenter.shared.reloadAllTimelines()
         Haptics.success()
         dismiss()
+    }
+
+    /// 不重复的农历倒数日对应的公历日期：农历月日没改就沿用原来的目标日，否则从今天起找最近的一次
+    private func lunarTargetDay() -> DayKey {
+        if let countdown, countdown.isLunar, countdown.kindValue == .countdown, !countdown.repeatsYearly,
+           countdown.lunarMonth == lunarMonth, countdown.lunarDay == lunarDay {
+            return countdown.nextOccurrence()
+        }
+        return Countdown.lunarOccurrence(month: lunarMonth, day: lunarDay, onOrAfter: .today) ?? .today
+    }
+
+    /// 农历日子换算出的公历日期，显示在表单里
+    private var lunarPreview: (label: String, day: DayKey)? {
+        guard isLunar && kind != .anniversary else { return nil }
+        if kind == .countdown && !repeatsYearly { return ("对应公历", lunarTargetDay()) }
+        guard let next = Countdown.lunarOccurrence(month: lunarMonth, day: lunarDay, onOrAfter: .today) else { return nil }
+        return ("下一次", next)
+    }
+
+    /// 读屏用的颜色名称，按色相粗分
+    private static func colorName(_ color: Color) -> String {
+        var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
+        UIColor(color).getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+        if saturation < 0.15 { return brightness < 0.4 ? "深灰" : "灰色" }
+        switch hue * 360 {
+        case ..<15, 345...: return "红色"
+        case ..<40: return "橙色"
+        case ..<70: return brightness < 0.7 ? "金色" : "黄色"
+        case ..<165: return "绿色"
+        case ..<195: return "青色"
+        case ..<245: return "蓝色"
+        case ..<290: return "紫色"
+        default: return "粉色"
+        }
     }
 }

@@ -41,9 +41,9 @@ struct MeView: View {
                     StatTile(value: "\(daysTogether)", label: "天相伴", symbol: "sparkles")
                 }
 
-                Text("星匣 1.0 · 所有数据仅保存在你的设备上")
+                Text("星匣 \(Bundle.main.appVersionText) · 所有数据仅保存在你的设备上")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .subtleForeground()
                     .padding(.top, 8)
                     .padding(.bottom, 30)
             }
@@ -79,7 +79,7 @@ struct MeView: View {
                         Text(profile.name).font(.title2.bold())
                         Text(DateText.full(DayKey(profile.birthday)) + (profile.hasBirthTime ? String(format: " %02d:%02d", profile.birthHour, profile.birthMinute) : ""))
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .subtleForeground()
                         FlowLayout(spacing: 6) {
                             TagChip(text: profile.sunSign.name, symbol: "sparkle")
                             TagChip(text: "属\(bazi.zodiacAnimal.animal)", color: palette.accentSecondary)
@@ -87,7 +87,8 @@ struct MeView: View {
                         }
                     }
                     Spacer(minLength: 0)
-                    Image(systemName: "pencil").foregroundStyle(.secondary)
+                    Image(systemName: "pencil").subtleForeground()
+                        .accessibilityLabel("编辑档案")
                 }
                 .glassCard(interactive: true)
             }
@@ -100,7 +101,7 @@ struct MeView: View {
                     GlowIcon(symbol: "person.crop.circle.badge.plus", color: palette.accent, secondary: palette.accentSecondary, size: 64)
                     VStack(alignment: .leading, spacing: 4) {
                         Text("创建我的档案").font(.title3.bold())
-                        Text("填写生日，开启专属运势").font(.subheadline).foregroundStyle(.secondary)
+                        Text("填写生日，开启专属运势").font(.subheadline).subtleForeground()
                     }
                     Spacer()
                 }
@@ -124,7 +125,7 @@ private struct MeRow: View {
                 ToolIcon(symbol: symbol, colors: colors, size: 34)
                 Text(title).foregroundStyle(.primary)
                 Spacer()
-                Text(value).font(.subheadline).foregroundStyle(.secondary)
+                Text(value).font(.subheadline).subtleForeground()
                 Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
             }
             .padding(.horizontal, 12)
@@ -147,9 +148,19 @@ struct StatTile: View {
             Text(value)
                 .font(.system(size: 28, weight: .bold, design: .rounded))
                 .monospacedDigit()
-            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text(label).font(.caption).subtleForeground()
         }
         .glassCard(padding: 16)
+    }
+}
+
+extension Bundle {
+    /// 「1.0.3 (12)」：营销版本号，附带构建号
+    var appVersionText: String {
+        let version = object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        let build = object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+        if version.isEmpty { return build }
+        return build.isEmpty || build == version ? version : "\(version) (\(build))"
     }
 }
 
@@ -186,11 +197,11 @@ struct ProfileListView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             HStack {
                                 Text(profile.name).font(.headline)
-                                Text(profile.relation).font(.caption).foregroundStyle(.secondary)
+                                Text(profile.relation).font(.caption).subtleForeground()
                             }
                             Text("\(profile.sunSign.name) · 属\(profile.animal.animal) · \(DateText.full(DayKey(profile.birthday)))")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .subtleForeground()
                         }
                         Spacer()
                         if app.primary?.id == profile.id {

@@ -2,8 +2,8 @@
 <resources>
     <string name="app_name">星匣</string>
     <string name="widget_fortune_description">今日运势、宜忌与幸运色</string>
-    <string name="widget_horoscope_description">你的星座今日运势</string>
-    <string name="widget_countdown_description">置顶或最近的倒数日</string>
+    <string name="widget_horoscope_description">自己或任意星座的今日运势</string>
+    <string name="widget_countdown_description">指定的倒数日，或置顶 / 最近的一个</string>
     <string name="shortcut_food">今天吃什么</string>
     <string name="shortcut_coin">抛硬币</string>
     <string name="shortcut_stick">求签</string>

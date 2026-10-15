@@ -58,6 +58,22 @@ object ReminderScheduler {
         alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, millis, intent)
     }
 
+    /**
+     * 每天零点过 5 秒刷新一次小组件，并在收到后排下一天。
+     * DATE_CHANGED 在 Android 8+ 不再发给静态 receiver；用非唤醒闹钟，设备醒着或下次亮屏时触发即可。
+     */
+    fun scheduleDayChange(context: Context) {
+        val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = PendingIntent.getBroadcast(
+            context, 2,
+            Intent(context, DayChangeReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val next = LocalDate.now().plusDays(1).atTime(0, 0, 5)
+        val millis = next.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        alarm.setAndAllowWhileIdle(AlarmManager.RTC, millis, intent)
+    }
+
     fun ensureChannel(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(CHANNEL_ID) == null) {
@@ -106,10 +122,21 @@ class ReminderReceiver : BroadcastReceiver() {
     }
 }
 
-/** 开机、时区或时间变化后重新排提醒，并刷新小组件 */
+/** 开机、时区或时间变化后重新排提醒和跨天刷新，并刷新小组件 */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         ReminderScheduler.reschedule(context)
-        Widgets.updateAll(context)
+        ReminderScheduler.scheduleDayChange(context)
+        val pending = goAsync()
+        Widgets.updateAll(context) { pending.finish() }
+    }
+}
+
+/** 过了零点：刷新小组件（运势、星座、倒数日都换成新的一天），再排下一天 */
+class DayChangeReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        ReminderScheduler.scheduleDayChange(context)
+        val pending = goAsync()
+        Widgets.updateAll(context) { pending.finish() }
     }
 }

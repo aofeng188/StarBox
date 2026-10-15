@@ -3,6 +3,7 @@ package com.tianaofeng.xingxia.core
 import com.ibm.icu.util.ChineseCalendar
 import com.ibm.icu.util.GregorianCalendar
 import com.ibm.icu.util.TimeZone
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -156,9 +157,54 @@ class EngineTest {
         assertEquals(a, b)
         assertTrue(a.score in 35..99)
         assertEquals(3, a.insights.size)
+        assertEquals(listOf(FortuneInsightKind.STEM, FortuneInsightKind.BRANCH, FortuneInsightKind.MOON), a.insightKinds)
         assertEquals(3, a.funYi.size)
         val anonymous = FortuneEngine.daily(null, day)
         assertTrue(anonymous.insights.isEmpty())
+        assertTrue(anonymous.insightKinds.isEmpty())
+    }
+
+    @Test
+    fun insightKindsMatchInsights() {
+        val birth = BirthInfo(DayKey(1995, 3, 2), null, null, "beijing")
+        var skippedBranch = false
+        for (i in 0 until 60) {
+            val fortune = FortuneEngine.daily(birth, DayKey(2026, 1, 1).adding(i))
+            assertEquals(fortune.insights.size, fortune.insightKinds.size)
+            assertEquals(FortuneInsightKind.STEM, fortune.insightKinds.first())
+            // 生肖提示为空的日子，月亮提示仍标为 MOON
+            if (FortuneInsightKind.BRANCH !in fortune.insightKinds) {
+                skippedBranch = true
+                assertEquals(FortuneInsightKind.MOON, fortune.insightKinds.getOrNull(1) ?: FortuneInsightKind.MOON)
+            }
+        }
+        assertTrue(skippedBranch)
+    }
+
+    @Test
+    fun seasonalItems() {
+        val content = ContentLibrary.fortune.copy(
+            items = listOf("围巾", "小风扇", "钥匙扣"),
+            itemMonths = mapOf("围巾" to listOf(10, 11, 12, 1, 2, 3), "小风扇" to listOf(5, 6, 7, 8, 9)),
+        )
+        assertEquals(listOf("小风扇", "钥匙扣"), content.itemsFor(7))
+        assertEquals(listOf("围巾", "钥匙扣"), content.itemsFor(12))
+        assertEquals(listOf("钥匙扣"), content.itemsFor(4))
+        // 没有 itemMonths 时全年可选；全被过滤掉时退回全部
+        assertEquals(content.items, content.copy(itemMonths = emptyMap()).itemsFor(7))
+        assertEquals(listOf("围巾"), content.copy(items = listOf("围巾")).itemsFor(7))
+
+        // 引擎抽到的幸运物一定在当月可选范围内
+        val birth = BirthInfo(DayKey(1998, 6, 18), 8, 30, "shanghai")
+        val months = ContentLibrary.fortune.itemMonths
+        for (i in 0 until 366) {
+            val day = DayKey(2026, 1, 1).adding(i)
+            for (who in listOf(birth, null)) {
+                val item = FortuneEngine.daily(who, day).luckyItem
+                val allowed = months[item]
+                assertTrue(allowed == null || day.month in allowed, "$item 不应出现在 $day")
+            }
+        }
     }
 
     @Test
@@ -178,11 +224,47 @@ class EngineTest {
     }
 
     @Test
+    fun horoscopeTomorrowEqualsNextToday() {
+        var day = DayKey(2026, 10, 10)
+        repeat(40) {
+            for (sign in ZodiacSign.entries) {
+                val tomorrow = HoroscopeEngine.horoscope(sign, HoroscopePeriod.TOMORROW, day)
+                val nextToday = HoroscopeEngine.horoscope(sign, HoroscopePeriod.TODAY, day.adding(1))
+                assertEquals(nextToday.copy(period = HoroscopePeriod.TOMORROW), tomorrow, "$sign $day")
+            }
+            day = day.adding(1)
+        }
+    }
+
+    @Test
     fun compatibility() {
         val c = Compatibility.between(ZodiacSign.ARIES, ZodiacSign.LEO)
         assertEquals(AspectKind.TRINE, c.aspect)
         assertTrue(c.score in 90..95)
         assertEquals(3, c.tips.size)
+    }
+
+    @Test
+    fun tarotReversedNeverShowsUpright() {
+        for (card in ContentLibrary.tarot) {
+            assertEquals(card.keywords, card.keywordsFor(false))
+            assertEquals(card.love, card.loveFor(false))
+            // 逆位只取逆位字段
+            assertEquals(card.keywordsReversed?.takeIf { it.isNotEmpty() }, card.keywordsFor(true))
+            assertEquals(card.loveReversed?.takeIf { it.isNotBlank() }, card.loveFor(true))
+            assertEquals(card.careerReversed?.takeIf { it.isNotBlank() }, card.careerFor(true))
+            assertEquals(card.adviceReversed?.takeIf { it.isNotBlank() }, card.adviceFor(true))
+        }
+        // 没有逆位字段的旧数据也能解码，逆位内容为空而不是正位
+        val legacy = Json.decodeFromString(
+            TarotCard.serializer(),
+            """{"id":0,"name":"愚者","en":"The Fool","roman":"0","symbol":"figure.walk","keywords":["自由","冒险","开始"],"upright":"u","reversed":"r","love":"l","career":"c","advice":"a"}""",
+        )
+        assertNull(legacy.keywordsFor(true))
+        assertNull(legacy.loveFor(true))
+        assertNull(legacy.careerFor(true))
+        assertNull(legacy.adviceFor(true))
+        assertEquals("a", legacy.adviceFor(false))
     }
 
     @Test
@@ -221,6 +303,29 @@ class CountdownTest {
         val leap = CountdownSpec(CountdownKind.BIRTHDAY, DayKey(2000, 2, 29), repeatsYearly = true)
         assertEquals(DayKey(2027, 2, 28), leap.nextOccurrence(today))
         assertEquals("2月29日 · 即将 27 岁", leap.status(today).caption)
+    }
+
+    @Test
+    fun birthdayToday() {
+        val status = CountdownSpec(CountdownKind.BIRTHDAY, DayKey(2000, 10, 10), repeatsYearly = true).status(today)
+        assertTrue(status.isToday)
+        assertEquals("10月10日 · 26 岁生日", status.caption)
+        val upcoming = CountdownSpec(CountdownKind.BIRTHDAY, DayKey(2000, 10, 11), repeatsYearly = true).status(today)
+        assertEquals("10月11日 · 即将 26 岁", upcoming.caption)
+        val noYear = CountdownSpec(CountdownKind.BIRTHDAY, DayKey(2000, 10, 10), repeatsYearly = true, showsAge = false).status(today)
+        assertEquals("10月10日", noYear.caption)
+    }
+
+    @Test
+    fun lunarOneOff() {
+        // 不重复的农历倒数日：从创建日起找第一个农历八月十五
+        val afterMidAutumn = CountdownSpec(CountdownKind.COUNTDOWN, today, repeatsYearly = false, isLunar = true, lunarMonth = 8, lunarDay = 15)
+        assertEquals(DayKey(2027, 9, 15), afterMidAutumn.nextOccurrence(today))
+        val beforeMidAutumn = CountdownSpec(CountdownKind.COUNTDOWN, DayKey(2026, 9, 1), repeatsYearly = false, isLunar = true, lunarMonth = 8, lunarDay = 15)
+        val status = beforeMidAutumn.status(today)
+        assertEquals(DayKey(2026, 9, 25), status.targetDay)
+        assertTrue(status.isPast)
+        assertEquals(15, status.days)
     }
 
     @Test

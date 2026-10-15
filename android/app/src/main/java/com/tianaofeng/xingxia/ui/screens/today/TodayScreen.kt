@@ -37,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -62,7 +63,6 @@ import com.tianaofeng.xingxia.data.HomeCard
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.rememberMinuteClock
 import com.tianaofeng.xingxia.ui.components.ColorDot
-import com.tianaofeng.xingxia.ui.components.ColorDotChip
 import com.tianaofeng.xingxia.ui.components.Flow
 import com.tianaofeng.xingxia.ui.components.Fonts
 import com.tianaofeng.xingxia.ui.components.GlassButton
@@ -80,6 +80,7 @@ import com.tianaofeng.xingxia.ui.components.TagChip
 import com.tianaofeng.xingxia.ui.components.ToolIcon
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
+import com.tianaofeng.xingxia.ui.components.rememberToday
 import com.tianaofeng.xingxia.ui.components.weight
 import com.tianaofeng.xingxia.ui.nav.LocalNavigator
 import com.tianaofeng.xingxia.ui.nav.Routes
@@ -102,7 +103,9 @@ import androidx.compose.foundation.shape.CircleShape
 @Composable
 fun TodayScreen() {
     val navigator = LocalNavigator.current
-    val today = DayKey.of(rememberMinuteClock().toLocalDate())
+    // 过零点、回到前台时刷新「今天」，各卡片跟着换日；问候语按分钟刷新
+    val today = rememberToday()
+    val now = rememberMinuteClock()
     val birth = Store.birth
     val fortune = remember(today, birth) { FortuneEngine.daily(birth, today) }
     val almanac = remember(today) { AlmanacDay(today) }
@@ -116,7 +119,7 @@ fun TodayScreen() {
     }
 
     Screen(title = "今日", isRoot = true, actions = { ProfileSwitcher() }) {
-        TodayHeader(today, almanac, Store.greeting())
+        TodayHeader(today, almanac, remember(now) { Store.greeting() })
         if (Store.primary == null) {
             GlassCard(onClick = { navigator.open(Routes.profileEditor(onboarding = Store.profiles.items.isEmpty())) }) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -139,8 +142,9 @@ fun TodayScreen() {
                 HomeCard.HOROSCOPE -> HoroscopeMiniCard(today)
                 HomeCard.STICK -> StickMiniCard(today)
                 HomeCard.QUICK_TOOLS -> QuickToolsRow()
-                HomeCard.COUNTDOWN -> CountdownStrip { navigator.open(Routes.COUNTDOWNS) }
-                HomeCard.MOOD -> MoodCheckInCard { navigator.open(Routes.MOOD) }
+                // 这两张卡在内部取「今天」，换日时用 key 让它们重建
+                HomeCard.COUNTDOWN -> key(today) { CountdownStrip { navigator.open(Routes.COUNTDOWNS) } }
+                HomeCard.MOOD -> key(today) { MoodCheckInCard { navigator.open(Routes.MOOD) } }
                 HomeCard.QUOTE -> QuoteCard(fortune.quote)
             }
         }
@@ -296,10 +300,8 @@ private fun HoroscopeMiniCard(today: DayKey) {
                 }
                 StarRatingView(horoscope.stars, size = 12.dp)
                 Text(horoscope.comment, style = Fonts.subheadline, color = palette.text.copy(alpha = 0.85f))
-                Flow(spacing = 6.dp) {
-                    TagChip("速配 ${horoscope.matchSign.shortName}", icon = Icons.Rounded.Favorite)
-                    ColorDotChip(horoscope.luckyColor)
-                }
+                // 不放星座幸运色：首页运势卡已有按五行算的幸运色，两个并列容易混淆
+                TagChip("速配 ${horoscope.matchSign.shortName}", icon = Icons.Rounded.Favorite)
             }
             Icon(Icons.Rounded.ChevronRight, null, tint = palette.tertiaryText)
         }

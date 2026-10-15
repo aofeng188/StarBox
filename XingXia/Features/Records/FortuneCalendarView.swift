@@ -38,15 +38,20 @@ struct FortuneCalendarView: View {
                 // 日历
                 let leading = (month.weekday + 6) % 7
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 8) {
-                    ForEach(["一", "二", "三", "四", "五", "六", "日"], id: \.self) { Text($0).font(.caption2).foregroundStyle(.secondary) }
-                    ForEach(0..<leading, id: \.self) { _ in Color.clear.frame(height: 54) }
+                    ForEach(["一", "二", "三", "四", "五", "六", "日"], id: \.self) { Text($0).font(.caption2).foregroundStyle(.primary.opacity(0.7)) }
+                    ForEach((0..<leading).map { -1 - $0 }, id: \.self) { _ in Color.clear.frame(height: 54) }
                     ForEach(days, id: \.self) { day in
-                        DayCell(day: day, score: scores[day] ?? 60, hasStick: stickMap[day.rawValue] != nil,
-                                mood: moodMap[day.rawValue].flatMap(MoodLevel.init(rawValue:)), isSelected: day == selected)
-                            .onTapGesture {
-                                selected = day
-                                Haptics.selection()
-                            }
+                        let cell = DayCell(day: day, score: scores[day] ?? 60, hasStick: stickMap[day.rawValue] != nil,
+                                           mood: moodMap[day.rawValue].flatMap(MoodLevel.init(rawValue:)), isSelected: day == selected)
+                        Button {
+                            selected = day
+                            Haptics.selection()
+                        } label: {
+                            cell
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(cell.accessibilityText)
+                        .accessibilityAddTraits(day == selected ? .isSelected : [])
                     }
                 }
                 .glassCard(padding: 12)
@@ -117,7 +122,9 @@ struct FortuneCalendarView: View {
                 ScoreRing(score: fortune.score, size: 70, lineWidth: 7).id(day)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(DateText.monthDay(day)) \(DateText.weekday(day)) · 农历\(almanac.lunar.text)").font(.subheadline.weight(.semibold))
-                    Text("\(fortune.levelName) · \(fortune.summary)").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                    // 运势文案按「今天」写的，看别的日子时换成「这天」
+                    let summary = day == .today ? fortune.summary : fortune.summary.replacingOccurrences(of: "今天", with: "这天")
+                    Text("\(fortune.levelName) · \(summary)").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
                 }
             }
             FlowLayout(spacing: 8) {
@@ -153,10 +160,10 @@ private struct DayCell: View {
         VStack(spacing: 2) {
             Text("\(day.day)")
                 .font(.subheadline.weight(isToday ? .bold : .regular))
-                .foregroundStyle(isSelected ? .white : .primary)
+                .foregroundStyle(isSelected ? palette.onAccent : .primary)
             Text(mood?.emoji ?? "\(score)")
                 .font(.system(size: mood == nil ? 9 : 11, weight: .medium).monospacedDigit())
-                .foregroundStyle(isSelected ? .white.opacity(0.9) : .secondary)
+                .foregroundStyle(isSelected ? palette.onAccent.opacity(0.9) : Color.primary.opacity(0.7))
         }
         .frame(maxWidth: .infinity)
         .frame(height: 54)
@@ -171,8 +178,10 @@ private struct DayCell: View {
             if isToday && !isSelected { RoundedRectangle(cornerRadius: 12).strokeBorder(palette.accent, lineWidth: 1.5) }
         }
         .opacity(day > .today.adding(days: 7) ? 0.55 : 1)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(day.month)月\(day.day)日，运势 \(score) 分\(mood.map { "，心情\($0.name)" } ?? "")")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// 读屏文字：求签红点只靠颜色表示，这里补上
+    var accessibilityText: String {
+        "\(day.month)月\(day.day)日，运势 \(score) 分\(mood.map { "，心情\($0.name)" } ?? "")\(hasStick ? "，已求签" : "")"
     }
 }

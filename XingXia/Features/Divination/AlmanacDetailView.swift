@@ -10,6 +10,8 @@ struct AlmanacDetailView: View {
     var body: some View {
         let almanac = AlmanacDay(day)
         let fortune = FortuneEngine.daily(for: app.birth, on: day)
+        // 翻到别的日期时，「今日」改成「昨日 / 明日 / 当日」
+        let dayWord = Self.dayWord(for: day)
 
         ScrollView {
             VStack(spacing: 16) {
@@ -72,7 +74,7 @@ struct AlmanacDetailView: View {
                     InfoCell(title: "喜神方位", value: almanac.joyDirection, symbol: "face.smiling.inverse")
                     InfoCell(title: "财神方位", value: almanac.wealthDirection, symbol: "yensign.circle.fill")
                     InfoCell(title: "日柱纳音", value: almanac.day.nayin, symbol: "waveform")
-                    InfoCell(title: "今日冲", value: "属\(almanac.clashAnimal.animal)的朋友多注意", symbol: "exclamationmark.shield.fill")
+                    InfoCell(title: "\(dayWord)冲", value: "属\(almanac.clashAnimal.animal)的朋友多注意", symbol: "exclamationmark.shield.fill")
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
@@ -88,7 +90,7 @@ struct AlmanacDetailView: View {
                     SectionHeader(title: "节气", symbol: "leaf.fill")
                     let current = almanac.solarTerm ?? SolarTerms.previous(onOrBefore: day)
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(almanac.solarTerm != nil ? "今日 \(current.name)" : "当前节气 · \(current.name)")
+                        Text(almanac.solarTerm != nil ? "\(dayWord) \(current.name)" : "当前节气 · \(current.name)")
                             .font(.headline)
                         Text(SolarTerms.blurbs[current.name] ?? "").font(.subheadline).foregroundStyle(.secondary)
                     }
@@ -153,6 +155,15 @@ struct AlmanacDetailView: View {
     private func move(_ delta: Int) {
         Haptics.selection()
         withAnimation(.snappy) { day = day.adding(days: delta) }
+    }
+
+    private static func dayWord(for day: DayKey) -> String {
+        switch DayKey.today.days(to: day) {
+        case 0: "今日"
+        case -1: "昨日"
+        case 1: "明日"
+        default: "当日"
+        }
     }
 
     private func upcomingTerms(after day: DayKey) -> [SolarTerms.Term] {

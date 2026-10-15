@@ -10,6 +10,10 @@ struct MultiTouchSurface: UIViewRepresentable {
         let view = TouchView()
         view.isMultipleTouchEnabled = true
         view.backgroundColor = .clear
+        // 开着 VoiceOver 时把原始触摸直接交给这块区域，否则手指会被当成浏览手势
+        view.isAccessibilityElement = true
+        view.accessibilityLabel = "触控区域，所有人把一根手指放在屏幕上"
+        view.accessibilityTraits = .allowsDirectInteraction
         view.onChange = onChange
         return view
     }
@@ -89,7 +93,8 @@ struct FingerPickerView: View {
 
     var body: some View {
         ZStack {
-            TimelineView(.animation) { context in
+            // 没有手指时什么也不用画，暂停逐帧刷新
+            TimelineView(.animation(paused: touches.isEmpty && phase == .waiting)) { context in
                 let now = context.date
                 Canvas { canvas, _ in
                     draw(in: &canvas, now: now)
@@ -105,7 +110,7 @@ struct FingerPickerView: View {
                     Image(systemName: "hand.point.up.left.and.text.fill")
                         .font(.system(size: 50))
                         .foregroundStyle(palette.accentGradient)
-                        .symbolEffect(.bounce, options: .repeating.speed(0.3))
+                        .symbolEffect(.bounce, options: .repeating.speed(0.3), isActive: !reduceMotion)
                     Text("每个人把一根手指放在屏幕上")
                         .font(.title3.bold())
                     Text(hint).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)

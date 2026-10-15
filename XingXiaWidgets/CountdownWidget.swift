@@ -30,6 +30,7 @@ struct CountdownValue: Sendable {
     let id: UUID
     let title: String
     let emoji: String
+    let kind: CountdownKind
     let status: CountdownStatus
     let colorIndex: Int
     let pinned: Bool
@@ -42,10 +43,18 @@ enum CountdownStore {
     private static let container: ModelContainer? = try? AppSchema.makeContainer()
 
     static func all() -> [CountdownValue] {
-        guard let container else { return [] }
+        all(on: [.today]).first ?? []
+    }
+
+    /// 读一次库，按给定的每一天分别计算状态
+    static func all(on days: [DayKey]) -> [[CountdownValue]] {
+        guard let container else { return days.map { _ in [] } }
         let items = (try? container.mainContext.fetch(FetchDescriptor<Countdown>(sortBy: [SortDescriptor(\.createdAt)]))) ?? []
-        return items.map {
-            CountdownValue(id: $0.id, title: $0.title, emoji: $0.emoji, status: $0.status(), colorIndex: $0.colorIndex, pinned: $0.pinned)
+        return days.map { day in
+            items.map {
+                CountdownValue(id: $0.id, title: $0.title, emoji: $0.emoji, kind: $0.kindValue, status: $0.status(today: day),
+                               colorIndex: $0.colorIndex, pinned: $0.pinned)
+            }
         }
     }
 }
@@ -65,29 +74,40 @@ struct CountdownEntry: TimelineEntry {
 
 struct CountdownProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> CountdownEntry {
-        CountdownEntry(date: Date(), value: CountdownValue(id: UUID(), title: "春节", emoji: "🧧",
+        CountdownEntry(date: Date(), value: CountdownValue(id: UUID(), title: "春节", emoji: "🧧", kind: .countdown,
                                                            status: CountdownStatus(days: 120, prefix: "还有", suffix: "天", caption: "农历正月初一", targetDay: .today, isToday: false),
                                                            colorIndex: 1, pinned: true))
     }
 
     func snapshot(for configuration: CountdownConfigIntent, in context: Context) async -> CountdownEntry {
-        await entry(for: configuration)
+        await entries(for: configuration, days: 1).first ?? CountdownEntry(date: Date(), value: nil)
     }
 
     func timeline(for configuration: CountdownConfigIntent, in context: Context) async -> Timeline<CountdownEntry> {
+        // 一次排好今天和之后 6 个零点的条目：系统推迟刷新时，天数也会按时变化
+        let upcoming = await entries(for: configuration, days: 7)
         let calendar = Calendar.gregorianLocal
         let tomorrow = calendar.startOfDay(for: calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date())
-        return Timeline(entries: [await entry(for: configuration)], policy: .after(tomorrow.addingTimeInterval(5)))
+        return Timeline(entries: upcoming, policy: .after(tomorrow.addingTimeInterval(5)))
     }
 
     @MainActor
-    private func entry(for configuration: CountdownConfigIntent) -> CountdownEntry {
-        let all = CountdownStore.all()
-        let chosen = configuration.countdown.flatMap { selected in all.first { $0.id == selected.id } }
+    private func entries(for configuration: CountdownConfigIntent, days count: Int) -> [CountdownEntry] {
+        let today = DayKey.today
+        let days = (0..<max(1, count)).map { today.adding(days: $0) }
+        let lists = CountdownStore.all(on: days)
+        return days.indices.map { index in
+            CountdownEntry(date: index == 0 ? Date() : days[index].startOfDay,
+                           value: choose(from: lists[index], for: configuration))
+        }
+    }
+
+    private func choose(from all: [CountdownValue], for configuration: CountdownConfigIntent) -> CountdownValue? {
+        configuration.countdown.flatMap { selected in all.first { $0.id == selected.id } }
             ?? all.first(where: \.pinned)
-            ?? all.filter { $0.status.prefix != "已过" }.min { $0.status.days < $1.status.days }
+            // 和「记录」页一致：纪念日的数字是已经过了多少天，不和倒数天数比远近
+            ?? all.filter { $0.kind != .anniversary && $0.status.prefix != "已过" }.min { $0.status.days < $1.status.days }
             ?? all.first
-        return CountdownEntry(date: Date(), value: chosen)
     }
 }
 
@@ -99,7 +119,8 @@ struct CountdownWidgetView: View {
     var body: some View {
         let palette = WidgetPalette.current(scheme)
         if let value = entry.value {
-            let color = palette.color(at: value.colorIndex)
+            // 当文字用，取调过明暗的版本（浅色模式下粉彩色会融进背景）
+            let ink = palette.inkColor(at: value.colorIndex)
             let status = value.status
             if family == .accessoryRectangular {
                 VStack(alignment: .leading, spacing: 2) {
@@ -116,13 +137,13 @@ struct CountdownWidgetView: View {
                     Spacer(minLength: 0)
                     Text(status.prefix).font(.caption).foregroundStyle(.secondary)
                     if status.isToday && status.suffix != "天" {
-                        Text(status.suffix).font(.system(size: 32, weight: .heavy, design: .rounded)).foregroundStyle(color)
+                        Text(status.suffix).font(.system(size: 32, weight: .heavy, design: .rounded)).foregroundStyle(ink)
                     } else {
                         HStack(alignment: .firstTextBaseline, spacing: 2) {
                             Text("\(status.days)")
                                 .font(.system(size: 44, weight: .heavy, design: .rounded))
                                 .monospacedDigit()
-                                .foregroundStyle(color)
+                                .foregroundStyle(ink)
                                 .minimumScaleFactor(0.5)
                                 .widgetAccentable()
                             Text(status.suffix).font(.caption).foregroundStyle(.secondary)

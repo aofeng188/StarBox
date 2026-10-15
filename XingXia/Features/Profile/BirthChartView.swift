@@ -120,7 +120,7 @@ struct BirthChartView: View {
                         .foregroundStyle(element.color.gradient)
                         .cornerRadius(6)
                         .annotation(position: .top) {
-                            Text("\(counts[element] ?? 0)").font(.caption.bold()).foregroundStyle(element.color)
+                            Text("\(counts[element] ?? 0)").font(.caption.bold()).foregroundStyle(palette.ink(element.color))
                         }
                 }
                 .chartYAxis(.hidden)
@@ -182,12 +182,13 @@ private struct PillarView: View {
     var body: some View {
         VStack(spacing: 6) {
             Text(title).font(.caption).foregroundStyle(.secondary)
+            // 五行色是 400 级，浅色模式下直接当文字太淡，用 ink 版本
             Text(pillar.stem.name)
                 .font(AppFont.serif(30, weight: .bold))
-                .foregroundStyle(pillar.stem.element.color)
+                .foregroundStyle(palette.ink(pillar.stem.element.color))
             Text(pillar.branch.name)
                 .font(AppFont.serif(30, weight: .bold))
-                .foregroundStyle(pillar.branch.element.color)
+                .foregroundStyle(palette.ink(pillar.branch.element.color))
             Text(pillar.nayin).font(.caption2).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)

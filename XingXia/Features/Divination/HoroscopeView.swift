@@ -32,6 +32,9 @@ struct HoroscopeView: View {
                                     .frame(width: 60, height: 80)
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(item.name)
+                                .accessibilityAddTraits(sign == item ? [.isButton, .isSelected] : .isButton)
                                 .id(item)
                             }
                         }
@@ -55,7 +58,15 @@ struct HoroscopeView: View {
                             Text(sign.name).font(.title.bold())
                             Text("\(sign.englishName) · \(sign.dateRange)").font(.caption).foregroundStyle(.secondary)
                             StarRatingView(stars: horoscope.stars, size: 15)
-                            Text("\(period.name)运势 · \(horoscope.rangeText)").font(.caption).foregroundStyle(.secondary)
+                            // 窄列放不下一行时分两行，避免「周四」单独掉到下一行
+                            ViewThatFits(in: .horizontal) {
+                                Text("\(period.name)运势 · \(horoscope.rangeText)").lineLimit(1)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\(period.name)运势")
+                                    Text(horoscope.rangeText)
+                                }
+                            }
+                            .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
                         ScoreRing(score: horoscope.score, size: 70, lineWidth: 7)
@@ -89,7 +100,8 @@ struct HoroscopeView: View {
 
                 // 幸运
                 HStack(spacing: 12) {
-                    LuckyBubble(title: "幸运色") {
+                    // 和运势卡按五行算的「幸运色」区分开
+                    LuckyBubble(title: "星座幸运色") {
                         HStack(spacing: 5) {
                             Circle().fill(Color(horoscope.luckyColor)).frame(width: 12, height: 12)
                             Text(horoscope.luckyColor.name)
@@ -158,7 +170,7 @@ private struct LuckyBubble<Content: View>: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            Text(title).font(.caption2).foregroundStyle(.secondary)
+            Text(title).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
             content.font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity)

@@ -123,8 +123,21 @@ data class Countdown(
 ) {
     val kindValue: CountdownKind get() = CountdownKind.of(kind)
 
+    /** 创建当天 */
+    val createdDay: DayKey get() = DayKey.of(java.time.Instant.ofEpochMilli(createdAt))
+
+    /**
+     * 农历生日是否记录了出生年份（与 iOS 一致）。没记录时 date 存的是创建当天
+     * （旧数据里没动过「出生年份参考」的也是这样），不显示年龄。
+     */
+    val knowsBirthYear: Boolean
+        get() = !(isLunar && kindValue == CountdownKind.BIRTHDAY && date == createdDay.rawValue)
+
     val spec: CountdownSpec
-        get() = CountdownSpec(kindValue, DayKey.fromRaw(date) ?: DayKey.today, repeatsYearly, isLunar, lunarMonth, lunarDay)
+        get() = CountdownSpec(
+            kindValue, DayKey.fromRaw(date) ?: DayKey.today, repeatsYearly, isLunar, lunarMonth, lunarDay,
+            showsAge = knowsBirthYear,
+        )
 
     fun status(today: DayKey = DayKey.today): CountdownStatus = spec.status(today)
 }

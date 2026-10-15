@@ -25,6 +25,7 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Cake
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Delete
@@ -47,9 +48,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,6 +77,7 @@ import androidx.compose.ui.unit.sp
 import com.tianaofeng.xingxia.core.AlmanacDay
 import com.tianaofeng.xingxia.core.ContentLibrary
 import com.tianaofeng.xingxia.core.CountdownKind
+import com.tianaofeng.xingxia.core.CountdownSpec
 import com.tianaofeng.xingxia.core.DateText
 import com.tianaofeng.xingxia.core.DayKey
 import com.tianaofeng.xingxia.core.FortuneEngine
@@ -81,6 +87,7 @@ import com.tianaofeng.xingxia.data.Countdown
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.BigActionButton
 import com.tianaofeng.xingxia.ui.components.CircleIconButton
+import com.tianaofeng.xingxia.ui.components.DayKeySaver
 import com.tianaofeng.xingxia.ui.components.EmptyHint
 import com.tianaofeng.xingxia.ui.components.Flow
 import com.tianaofeng.xingxia.ui.components.Fonts
@@ -98,11 +105,14 @@ import com.tianaofeng.xingxia.ui.components.TextAction
 import com.tianaofeng.xingxia.ui.components.ToggleRow
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
+import com.tianaofeng.xingxia.ui.components.rememberToday
 import com.tianaofeng.xingxia.ui.components.weight
 import com.tianaofeng.xingxia.ui.screens.common.stickLevelColor
 import com.tianaofeng.xingxia.ui.screens.divination.GlassTextField
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.hex
+import com.tianaofeng.xingxia.ui.theme.readableForeground
+import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneOffset
@@ -158,39 +168,48 @@ fun MoodPicker(selected: Int?, size: Dp = 46.dp, onSelect: (MoodLevel) -> Unit) 
 
 /** 首页 / 记录页的心情打卡卡片 */
 @Composable
-fun MoodCheckInCard(onOpen: () -> Unit) {
+fun MoodCheckInCard(today: DayKey = DayKey.today, onOpen: () -> Unit) {
     val palette = LocalPalette.current
-    val entry = Store.todayMood()
+    val entry = Store.todayMood(today)
     GlassCard(spacing = 14.dp) {
         Row(Modifier.pressable(onClick = onOpen), verticalAlignment = Alignment.CenterVertically) {
             SectionHeader(if (entry == null) "今天心情如何？" else "今日心情", icon = Icons.Rounded.SentimentSatisfied, modifier = Modifier.weight(1f))
             Icon(Icons.Rounded.ChevronRight, null, tint = palette.tertiaryText)
         }
-        MoodPicker(entry?.mood) { Store.setMood(it.value) }
+        MoodPicker(entry?.mood) { Store.setMood(it.value, today) }
     }
 }
 
 @Composable
 fun MoodScreen() {
     val palette = LocalPalette.current
-    val today = DayKey.today
+    val today = rememberToday()
     val entries = Store.moods.items.sortedByDescending { it.dayKey }
-    val todayEntry = Store.todayMood()
-    var note by remember { mutableStateOf(todayEntry?.note ?: "") }
-    var tags by remember { mutableStateOf(todayEntry?.tags?.toSet() ?: emptySet()) }
+    val todayEntry = Store.todayMood(today)
+    var note by remember(today) { mutableStateOf(todayEntry?.note ?: "") }
+    var tags by remember(today) { mutableStateOf(todayEntry?.tags?.toSet() ?: emptySet()) }
 
     fun saveNote() {
-        if (Store.todayMood() == null) return
+        val entry = Store.todayMood(today) ?: return
+        if (entry.note == note && entry.tags == tags.sorted()) return
         Store.moods.update { list ->
             list.map { if (it.dayKey == today.rawValue) it.copy(note = note, tags = tags.sorted()) else it }
         }
     }
 
+    // 笔记边写边存（停顿半秒后写入），离开页面时再存一次，不必非点「保存」
+    LaunchedEffect(note) {
+        delay(500)
+        saveNote()
+    }
+    val latestSave by rememberUpdatedState { saveNote() }
+    DisposableEffect(Unit) { onDispose { latestSave() } }
+
     Screen(title = "心情打卡") {
         GlassCard(spacing = 14.dp) {
             SectionHeader("今天的心情", subtitle = DateText.monthDay(today), icon = Icons.Rounded.SentimentSatisfied)
             MoodPicker(todayEntry?.mood, 52.dp) {
-                Store.setMood(it.value)
+                Store.setMood(it.value, today)
                 saveNote()
             }
             GlassTextField(note, "写一句话记录今天…", singleLine = false) { note = it }
@@ -200,7 +219,7 @@ fun MoodScreen() {
                     Text(
                         "#$tag",
                         style = Fonts.caption.copy(fontWeight = FontWeight.Medium),
-                        color = if (on) Color.White else palette.text,
+                        color = if (on) palette.onAccent else palette.text,
                         modifier = Modifier
                             .clip(CircleShape)
                             .then(if (on) Modifier.background(palette.accentBrush) else Modifier.background(palette.subtle(0.07f)))
@@ -222,7 +241,7 @@ fun MoodScreen() {
             }
         }
 
-        MonthHeatmap(entries.associate { it.dayKey to it.mood })
+        MonthHeatmap(entries.associate { it.dayKey to it.mood }, today)
 
         correlationInsight()?.let { insight ->
             GlassCard {
@@ -287,9 +306,8 @@ fun MoodScreen() {
 }
 
 @Composable
-private fun MonthHeatmap(map: Map<Int, Int>) {
+private fun MonthHeatmap(map: Map<Int, Int>, today: DayKey) {
     val palette = LocalPalette.current
-    val today = DayKey.today
     val first = DayKey(today.year, today.month, 1)
     val days = YearMonth.of(today.year, today.month).lengthOfMonth()
     val leading = (first.weekday + 6) % 7
@@ -378,8 +396,8 @@ fun sortedCountdowns(list: List<Countdown>): List<Countdown> = list.sortedWith(
 @Composable
 fun CountdownListScreen() {
     val palette = LocalPalette.current
-    var editingId by remember { mutableStateOf<String?>(null) }
-    var creating by remember { mutableStateOf(false) }
+    var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+    var creating by rememberSaveable { mutableStateOf(false) }
 
     if (creating || editingId != null) {
         CountdownEditor(Store.countdowns.items.firstOrNull { it.id == editingId }) {
@@ -394,6 +412,7 @@ fun CountdownListScreen() {
         sorted.firstOrNull()?.let { hero ->
             val status = hero.status()
             val color = palette.color(hero.colorIndex)
+            val ink = palette.inkColor(hero.colorIndex)
             GlassCard(padding = 22.dp, tint = color.copy(alpha = 0.1f), horizontalAlignment = Alignment.CenterHorizontally, spacing = 10.dp, onClick = { editingId = hero.id }) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(hero.emoji, style = Fonts.title)
@@ -404,11 +423,11 @@ fun CountdownListScreen() {
                 Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     SecondaryText(status.prefix, style = Fonts.title3, modifier = Modifier.padding(bottom = 14.dp))
                     if (status.isToday && hero.kindValue != CountdownKind.ANNIVERSARY) {
-                        Text(status.suffix, style = Fonts.display(64, FontWeight.Black), color = color)
+                        Text(status.suffix, style = Fonts.display(64, FontWeight.Black), color = ink)
                     } else {
                         Text(
                             "${status.days}",
-                            style = Fonts.display(84, FontWeight.Black).copy(brush = Brush.verticalGradient(listOf(color, color.copy(alpha = 0.6f)))),
+                            style = Fonts.display(84, FontWeight.Black).copy(brush = Brush.verticalGradient(listOf(ink, ink.copy(alpha = 0.7f)))),
                         )
                         SecondaryText(status.suffix, style = Fonts.title3, modifier = Modifier.padding(bottom = 14.dp))
                     }
@@ -429,6 +448,7 @@ private fun CountdownRow(countdown: Countdown, onClick: () -> Unit) {
     val palette = LocalPalette.current
     val status = countdown.status()
     val color = palette.color(countdown.colorIndex)
+    val ink = palette.inkColor(countdown.colorIndex)
     GlassCard(padding = 14.dp, onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Box(
@@ -448,10 +468,10 @@ private fun CountdownRow(countdown: Countdown, onClick: () -> Unit) {
             Column(horizontalAlignment = Alignment.End) {
                 SecondaryText(status.prefix, style = Fonts.caption2)
                 if (status.isToday && countdown.kindValue != CountdownKind.ANNIVERSARY) {
-                    Text(status.suffix, style = Fonts.title3.copy(fontWeight = FontWeight.Bold), color = color)
+                    Text(status.suffix, style = Fonts.title3.copy(fontWeight = FontWeight.Bold), color = ink)
                 } else {
                     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("${status.days}", style = Fonts.display(30), color = color)
+                        Text("${status.days}", style = Fonts.display(30), color = ink)
                         SecondaryText(status.suffix, style = Fonts.caption, modifier = Modifier.padding(bottom = 6.dp))
                     }
                 }
@@ -462,7 +482,7 @@ private fun CountdownRow(countdown: Countdown, onClick: () -> Unit) {
 
 /** 首页的倒数日横条 */
 @Composable
-fun CountdownStrip(onOpen: () -> Unit) {
+fun CountdownStrip(today: DayKey = DayKey.today, onOpen: () -> Unit) {
     val palette = LocalPalette.current
     val countdowns = Store.countdowns.items.sortedBy { it.createdAt }
     val pinned = countdowns.filter { it.pinned }
@@ -479,8 +499,9 @@ fun CountdownStrip(onOpen: () -> Unit) {
         } else {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 for (countdown in shown) {
-                    val status = countdown.status()
+                    val status = countdown.status(today)
                     val color = palette.color(countdown.colorIndex)
+                    val ink = palette.inkColor(countdown.colorIndex)
                     Column(
                         Modifier
                             .width(140.dp)
@@ -498,9 +519,9 @@ fun CountdownStrip(onOpen: () -> Unit) {
                         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                             SecondaryText(status.prefix, style = Fonts.caption2, modifier = Modifier.padding(bottom = 4.dp))
                             if (status.isToday && countdown.kindValue != CountdownKind.ANNIVERSARY) {
-                                Text(status.suffix, style = Fonts.title2, color = color)
+                                Text(status.suffix, style = Fonts.title2, color = ink)
                             } else {
-                                Text("${status.days}", style = Fonts.display(30), color = color)
+                                Text("${status.days}", style = Fonts.display(30), color = ink)
                                 SecondaryText(status.suffix, style = Fonts.caption2, modifier = Modifier.padding(bottom = 4.dp))
                             }
                         }
@@ -515,29 +536,49 @@ fun CountdownStrip(onOpen: () -> Unit) {
 @Composable
 private fun CountdownEditor(existing: Countdown?, onDone: () -> Unit) {
     val palette = LocalPalette.current
-    var title by remember { mutableStateOf(existing?.title ?: "") }
-    var emoji by remember { mutableStateOf(existing?.emoji ?: "🎉") }
-    var kind by remember { mutableStateOf(existing?.kindValue ?: CountdownKind.COUNTDOWN) }
-    var date by remember { mutableStateOf(existing?.date?.let { DayKey.fromRaw(it) } ?: DayKey.today) }
-    var isLunar by remember { mutableStateOf(existing?.isLunar ?: false) }
-    var lunarMonth by remember { mutableStateOf(existing?.lunarMonth ?: 1) }
-    var lunarDay by remember { mutableStateOf(existing?.lunarDay ?: 1) }
-    var repeats by remember { mutableStateOf(existing?.repeatsYearly ?: false) }
-    var colorIndex by remember { mutableStateOf(existing?.colorIndex ?: 0) }
-    var pinned by remember { mutableStateOf(existing?.pinned ?: false) }
-    var showDate by remember { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf(false) }
+    // 旋转、切换深浅色等配置变化后保留正在编辑的内容
+    var title by rememberSaveable { mutableStateOf(existing?.title ?: "") }
+    var emoji by rememberSaveable { mutableStateOf(existing?.emoji ?: "🎉") }
+    var kind by rememberSaveable { mutableStateOf(existing?.kindValue ?: CountdownKind.COUNTDOWN) }
+    var date by rememberSaveable(stateSaver = DayKeySaver) { mutableStateOf(existing?.date?.let { DayKey.fromRaw(it) } ?: DayKey.today) }
+    var isLunar by rememberSaveable { mutableStateOf(existing?.isLunar ?: false) }
+    var lunarMonth by rememberSaveable { mutableStateOf(existing?.lunarMonth ?: 1) }
+    var lunarDay by rememberSaveable { mutableStateOf(existing?.lunarDay ?: 1) }
+    var repeats by rememberSaveable { mutableStateOf(existing?.repeatsYearly ?: false) }
+    // 农历生日是否记录出生年份（打开才显示年龄）
+    var recordsBirthYear by rememberSaveable { mutableStateOf(existing?.knowsBirthYear ?: false) }
+    var colorIndex by rememberSaveable { mutableStateOf(existing?.colorIndex ?: 0) }
+    var pinned by rememberSaveable { mutableStateOf(existing?.pinned ?: false) }
+    var showDate by rememberSaveable { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    val lunar = isLunar && kind != CountdownKind.ANNIVERSARY
+
+    /** 不重复的农历倒数日对应的公历日期：农历月日没改就沿用原来的目标日，否则从今天起找最近的一次 */
+    fun lunarTargetDay(): DayKey {
+        if (existing != null && existing.isLunar && existing.kindValue == CountdownKind.COUNTDOWN && !existing.repeatsYearly &&
+            existing.lunarMonth == lunarMonth && existing.lunarDay == lunarDay
+        ) return existing.spec.nextOccurrence()
+        val today = DayKey.today
+        return CountdownSpec(CountdownKind.COUNTDOWN, today, false, true, lunarMonth, lunarDay).nextOccurrence(today)
+    }
 
     fun save() {
         if (title.isBlank()) return
         val base = existing ?: Countdown(title = title, date = date.rawValue)
+        val savedDate = when {
+            // 不重复的农历倒数日：存换算出的公历日期，列表、首页和小组件都以它为准
+            lunar && kind == CountdownKind.COUNTDOWN && !repeats -> lunarTargetDay()
+            // 没记录出生年份：存创建当天，表示「未设置」，不显示年龄
+            lunar && kind == CountdownKind.BIRTHDAY && !recordsBirthYear -> base.createdDay
+            else -> date
+        }
         Store.saveCountdown(
             base.copy(
                 title = title.trim(),
                 emoji = emoji,
                 kind = kind.key,
-                date = date.rawValue,
-                isLunar = isLunar && kind != CountdownKind.ANNIVERSARY,
+                date = savedDate.rawValue,
+                isLunar = lunar,
                 lunarMonth = lunarMonth,
                 lunarDay = lunarDay,
                 repeatsYearly = if (kind == CountdownKind.BIRTHDAY) true else repeats,
@@ -573,10 +614,22 @@ private fun CountdownEditor(existing: Countdown?, onDone: () -> Unit) {
         GlassCard {
             SectionHeader("日期")
             if (kind != CountdownKind.ANNIVERSARY) ToggleRow("按农历", isLunar) { isLunar = it }
-            if (isLunar && kind != CountdownKind.ANNIVERSARY) {
+            if (lunar) {
                 OptionRow("农历月", LunarDate.MONTH_NAMES[lunarMonth - 1] + "月", (1..12).map { it to LunarDate.MONTH_NAMES[it - 1] + "月" }) { lunarMonth = it }
                 OptionRow("农历日", LunarDate.DAY_NAMES[lunarDay - 1], (1..30).map { it to LunarDate.DAY_NAMES[it - 1] }) { lunarDay = it }
-                if (kind == CountdownKind.BIRTHDAY) PickerRow("出生年份参考", DateText.full(date)) { showDate = true }
+                if (kind == CountdownKind.BIRTHDAY) {
+                    ToggleRow("记录出生年份", recordsBirthYear) { recordsBirthYear = it }
+                    if (recordsBirthYear) PickerRow("公历出生日期", DateText.full(date)) { showDate = true }
+                }
+                // 换算出的公历日期，选完农历月日马上能核对
+                val preview = if (kind == CountdownKind.COUNTDOWN && !repeats) "对应公历" to lunarTargetDay() else {
+                    val today = DayKey.today
+                    "下一次" to CountdownSpec(kind, today, true, true, lunarMonth, lunarDay).nextOccurrence(today)
+                }
+                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(preview.first, style = Fonts.body, modifier = Modifier.weight(1f))
+                    SecondaryText("${DateText.full(preview.second)} ${DateText.weekday(preview.second)}", style = Fonts.body)
+                }
             } else {
                 PickerRow(
                     when (kind) {
@@ -592,25 +645,36 @@ private fun CountdownEditor(existing: Countdown?, onDone: () -> Unit) {
             }
             SecondaryText(
                 when (kind) {
-                    CountdownKind.COUNTDOWN -> "倒数到目标日期还有多少天；勾选「每年重复」可以用于节日。"
+                    CountdownKind.COUNTDOWN ->
+                        if (lunar) "不重复时倒数到最近一次的这个农历日子；勾选「每年重复」可以用于农历节日。"
+                        else "倒数到目标日期还有多少天；勾选「每年重复」可以用于节日。"
                     CountdownKind.ANNIVERSARY -> "从开始日期起已经过了多少天，可以每年提醒周年。"
-                    CountdownKind.BIRTHDAY -> "生日每年自动重复，支持农历生日。"
+                    CountdownKind.BIRTHDAY ->
+                        if (lunar) "农历生日每年自动重复；打开「记录出生年份」才会显示年龄。"
+                        else "生日每年自动重复，支持农历生日。"
                 },
                 style = Fonts.caption,
             )
         }
         GlassCard {
             SectionHeader("样式")
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (index in 0 until 6) {
+                    val fill = palette.color(index)
+                    val isSelected = colorIndex == index
+                    // 选中：外圈描边 + 对勾，浅色粉彩上也看得出来
                     Box(
                         Modifier
-                            .size(30.dp)
+                            .size(36.dp)
+                            .border(if (isSelected) 2.dp else 0.dp, if (isSelected) palette.text else Color.Transparent, CircleShape)
+                            .padding(3.dp)
                             .clip(CircleShape)
-                            .background(palette.color(index))
-                            .border(if (colorIndex == index) 3.dp else 0.dp, Color.White, CircleShape)
+                            .background(fill)
                             .clickable { colorIndex = index },
-                    )
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (isSelected) Icon(Icons.Rounded.Check, "已选颜色 ${index + 1}", Modifier.size(16.dp), tint = fill.readableForeground)
+                    }
                 }
             }
             ToggleRow("置顶到首页", pinned, "首页和小组件优先显示置顶的倒数日") { pinned = it }
@@ -682,7 +746,7 @@ private fun <T> OptionRow(title: String, value: String, options: List<Pair<T, St
 @Composable
 fun FortuneCalendarScreen() {
     val palette = LocalPalette.current
-    val today = DayKey.today
+    val today = rememberToday()
     var month by remember { mutableStateOf(YearMonth.of(today.year, today.month)) }
     var selected by remember { mutableStateOf(today) }
     val birth = Store.birth
@@ -740,12 +804,12 @@ fun FortuneCalendarScreen() {
                         Text(
                             "$d",
                             style = Fonts.subheadline.copy(fontWeight = if (day == today) FontWeight.Bold else FontWeight.Normal),
-                            color = if (isSelected) Color.White else palette.text,
+                            color = if (isSelected) palette.onAccent else palette.text,
                         )
                         Text(
                             mood?.emoji ?: "$score",
                             style = TextStyle(fontSize = if (mood == null) 9.sp else 11.sp, fontWeight = FontWeight.Medium),
-                            color = if (isSelected) Color.White.copy(alpha = 0.9f) else palette.secondaryText,
+                            color = if (isSelected) palette.onAccent.copy(alpha = 0.85f) else palette.secondaryText,
                         )
                     }
                     if (sticks[day.rawValue] != null) {
@@ -774,8 +838,8 @@ fun FortuneCalendarScreen() {
                 }
             }
             Flow(spacing = 8.dp) {
-                TagChip("宜 " + fortune.funYi.take(2).joinToString("、"), hex(0x34D399))
-                TagChip("忌 " + fortune.funJi.take(2).joinToString("、"), hex(0xFB7185))
+                TagChip("宜 " + fortune.funYi.take(2).joinToString("、"), palette.positive)
+                TagChip("忌 " + fortune.funJi.take(2).joinToString("、"), palette.negative)
             }
             sticks[selected.rawValue]?.let { n ->
                 val stick = ContentLibrary.stick(n)
@@ -850,7 +914,7 @@ private fun TrendChart(values: List<Int>, average: Double, highlight: Int?) {
 
 /** 记录页顶部：最近一周 心情 × 运势 */
 @Composable
-fun WeekMoodCard(onOpen: () -> Unit) {
+fun WeekMoodCard(today: DayKey = DayKey.today, onOpen: () -> Unit) {
     val palette = LocalPalette.current
     val birth = Store.birth
     GlassCard(onClick = onOpen) {
@@ -860,7 +924,7 @@ fun WeekMoodCard(onOpen: () -> Unit) {
         }
         Row(Modifier.fillMaxWidth()) {
             for (offset in 6 downTo 0) {
-                val day = DayKey.today.adding(-offset)
+                val day = today.adding(-offset)
                 val mood = MoodLevel.of(Store.moods.items.lastOrNull { it.dayKey == day.rawValue }?.mood)
                 val score = FortuneEngine.daily(birth, day).score
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {

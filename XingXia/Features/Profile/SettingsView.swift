@@ -36,7 +36,7 @@ struct SettingsView: View {
             } header: {
                 Text("交互")
             } footer: {
-                Text("在求签、骰子、硬币、吃什么等页面摇动手机即可开始。系统开启「减弱动态效果」时背景会自动静止。")
+                Text("在求签、骰子、硬币、吃什么等页面摇动手机即可开始。系统开启「减弱动态效果」或低电量模式时，背景会自动静止。")
             }
             .glassRows()
 
@@ -83,7 +83,7 @@ struct SettingsView: View {
             .glassRows()
 
             Section {
-                LabeledContent("版本", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")
+                LabeledContent("版本", value: Bundle.main.appVersionText)
                 LabeledContent("数据存储", value: "仅本机")
             } header: {
                 Text("关于")

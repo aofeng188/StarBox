@@ -582,7 +582,8 @@ private fun BallView(value: Int, special: Boolean, lottery: Boolean) {
             .padding(horizontal = if (value > 999) 8.dp else 0.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(if (lottery) "%02d".format(value) else "$value", style = Fonts.title3.weight(FontWeight.Bold), color = Color.White)
+        // 彩票球是深红 / 深蓝底；普通模式压在 accent 上，深色主题用深字
+        Text(if (lottery) "%02d".format(value) else "$value", style = Fonts.title3.weight(FontWeight.Bold), color = if (lottery) Color.White else palette.onAccent)
     }
 }
 
@@ -828,6 +829,8 @@ fun TruthDareScreen() {
             "truth" -> listOf(hex(0x60A5FA), hex(0x8B5CF6))
             else -> listOf(hex(0xF472B6), hex(0xEF4444))
         }
+        // 还没抽题时卡片是 accent 底，深色主题下 accent 偏亮，文字改用 onAccent
+        val ink = if (kind == null) palette.onAccent else Color.White
         Column(
             Modifier
                 .fillMaxWidth()
@@ -842,15 +845,15 @@ fun TruthDareScreen() {
             Text(
                 when (kind) { null -> "准备好了吗？"; "truth" -> "真心话"; else -> "大冒险" },
                 style = Fonts.headline,
-                color = Color.White.copy(alpha = 0.85f),
+                color = ink.copy(alpha = 0.85f),
             )
             Text(
                 if (kind == null) "选择真心话或大冒险，抽一道题" else prompt,
                 style = Fonts.title2,
-                color = Color.White,
+                color = ink,
                 textAlign = TextAlign.Center,
             )
-            if (kind != null) Text("尺度：${levels[level.coerceIn(0, 2)]}", style = Fonts.caption, color = Color.White.copy(alpha = 0.7f))
+            if (kind != null) Text("尺度：${levels[level.coerceIn(0, 2)]}", style = Fonts.caption, color = ink.copy(alpha = 0.7f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             ChoiceButton("真心话", Icons.Rounded.Forum, listOf(hex(0x60A5FA), hex(0x8B5CF6)), Modifier.weight(1f)) { draw("truth") }

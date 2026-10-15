@@ -101,7 +101,8 @@ struct WheelCanvas: View {
                         let band = r * 0.57
                         let fontSize = min(18, max(9, band * sweep * .pi / 180 * 0.6))
                         let title = segment.title.count > 10 ? String(segment.title.prefix(9)) + "…" : segment.title
-                        let resolved = context.resolve(Text(title).font(.system(size: fontSize, weight: .bold)).foregroundColor(.white))
+                        // 扇区底色深浅不一，文字按底色亮度取深字或白字
+                        let resolved = context.resolve(Text(title).font(.system(size: fontSize, weight: .bold)).foregroundColor(color.readableForeground))
                         let measured = resolved.measure(in: CGSize(width: 1000, height: 100))
                         let scale = min(1, (r * 0.56) / max(1, measured.width))
                         var text = context

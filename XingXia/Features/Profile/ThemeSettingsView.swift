@@ -54,7 +54,7 @@ struct ThemeSettingsView: View {
                             HStack(spacing: 12) {
                                 Image(systemName: mode.symbol)
                                     .frame(width: 30, height: 30)
-                                    .foregroundStyle(themes.mode == mode ? .white : palette.accent)
+                                    .foregroundStyle(themes.mode == mode ? palette.onAccent : palette.accent)
                                     .background(Circle().fill(themes.mode == mode ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(palette.accent.opacity(0.12))))
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(mode.name).foregroundStyle(.primary)
@@ -69,6 +69,7 @@ struct ThemeSettingsView: View {
                             .contentShape(.rect)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityAddTraits(themes.mode == mode ? .isSelected : [])
                     }
                 }
                 .glassCard()
