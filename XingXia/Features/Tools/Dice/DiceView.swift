@@ -338,7 +338,8 @@ struct DiceView: View {
     }
 
     private func roll() {
-        guard !isRolling else { return }
+        // 场景还没建好（刚进页面就摇）时 world.roll() 什么也不做，也就不会回调 settled，别把按钮卡在「滚动中」
+        guard !isRolling, !world.dice.isEmpty else { return }
         isRolling = true
         SoundEngine.shared.play(.whoosh, volume: 0.5)
         Haptics.rattle(count: 5)

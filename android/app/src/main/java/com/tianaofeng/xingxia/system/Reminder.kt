@@ -61,6 +61,8 @@ object ReminderScheduler {
     /**
      * 每天零点过 5 秒刷新一次小组件，并在收到后排下一天。
      * DATE_CHANGED 在 Android 8+ 不再发给静态 receiver；用非唤醒闹钟，设备醒着或下次亮屏时触发即可。
+     * 用 setWindow 给出 10 分钟窗口：setAndAllowWhileIdle 的默认窗口在 Android 8–11 上可达距触发时间的 3/4，
+     * 白天排的闹钟可能拖到凌晨好几点才响。窗口内的闹钟不需要精确闹钟权限。
      */
     fun scheduleDayChange(context: Context) {
         val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -71,7 +73,7 @@ object ReminderScheduler {
         )
         val next = LocalDate.now().plusDays(1).atTime(0, 0, 5)
         val millis = next.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        alarm.setAndAllowWhileIdle(AlarmManager.RTC, millis, intent)
+        alarm.setWindow(AlarmManager.RTC, millis, 10 * 60 * 1000L, intent)
     }
 
     fun ensureChannel(context: Context) {

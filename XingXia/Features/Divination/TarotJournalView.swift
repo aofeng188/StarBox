@@ -50,6 +50,8 @@ struct TarotJournalView: View {
         .cosmicBackground()
         .navigationTitle("塔罗手记")
         .navigationBarTitleDisplayMode(.inline)
+        // 从塔罗页（已隐藏 tab 栏）推进来，保持隐藏，免得进出时 tab 栏一闪一闪
+        .toolbar(.hidden, for: .tabBar)
     }
 
     private func delete(_ reading: TarotReading) {
@@ -131,6 +133,7 @@ private struct TarotReadingDetailView: View {
         .cosmicBackground()
         .navigationTitle(spread.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .tarotParallax()
     }
 }

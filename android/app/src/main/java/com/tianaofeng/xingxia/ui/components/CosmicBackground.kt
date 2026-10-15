@@ -42,8 +42,10 @@ fun CosmicBackground(modifier: Modifier = Modifier) {
         val start = System.nanoTime()
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
-                value = (System.nanoTime() - start) / 1e9 + 1.0
-                delay(66)
+                // 系统关闭了动画（对应 iOS 的「减弱动态效果」）时停在当前画面，隔一秒再看设置有没有变
+                val still = isReduceMotion()
+                if (!still) value = (System.nanoTime() - start) / 1e9 + 1.0
+                delay(if (still) 1_000L else 66L)
             }
         }
     }

@@ -1,8 +1,11 @@
 import SwiftUI
+import Combine
 
 struct AlmanacDetailView: View {
     @Environment(AppState.self) private var app
     @Environment(\.palette) private var palette
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var today = DayKey.today
     @State private var day = DayKey.today
     @State private var showPicker = false
     @State private var pickerDate = Date()
@@ -11,7 +14,7 @@ struct AlmanacDetailView: View {
         let almanac = AlmanacDay(day)
         let fortune = FortuneEngine.daily(for: app.birth, on: day)
         // 翻到别的日期时，「今日」改成「昨日 / 明日 / 当日」
-        let dayWord = Self.dayWord(for: day)
+        let dayWord = Self.dayWord(for: day, today: today)
 
         ScrollView {
             VStack(spacing: 16) {
@@ -27,7 +30,7 @@ struct AlmanacDetailView: View {
                     } label: {
                         VStack(spacing: 2) {
                             Text("\(DateText.full(day)) \(DateText.weekday(day))").font(.headline)
-                            if day != .today { Text("点按选择日期").font(.caption2).foregroundStyle(.secondary) }
+                            if day != today { Text("点按选择日期").font(.caption2).foregroundStyle(.secondary) }
                         }
                     }
                     .buttonStyle(.plain)
@@ -123,9 +126,9 @@ struct AlmanacDetailView: View {
         .cosmicBackground()
         .navigationTitle("黄历")
         .toolbar {
-            if day != .today {
+            if day != today {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("今天") { withAnimation(.snappy) { day = .today } }
+                    Button("今天") { withAnimation(.snappy) { day = today } }
                 }
             }
         }
@@ -150,6 +153,22 @@ struct AlmanacDetailView: View {
             }
             .presentationDetents([.medium, .large])
         }
+        // 跨过零点、或者隔天从后台回来时刷新「今天」
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: DispatchQueue.main)) { _ in
+            refreshToday()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { refreshToday() }
+        }
+        .onAppear(perform: refreshToday)
+    }
+
+    private func refreshToday() {
+        let now = DayKey.today
+        guard now != today else { return }
+        // 原本停在今天的跟着换到新的一天，翻到别的日期的不动
+        if day == today { day = now }
+        today = now
     }
 
     private func move(_ delta: Int) {
@@ -157,8 +176,8 @@ struct AlmanacDetailView: View {
         withAnimation(.snappy) { day = day.adding(days: delta) }
     }
 
-    private static func dayWord(for day: DayKey) -> String {
-        switch DayKey.today.days(to: day) {
+    private static func dayWord(for day: DayKey, today: DayKey) -> String {
+        switch today.days(to: day) {
         case 0: "今日"
         case -1: "昨日"
         case 1: "明日"
@@ -193,5 +212,6 @@ private struct InfoCell: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard(cornerRadius: 22, padding: 14)
+        .accessibilityElement(children: .combine)
     }
 }

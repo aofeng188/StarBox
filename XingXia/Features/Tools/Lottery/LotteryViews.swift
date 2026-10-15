@@ -86,7 +86,7 @@ struct LotteryDrawView: View {
         let items = pool.sortedItems
         if items.isEmpty { return ("先添加奖品吧", "点右上角「编辑」添加奖品或选项") }
         if items.allSatisfy({ $0.weight <= 0 }) { return ("所有奖品权重都是 0", "在「编辑」里调高权重才能抽") }
-        if available.isEmpty { return ("奖品已经抽完啦", "点下方的「重置」可以再来一轮") }
+        if available.isEmpty { return ("奖品已经抽完啦", "点下方奖池的「重置」可以再来一轮") }
         return nil
     }
 

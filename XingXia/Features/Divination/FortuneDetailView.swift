@@ -1,14 +1,17 @@
 import SwiftUI
+import Combine
 
 struct FortuneDetailView: View {
     @Environment(AppState.self) private var app
     @Environment(ThemeManager.self) private var themes
     @Environment(\.palette) private var palette
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var today = DayKey.today
     @State private var offset = 0
     @State private var shareImage: Image?
 
     var body: some View {
-        let day = DayKey.today.adding(days: offset)
+        let day = today.adding(days: offset)
         let fortune = FortuneEngine.daily(for: app.birth, on: day)
         // 看的不是今天时，文案里的「今日」改成「昨日 / 明日」
         let dayWord = Self.dayWord(offset)
@@ -71,6 +74,7 @@ struct FortuneDetailView: View {
                                 .foregroundStyle(palette.onAccent)
                                 .frame(width: 30, height: 30)
                                 .background(Circle().fill(palette.accentGradient))
+                                .accessibilityHidden(true)
                             Text(category.name).font(.headline)
                             StarRatingView(stars: StarRating.stars(for: value), size: 11)
                             Spacer()
@@ -133,8 +137,21 @@ struct FortuneDetailView: View {
                 }
             }
         }
-        // 换日期或主题切换后重新渲染分享图
-        .task(id: "\(offset)-\(themes.current.id)") { renderShareImage(fortune: fortune) }
+        // 换日期、主题或档案（生日、名字）后重新渲染分享图
+        .task(id: ShareImageKey(day: day, themeID: themes.current.id, profile: app.primary)) { renderShareImage(fortune: fortune) }
+        // 跨过零点、或者隔天从后台回来时刷新「今天」
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: DispatchQueue.main)) { _ in
+            refreshToday()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { refreshToday() }
+        }
+        .onAppear(perform: refreshToday)
+    }
+
+    private func refreshToday() {
+        let now = DayKey.today
+        if now != today { today = now }
     }
 
     @MainActor
@@ -163,6 +180,13 @@ struct FortuneDetailView: View {
         case nil: "sparkles"
         }
     }
+}
+
+/// 分享图用到的输入，任何一项变了都要重新渲染
+private struct ShareImageKey: Equatable, Sendable {
+    let day: DayKey
+    let themeID: String
+    let profile: ProfileSnapshot?
 }
 
 private struct FortuneInsightRow: View {
@@ -208,7 +232,8 @@ private struct LuckyCell<Icon: View>: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            icon.frame(width: 34)
+            // 图标是装饰，读屏只读文字
+            icon.frame(width: 34).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.caption2).foregroundStyle(.secondary)
                 Text(value).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
@@ -232,7 +257,7 @@ struct FortuneShareCard: View {
     var body: some View {
         VStack(spacing: 16) {
             Text("星匣 · \(DateText.monthDay(fortune.day))运势").font(.headline).foregroundStyle(.white.opacity(0.8))
-            Text("\(fortune.day.year)年 · 农历\(LunarDate(fortune.day.date).text) · \(DateText.weekday(fortune.day))")
+            Text("\(fortune.day.year)年 · 农历\(LunarDate(fortune.day).text) · \(DateText.weekday(fortune.day))")
                 .font(.subheadline).foregroundStyle(.white.opacity(0.6))
             Text("\(fortune.score)")
                 .font(.system(size: 88, weight: .heavy, design: .rounded))

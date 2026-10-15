@@ -91,11 +91,13 @@ struct RPSView: View {
             }
         } bottom: {
             if matchOver {
-                Button("再来一场", systemImage: "arrow.counterclockwise") { resetMatch() }
-                    .buttonStyle(.glassProminent)
-                    .tint(palette.accent)
-                    .foregroundStyle(palette.onAccent)
-                    .controlSize(.large)
+                Button { resetMatch() } label: {
+                    // 文字色写在 label 里（同 BigActionButton），按钮样式不会再盖掉
+                    Label("再来一场", systemImage: "arrow.counterclockwise").foregroundStyle(palette.onAccent)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(palette.accent)
+                .controlSize(.large)
             } else {
                 HStack(spacing: 16) {
                     ForEach(Hand.allCases) { hand in

@@ -35,6 +35,8 @@ struct FavoriteToolsEditor: View {
                             Button {
                                 settings.toggleFavorite(tool.id)
                                 Haptics.selection()
+                                // 这一行会挪到「已收藏」里，读屏焦点跟不过去，补一句播报
+                                Announce.post("已添加\(tool.name)")
                             } label: {
                                 HStack(spacing: 14) {
                                     row(tool)

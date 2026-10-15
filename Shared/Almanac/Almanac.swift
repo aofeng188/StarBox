@@ -21,8 +21,16 @@ struct LunarDate: Hashable, Sendable {
         }
     }()
 
-    /// 公历某一天对应的农历。只按年月日换算（取北京时间当天中午），与设备时区无关。
+    /// 公历某一天对应的农历。只按年月日换算，与设备时区无关。
+    /// 1900–2100 年查官方农历表（与 Android 版同一份数据），表外才用系统农历（取北京时间当天中午）。
     init(_ key: DayKey) {
+        if let found = LunarTable.lunar(of: key) {
+            cycleYear = ((found.year - 1984) % 60 + 60) % 60 + 1
+            month = found.month
+            day = found.day
+            isLeapMonth = found.isLeap
+            return
+        }
         let noon = Calendar.gregorianBeijing.date(from: DateComponents(year: key.year, month: key.month, day: key.day, hour: 12)) ?? key.date
         let c = Calendar.chineseLocal.dateComponents([.year, .month, .day], from: noon)
         cycleYear = c.year ?? 1
@@ -44,6 +52,9 @@ struct LunarDate: Hashable, Sendable {
 
     /// 由农历年月日换算公历日期（gregorianYear 指农历年开始所在的公历年），不存在的日期返回 nil
     static func solarDay(gregorianYear: Int, month: Int, day: Int, isLeap: Bool) -> DayKey? {
+        if LunarTable.covers(gregorianYear) {
+            return LunarTable.solarDay(lunarYear: gregorianYear, month: month, day: day, isLeap: isLeap)
+        }
         let offset = gregorianYear - 1984
         let era = 78 + Int(floor(Double(offset) / 60))
         let year = ((offset % 60) + 60) % 60 + 1
@@ -66,6 +77,114 @@ struct LunarDate: Hashable, Sendable {
     /// 同 `solarDay`，返回那一天本地时区的中午，`DayKey(_:)` 换回来就是正确的公历日期
     static func solarDate(gregorianYear: Int, month: Int, day: Int, isLeap: Bool) -> Date? {
         solarDay(gregorianYear: gregorianYear, month: month, day: day, isLeap: isLeap)?.date
+    }
+}
+
+/// 官方农历表（紫金山天文台 / 香港天文台口径，1900–2100 年），数据与 Android 版 Lunar.kt 逐项相同。
+/// 系统农历（ICU）在少数年份与官方不符，例如把 2027 年春节算成 2 月 7 日（官方 2 月 6 日）、
+/// 2030 年春节算成 2 月 2 日（官方 2 月 3 日）、1987 年闰六月算成闰七月，所以表内日期一律查表。
+///
+/// 每个农历年一个整数：低 13 位依次是各月是否为大月（30 天），第 13–16 位是闰月月份（0 表示无闰月），
+/// 第 17 位起是正月初一距当年公历元旦的天数。
+private enum LunarTable {
+    static let firstYear = 1900
+    static let lastYear = 2100
+
+    private struct Month {
+        let month: Int
+        let isLeap: Bool
+        let length: Int
+    }
+
+    private static let data: [Int] = [
+        0x03D16D2, 0x0620752, 0x04C0EA5, 0x038B64A, 0x05C064B, 0x0440A9B, 0x0309556, 0x056056A,
+        0x0400B59, 0x02A5752, 0x0500752, 0x03ADB25, 0x0600B25, 0x0480A4B, 0x032B4AB, 0x05802AD,
+        0x042056B, 0x02C4B69, 0x0520DA9, 0x03EFD92, 0x0640E92, 0x04C0D25, 0x036BA4D, 0x05C0A56,
+        0x04602B6, 0x02E95B5, 0x05606D4, 0x0400EA9, 0x02C5E92, 0x0500E92, 0x03ACD26, 0x05E052B,
+        0x0480A57, 0x032B2B6, 0x0580B5A, 0x04406D4, 0x02E6EC9, 0x0520749, 0x03CF693, 0x0620A93,
+        0x04C052B, 0x034CA5B, 0x05A0AAD, 0x046056A, 0x0309B55, 0x0560BA4, 0x0400B49, 0x02A5A93,
+        0x0500A95, 0x038F52D, 0x05E0536, 0x0480AAD, 0x034B5AA, 0x05805B2, 0x0420DA5, 0x02E7D4A,
+        0x0540D4A, 0x03D0A95, 0x0600A97, 0x04C0556, 0x036CAB5, 0x05A0AD5, 0x04606D2, 0x0308EA5,
+        0x0560EA5, 0x040064A, 0x0286C97, 0x04E0A9B, 0x03AF55A, 0x05E056A, 0x0480B69, 0x034B752,
+        0x05A0B52, 0x0420B25, 0x02C964B, 0x0520A4B, 0x03D14AB, 0x06002AD, 0x04A056D, 0x036CB69,
+        0x05C0DA9, 0x0460D92, 0x0309D25, 0x0560D25, 0x0415A4D, 0x0640A56, 0x04E02B6, 0x038C5B5,
+        0x05E06D5, 0x0480EA9, 0x034BE92, 0x05A0E92, 0x0440D26, 0x02C6A56, 0x0500A57, 0x03D14D6,
+        0x062035A, 0x04A06D5, 0x036B6C9, 0x05C0749, 0x0460693, 0x02E952B, 0x054052B, 0x03E0A5B,
+        0x02A555A, 0x04E056A, 0x038FB55, 0x0600BA4, 0x04A0B49, 0x032BA93, 0x0580A95, 0x042052D,
+        0x02C8AAD, 0x0500AB5, 0x03D35AA, 0x06205D2, 0x04C0DA5, 0x036DD4A, 0x05C0D4A, 0x0460C95,
+        0x030952E, 0x0540556, 0x03E0AB5, 0x02A55B2, 0x05006D2, 0x038CEA5, 0x05E0725, 0x048064B,
+        0x032AC97, 0x0560CAB, 0x042055A, 0x02C6AD6, 0x0520B69, 0x03D7752, 0x0620B52, 0x04C0B25,
+        0x036DA4B, 0x05A0A4B, 0x04404AB, 0x02EA55B, 0x05405AD, 0x03E0B6A, 0x02A5B52, 0x0500D92,
+        0x03AFD25, 0x05E0D25, 0x0480A55, 0x032B4AD, 0x05804B6, 0x04005B5, 0x02C6DAA, 0x0520EC9,
+        0x03F1E92, 0x0620E92, 0x04C0D26, 0x036CA56, 0x05A0A57, 0x04404D6, 0x02E86D5, 0x0540755,
+        0x0400749, 0x0286E93, 0x04E0693, 0x038F52B, 0x05E052B, 0x0460A5B, 0x032B55A, 0x058056A,
+        0x0420B65, 0x02C974A, 0x0520B4A, 0x03D1A95, 0x0620A95, 0x04A052D, 0x034CAAD, 0x05A0AB5,
+        0x04605AA, 0x02E8BA5, 0x0540DA5, 0x0400D4A, 0x02A7C95, 0x04E0C96, 0x038F94E, 0x05E0556,
+        0x0480AB5, 0x032B5B2, 0x05806D2, 0x0420EA5, 0x02E8E4A, 0x050068B, 0x03B0C97, 0x06004AB,
+        0x04A055B, 0x034CAD6, 0x05A0B6A, 0x0460752, 0x0309725, 0x0540B45, 0x03E0A8B, 0x028549B,
+        0x04E04AB,
+    ]
+
+    static func covers(_ lunarYear: Int) -> Bool { lunarYear >= firstYear && lunarYear <= lastYear }
+
+    private static func newYearJDN(_ year: Int) -> Int {
+        DayKey.julianDayNumber(year: year, month: 1, day: 1) + (data[year - firstYear] >> 17)
+    }
+
+    /// 某个农历年里按顺序排列的月份（闰月紧跟在同名月之后）
+    private static func months(_ year: Int) -> [Month] {
+        let bits = data[year - firstYear]
+        let leap = (bits >> 13) & 0xF
+        var result: [Month] = []
+        var bit = 0
+        for m in 1...12 {
+            result.append(Month(month: m, isLeap: false, length: (bits & (1 << bit)) != 0 ? 30 : 29))
+            bit += 1
+            if m == leap {
+                result.append(Month(month: m, isLeap: true, length: (bits & (1 << bit)) != 0 ? 30 : 29))
+                bit += 1
+            }
+        }
+        return result
+    }
+
+    /// 公历日期 → 农历（year 为农历年开始所在的公历年）；超出表的范围返回 nil
+    static func lunar(of key: DayKey) -> (year: Int, month: Int, day: Int, isLeap: Bool)? {
+        let jdn = DayKey.julianDayNumber(year: key.year, month: key.month, day: key.day)
+        var year = min(key.year, lastYear)
+        guard year >= firstYear else { return nil }
+        if jdn < newYearJDN(year) { year -= 1 }
+        guard year >= firstYear else { return nil }
+        var offset = jdn - newYearJDN(year)
+        for item in months(year) {
+            if offset < item.length { return (year: year, month: item.month, day: offset + 1, isLeap: item.isLeap) }
+            offset -= item.length
+        }
+        return nil
+    }
+
+    /// 农历 → 公历；该年没有这个月或这一天时返回 nil
+    static func solarDay(lunarYear: Int, month: Int, day: Int, isLeap: Bool) -> DayKey? {
+        guard covers(lunarYear), day >= 1 else { return nil }
+        var offset = 0
+        for item in months(lunarYear) {
+            if item.month == month && item.isLeap == isLeap {
+                guard day <= item.length else { return nil }
+                return dayKey(julianDayNumber: newYearJDN(lunarYear) + offset + day - 1)
+            }
+            offset += item.length
+        }
+        return nil
+    }
+
+    private static func dayKey(julianDayNumber jdn: Int) -> DayKey {
+        let a = jdn + 32044
+        let b = (4 * a + 3) / 146097
+        let c = a - 146097 * b / 4
+        let d = (4 * c + 3) / 1461
+        let e = c - 1461 * d / 4
+        let m = (5 * e + 2) / 153
+        return DayKey(year: 100 * b + d - 4800 + m / 10, month: m + 3 - 12 * (m / 10), day: e - (153 * m + 2) / 5 + 1)
     }
 }
 

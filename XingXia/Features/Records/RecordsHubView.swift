@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import Combine
 
 struct RecordsHubView: View {
     @Environment(AppState.self) private var app
@@ -76,7 +77,7 @@ struct RecordsHubView: View {
                             Image(systemName: "chevron.right").foregroundStyle(.tertiary)
                         }
                         if records.isEmpty {
-                            Text("用过的随机工具结果都会自动记在这里").font(.subheadline).foregroundStyle(.secondary)
+                            Text("用过的随机工具结果都会自动记在这里").font(.subheadline).foregroundStyle(.primary.opacity(0.7))
                         } else {
                             ForEach(records.prefix(4)) { record in
                                 HistoryRow(record: record)
@@ -92,12 +93,19 @@ struct RecordsHubView: View {
         }
         .cosmicBackground()
         .navigationTitle("记录")
-        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
-            today = .today
+        .onAppear(perform: refreshToday)
+        // 这个通知不保证在主线程发出
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: DispatchQueue.main)) { _ in
+            refreshToday()
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { today = .today }
+            if phase == .active { refreshToday() }
         }
+    }
+
+    private func refreshToday() {
+        let now = DayKey.today
+        if now != today { today = now }
     }
 
     private var nextCountdownText: String {

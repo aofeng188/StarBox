@@ -20,6 +20,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
+import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.CosmicBackground
 import com.tianaofeng.xingxia.ui.components.HapticsHost
@@ -40,6 +41,7 @@ class XingXiaApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         Store.init(this)
+        AppSettings.migrateIfNeeded()
         SoundEngine.prepare(this)
         val app = this
         Store.onDataChanged = {

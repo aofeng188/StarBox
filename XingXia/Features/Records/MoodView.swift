@@ -1,12 +1,14 @@
 import SwiftUI
 import SwiftData
 import Charts
+import Combine
 
 struct MoodView: View {
     @Environment(\.modelContext) private var context
     @Environment(AppState.self) private var app
     @Environment(\.palette) private var palette
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \MoodEntry.dayKey, order: .reverse) private var entries: [MoodEntry]
 
     /// 零点和回到前台时刷新
@@ -81,7 +83,8 @@ struct MoodView: View {
             guard !Task.isCancelled else { return }
             withAnimation(.snappy) { deleted = nil }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+        // 这个通知不保证在主线程发出
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: DispatchQueue.main)) { _ in
             refreshToday()
         }
         .onChange(of: scenePhase) { _, phase in
@@ -191,7 +194,7 @@ struct MoodView: View {
             .frame(maxWidth: PageMetrics.readableWidth)
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .transition(reduceMotion ? AnyTransition.opacity : AnyTransition.move(edge: .bottom).combined(with: .opacity))
         }
     }
 
@@ -266,15 +269,17 @@ struct MoodView: View {
 
     private func undoDelete() {
         guard let snapshot = deleted else { return }
-        // 删除后那天可能又记过心情，这时不再恢复，避免同一天出现两条
-        if !entries.contains(where: { $0.dayKey == snapshot.dayKey }) {
-            let entry = MoodEntry(dayKey: snapshot.dayKey, mood: snapshot.mood, note: snapshot.note)
-            entry.tags = snapshot.tags
-            entry.date = snapshot.date
-            context.insert(entry)
-            try? context.save()
-        }
         withAnimation(.snappy) { deleted = nil }
+        // 删除后那天可能又记过心情，这时不再恢复，避免同一天出现两条
+        guard !entries.contains(where: { $0.dayKey == snapshot.dayKey }) else {
+            Announce.post("这天已经重新记录了心情，没有恢复")
+            return
+        }
+        let entry = MoodEntry(dayKey: snapshot.dayKey, mood: snapshot.mood, note: snapshot.note)
+        entry.tags = snapshot.tags
+        entry.date = snapshot.date
+        context.insert(entry)
+        try? context.save()
         Haptics.success()
         Announce.post("已恢复")
     }

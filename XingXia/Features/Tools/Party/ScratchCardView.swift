@@ -89,10 +89,11 @@ struct ScratchCardView: View {
                     Button("直接揭晓", systemImage: "eye") { reveal() }
                         .buttonStyle(.glass)
                         .disabled(revealed)
-                    Button("再来一张", systemImage: "arrow.counterclockwise") { newCard() }
-                        .buttonStyle(.glassProminent)
-                        .tint(palette.accent)
-                        .foregroundStyle(palette.onAccent)
+                    Button { newCard() } label: {
+                        Label("再来一张", systemImage: "arrow.counterclockwise").foregroundStyle(palette.onAccent)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(palette.accent)
                 }
                 .controlSize(.large)
 
@@ -211,6 +212,7 @@ struct ScratchCardView: View {
             Haptics.reveal()
             confetti += 1
         }
+        Announce.post("刮刮卡：\(prize)")
         HistoryLog.add(context, tool: ToolKind.scratch.rawValue, title: useCustom ? "自定义" : (preset?.name ?? ""), result: prize)
     }
 

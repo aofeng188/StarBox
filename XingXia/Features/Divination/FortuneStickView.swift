@@ -16,6 +16,7 @@ struct FortuneStickView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(\.palette) private var palette
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \StickDraw.date, order: .reverse) private var draws: [StickDraw]
 
     @State private var phase: Phase = .idle
@@ -30,7 +31,6 @@ struct FortuneStickView: View {
     /// 为谁求签；nil 表示当前档案自己
     @State private var target: Target?
     @State private var choosingProfile = false
-    @State private var loaded = false
     @State private var isVisible = false
     @State private var motionActive = false
     @State private var loop: Task<Void, Never>?
@@ -65,19 +65,16 @@ struct FortuneStickView: View {
         .toolbar(.hidden, for: .tabBar)
         .onAppear {
             isVisible = true
-            // 只在第一次出现时自动揭示今天的签：切标签回来不能打断「为家人朋友求签」
-            if !loaded {
-                loaded = true
-                if let todayDraw, phase == .idle {
-                    stick = StickLibrary.stick(todayDraw.stickNumber)
-                    phase = .revealed
-                }
-            }
+            syncWithToday()
             syncShaking()
         }
         .onDisappear {
             isVisible = false
             syncShaking()
+        }
+        // 隔天从后台回来时，显示的可能还是昨天的签
+        .onChange(of: scenePhase) {
+            if scenePhase == .active, isVisible { syncWithToday() }
         }
         .onChange(of: phase) { syncShaking() }
         .onChange(of: choosingProfile) { syncShaking() }
@@ -110,6 +107,7 @@ struct FortuneStickView: View {
             if let target {
                 HStack(spacing: 8) {
                     Text("为 \(target.avatar) \(target.name) 求签").font(.subheadline.weight(.semibold))
+                        .accessibilityLabel("为\(target.name)求签")
                     Button("改为自己", systemImage: "xmark.circle.fill") { backToMine() }
                         .labelStyle(.iconOnly)
                         .foregroundStyle(.secondary)
@@ -287,7 +285,8 @@ struct FortuneStickView: View {
     }
 
     private func reveal() {
-        guard let stick else { return }
+        // 签和「解签」按钮都能触发，连点时只解一次，免得重复写记录
+        guard phase == .dropped, let stick else { return }
         withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) { phase = .revealed }
         SoundEngine.shared.play(.chime)
         Haptics.reveal()
@@ -300,6 +299,25 @@ struct FortuneStickView: View {
         }
         HistoryLog.add(context, tool: "stick", title: historyTitle, result: "\(stick.numberText) \(stick.levelInfo.displayName) · \(stick.title)")
         Announce.post((target.map { "为\($0.name)求得，" } ?? "") + stick.spokenText)
+    }
+
+    /// 进入页面、回到前台时对一下今天的记录（按当前求签对象）：
+    /// 今天已经求过就显示那一支（别的标签里求的、换了当前档案也算）；显示的签已不是今天的（跨过零点）就回到摇签。
+    /// 落地还没解的签不动
+    private func syncWithToday() {
+        guard phase != .dropped else { return }
+        if let existing = draw(for: target?.id ?? app.primary?.id) {
+            guard phase != .revealed || stick?.n != existing.stickNumber else { return }
+            stick = StickLibrary.stick(existing.stickNumber)
+            energy = 0
+            isHolding = false
+            phase = .revealed
+        } else if phase == .revealed {
+            stick = nil
+            energy = 0
+            wobble = 0
+            phase = .idle
+        }
     }
 
     /// 决策历史里的标题。所求是「综合」时不写，免得出现「求综合」
@@ -377,6 +395,7 @@ private struct StickProfilePicker: View {
                                     .font(.title)
                                     .frame(width: 48, height: 48)
                                     .background(Circle().fill(palette.accent.opacity(0.18)))
+                                    .accessibilityHidden(true)
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(profile.name).font(.headline)
                                     Text(profile.relation).font(.caption).foregroundStyle(.secondary)

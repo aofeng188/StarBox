@@ -14,7 +14,7 @@ class LunarTest {
     /** ICU 与官方农历（紫金历/香港天文台）不一致的农历年，这些年份以官方为准，单独断言 */
     private val icuDiffers = setOf(1917, 1922, 1953, 1954, 1955, 1987, 1998, 2012, 2018, 2026, 2027, 2029, 2030, 2070)
 
-    /** 逐日对比 ICU 中国农历（iOS 的 Calendar(.chinese) 也基于 ICU），已知差异年份除外 */
+    /** 逐日对比 ICU 中国农历，已知差异年份除外（只说明数据表在其余年份与 ICU 一致；iOS 现在也查同一份表） */
     @Test
     fun matchesIcuForEveryDay() {
         val zone = TimeZone.getTimeZone("Asia/Shanghai")
@@ -55,6 +55,9 @@ class LunarTest {
         assertEquals(6, LunarDate.leapMonth(1987))
         assertEquals(LunarDate(2026, 12, 29, false), LunarDate.of(DayKey(2027, 2, 5)))
         assertTrue("除夕" in Festivals.on(DayKey(2027, 2, 5)))
+        // 官方农历：2030 年春节为 2 月 3 日（ICU 算成 2 月 2 日）
+        assertEquals(LunarDate(2030, 1, 1, false), LunarDate.of(DayKey(2030, 2, 3)))
+        assertTrue("除夕" in Festivals.on(DayKey(2030, 2, 2)))
         // 2023 年有闰二月
         assertEquals(2, LunarDate.leapMonth(2023))
         assertEquals(DayKey(2023, 3, 22), LunarDate.solarDate(2023, 2, 1, true))

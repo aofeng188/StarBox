@@ -16,6 +16,7 @@ struct ProfileEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var app
     @Environment(\.palette) private var palette
+    @Environment(\.colorScheme) private var scheme
     @Query(sort: \Profile.sortIndex) private var profiles: [Profile]
 
     @State private var name = ""
@@ -106,10 +107,10 @@ struct ProfileEditorView: View {
                         ForEach(1...30, id: \.self) { Text(LunarDate.dayNames[$0 - 1]).tag($0) }
                     }
                     if let converted = convertedLunar {
-                        LabeledContent("对应公历", value: DateText.full(DayKey(converted)))
+                        LabeledContent("对应公历", value: DateText.full(converted))
                     } else {
                         Label("这一天在农历中不存在，请检查日期", systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Color.caution(scheme))
                             .font(.footnote)
                     }
                 } else {
@@ -189,16 +190,17 @@ struct ProfileEditorView: View {
         EarthlyBranch.forHour(Calendar.current.component(.hour, from: birthTime))
     }
 
-    private var convertedLunar: Date? {
-        LunarDate.solarDate(gregorianYear: lunarYear, month: lunarMonth, day: lunarDay, isLeap: lunarLeap && leapMonth(of: lunarYear) == lunarMonth)
+    /// 农历生日对应的公历日期，只按年月日换算，不经过本地时刻
+    private var convertedLunar: DayKey? {
+        LunarDate.solarDay(gregorianYear: lunarYear, month: lunarMonth, day: lunarDay, isLeap: lunarLeap && leapMonth(of: lunarYear) == lunarMonth)
     }
 
     private func leapMonth(of year: Int) -> Int? {
-        (1...12).first { LunarDate.solarDate(gregorianYear: year, month: $0, day: 1, isLeap: true) != nil }
+        (1...12).first { LunarDate.solarDay(gregorianYear: year, month: $0, day: 1, isLeap: true) != nil }
     }
 
     private var resolvedBirthday: Date {
-        if useLunar, let converted = convertedLunar { return DayKey(converted).date }
+        if useLunar, let converted = convertedLunar { return converted.date }
         return DayKey(birthday).date
     }
 
@@ -220,11 +222,12 @@ struct ProfileEditorView: View {
         avatar = profile.avatar
         birthday = profile.birthday
         useLunar = profile.enteredAsLunar
-        let lunar = LunarDate(profile.birthday)
+        let birthDay = DayKey(profile.birthday)
+        let lunar = LunarDate(birthDay)
         lunarMonth = lunar.month
         lunarDay = lunar.day
         lunarLeap = lunar.isLeapMonth
-        lunarYear = DayKey(profile.birthday).year - (DayKey(profile.birthday).month < lunar.month ? 1 : 0)
+        lunarYear = birthDay.year - (birthDay.month < lunar.month ? 1 : 0)
         knowsTime = profile.hasBirthTime
         birthTime = Calendar.current.date(from: DateComponents(hour: profile.birthHour, minute: profile.birthMinute)) ?? birthTime
         cityID = profile.birthCityID ?? "beijing"

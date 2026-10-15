@@ -133,10 +133,12 @@ fun HistoryScreen() {
     val records = Store.records.items
     // 新的在前
     val tools = remember(records) { records.asReversed().map { it.tool }.distinct() }
+    // 筛选的工具已经没有记录（比如刚把它删光）时回到「全部」，免得一个筛选都不亮
+    val activeFilter = filter?.takeIf { it in tools }
     val query = search.trim()
-    val shown = remember(records, filter, query) {
+    val shown = remember(records, activeFilter, query) {
         records.asReversed().filter { record ->
-            (filter == null || record.tool == filter) &&
+            (activeFilter == null || record.tool == activeFilter) &&
                 (query.isEmpty() || record.result.contains(query, ignoreCase = true) || record.title.contains(query, ignoreCase = true))
         }
     }
@@ -166,14 +168,14 @@ fun HistoryScreen() {
                 .weight(1f),
             contentPadding = PaddingValues(bottom = 24.dp),
         ) {
-            item(key = "stats") { HistoryStats(records, filter, Modifier.padding(bottom = 12.dp)) }
+            item(key = "stats") { HistoryStats(records, activeFilter, Modifier.padding(bottom = 12.dp)) }
             item(key = "search") {
                 Box(Modifier.padding(bottom = 10.dp)) { GlassTextField(search, "搜索结果") { search = it } }
             }
             item(key = "filters") {
                 ChipRow {
-                    SelectChip("全部", filter == null) { filter = null }
-                    for (tool in tools) SelectChip(toolInfo(tool).first, filter == tool) { filter = tool }
+                    SelectChip("全部", activeFilter == null) { filter = null }
+                    for (tool in tools) SelectChip(toolInfo(tool).first, activeFilter == tool) { filter = tool }
                 }
             }
             item(key = "count") {

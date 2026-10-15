@@ -153,7 +153,7 @@ enum FavoriteTool: Hashable, Identifiable {
     var subtitle: String {
         switch self {
         case .tool(let tool): tool.subtitle
-        case .answers: "默念问题，翻开看答案"
+        case .answers: "默念问题 · 翻开一页"
         }
     }
 

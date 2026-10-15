@@ -19,25 +19,38 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.ui.nav.LocalNavigator
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 
 /** 平板、折叠屏、横屏下正文的最大宽度（与 iOS 的 readableWidth 一致） */
 val ReadableWidth = 640.dp
+
+/**
+ * 当前页面可以收藏到首页「快捷工具」时的收藏 id，由路由提供（与 iOS 的 favoriteToggle 一样统一在路由处加）。
+ * 页面主界面（没有自定义返回的 Screen）的顶栏右侧会显示收藏星标；页面内的编辑器等子界面不显示。
+ */
+val LocalFavoriteId = staticCompositionLocalOf<String?> { null }
 
 /**
  * 页面骨架：透明顶栏（返回 + 标题 + 操作）+ 可滚动内容。
@@ -52,18 +65,22 @@ fun Screen(
     actions: @Composable RowScope.() -> Unit = {},
     spacing: Dp = 16.dp,
     horizontalAlignment: Alignment.Horizontal = Alignment.Start,
+    /** 需要在代码里滚动（比如滚回顶部）时传入；默认由页面自己记住 */
+    scrollState: ScrollState? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val navigator = LocalNavigator.current
     val back = onBack ?: { navigator.back() }
     if (onBack != null) BackHandler { onBack() }
+    val ownScroll = rememberScrollState()
+    val favoriteId = if (isRoot || onBack != null) null else LocalFavoriteId.current
     Column(
         Modifier
             .fillMaxSize()
             .statusBarsPadding()
             .imePadding(),
     ) {
-        TopBar(title, isRoot, back, actions)
+        TopBar(title, isRoot, back, favoriteId, actions)
         Box(
             Modifier
                 .fillMaxWidth()
@@ -74,7 +91,7 @@ fun Screen(
                 .widthIn(max = ReadableWidth)
                 .fillMaxWidth()
                 .fillMaxHeight()
-                .then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier.navigationBarsPadding())
+                .then(if (scrollable) Modifier.verticalScroll(scrollState ?: ownScroll) else Modifier.navigationBarsPadding())
                 .padding(horizontal = 16.dp)
             Column(body, verticalArrangement = Arrangement.spacedBy(spacing), horizontalAlignment = horizontalAlignment) {
                 content()
@@ -89,7 +106,7 @@ fun Screen(
 }
 
 @Composable
-private fun TopBar(title: String, isRoot: Boolean, onBack: () -> Unit, actions: @Composable RowScope.() -> Unit) {
+private fun TopBar(title: String, isRoot: Boolean, onBack: () -> Unit, favoriteId: String?, actions: @Composable RowScope.() -> Unit) {
     val palette = LocalPalette.current
     if (isRoot) {
         Row(
@@ -123,9 +140,37 @@ private fun TopBar(title: String, isRoot: Boolean, onBack: () -> Unit, actions: 
                 Modifier.align(Alignment.CenterEnd),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                content = actions,
-            )
+            ) {
+                actions()
+                if (favoriteId != null) FavoriteToggleButton(favoriteId)
+            }
         }
+    }
+}
+
+/** 收藏到首页「快捷工具」/ 取消收藏的星标按钮（工具页顶栏；答案之书传 "answers"） */
+@Composable
+fun FavoriteToggleButton(id: String, modifier: Modifier = Modifier) {
+    val palette = LocalPalette.current
+    val favorite = id in AppSettings.favoriteTools
+    Box(
+        modifier
+            .size(40.dp)
+            .semantics { stateDescription = if (favorite) "已收藏" else "未收藏" }
+            .pressable {
+                AppSettings.toggleFavorite(id)
+                Haptics.selection()
+            }
+            .glass(CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            if (favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+            if (favorite) "取消收藏" else "收藏到首页",
+            Modifier.size(20.dp),
+            // 星标金色：深色用亮金，浅色用加深的金色
+            tint = if (favorite) palette.gold else palette.text,
+        )
     }
 }
 

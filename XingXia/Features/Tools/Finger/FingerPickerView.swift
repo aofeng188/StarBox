@@ -4,6 +4,8 @@ import UIKit
 
 /// 捕获多点触控的 UIKit 视图
 struct MultiTouchSurface: UIViewRepresentable {
+    /// 读屏提示（当前模式的规则）
+    var spokenHint: String?
     var onChange: ([Int: CGPoint]) -> Void
 
     func makeUIView(context: Context) -> TouchView {
@@ -13,6 +15,7 @@ struct MultiTouchSurface: UIViewRepresentable {
         // 开着 VoiceOver 时把原始触摸直接交给这块区域，否则手指会被当成浏览手势
         view.isAccessibilityElement = true
         view.accessibilityLabel = "触控区域，所有人把一根手指放在屏幕上"
+        view.accessibilityHint = spokenHint
         view.accessibilityTraits = .allowsDirectInteraction
         view.onChange = onChange
         return view
@@ -20,6 +23,7 @@ struct MultiTouchSurface: UIViewRepresentable {
 
     func updateUIView(_ uiView: TouchView, context: Context) {
         uiView.onChange = onChange
+        uiView.accessibilityHint = spokenHint
     }
 
     final class TouchView: UIView {
@@ -103,7 +107,7 @@ struct FingerPickerView: View {
             }
             .accessibilityHidden(true)
 
-            MultiTouchSurface { points in update(points) }
+            MultiTouchSurface(spokenHint: hint) { points in update(points) }
 
             if touches.isEmpty {
                 VStack(spacing: 14) {
@@ -117,6 +121,8 @@ struct FingerPickerView: View {
                 }
                 .padding(30)
                 .allowsHitTesting(false)
+                // 说明压在屏幕正中，读屏会抢走落在上面的手指；内容已经放进触控区域的标签和提示里
+                .accessibilityHidden(true)
             }
 
             VStack {
@@ -238,6 +244,8 @@ struct FingerPickerView: View {
         resultTime = Date()
         SoundEngine.shared.play(mode == .teams ? .success : .chime)
         Haptics.reveal()
+        // 读屏用户的手指都在触控区域上，焦点不会移到底部的状态文字，结果出来时主动播报
+        Announce.post(statusText)
         let detail = mode == .teams ? "\(touches.count) 人分两队" : "\(touches.count) 人中选 \(winners.count) 人"
         HistoryLog.add(context, tool: ToolKind.finger.rawValue, title: mode.name, result: detail)
     }

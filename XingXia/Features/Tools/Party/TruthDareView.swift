@@ -133,8 +133,9 @@ struct TruthDareView: View {
     private func reveal(kind: String, prompt: String) {
         self.kind = kind
         self.prompt = prompt
-        if !players.isEmpty {
-            withAnimation { currentPlayer = players[playerIndex % players.count] }
+        let player: String? = players.isEmpty ? nil : players[playerIndex % players.count]
+        if let player {
+            withAnimation { currentPlayer = player }
             playerIndex += 1
         } else {
             currentPlayer = nil
@@ -142,6 +143,8 @@ struct TruthDareView: View {
         withAnimation(.spring(response: 0.6, dampingFraction: 0.75)) { isFaceUp = true }
         SoundEngine.shared.play(.sparkle, volume: 0.6)
         Haptics.success()
+        let card = "\(kind == "dare" ? "大冒险" : "真心话")：\(prompt)"
+        Announce.post(player.map { "轮到 \($0)。\(card)" } ?? card)
     }
 }
 

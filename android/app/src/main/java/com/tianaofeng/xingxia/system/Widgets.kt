@@ -53,6 +53,7 @@ import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.theme.ThemeManager
 import com.tianaofeng.xingxia.ui.theme.ThemePalette
 import com.tianaofeng.xingxia.ui.theme.hex
+import com.tianaofeng.xingxia.ui.theme.readableForeground
 import com.tianaofeng.xingxia.ui.theme.toColor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -112,7 +113,8 @@ private fun Chip(label: String, color: Color) {
             .cornerRadius(9.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = TextStyle(color = white, fontSize = 10.sp, fontWeight = FontWeight.Bold))
+        // 亮色底上用深字（与 iOS 小组件的宜忌徽章一致）
+        Text(label, style = TextStyle(color = ColorProvider(color.readableForeground), fontSize = 10.sp, fontWeight = FontWeight.Bold))
     }
 }
 
@@ -172,7 +174,8 @@ private fun FortuneContent(context: Context) {
                     Spacer(GlanceModifier.height(4.dp))
                     Text(
                         "幸运色 ${fortune.luckyColor.name} · 数字${fortune.luckyNumber} · ${fortune.luckyDirection}",
-                        style = TextStyle(color = ColorProvider(fortune.luckyColor.toColor()), fontSize = 11.sp),
+                        // 幸运色可能很深（如墨色），提亮后再当文字色
+                        style = TextStyle(color = ColorProvider(palette.ink(fortune.luckyColor.toColor())), fontSize = 11.sp),
                         maxLines = 1,
                     )
                 }

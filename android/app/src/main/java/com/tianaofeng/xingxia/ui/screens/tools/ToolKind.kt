@@ -7,6 +7,7 @@ import androidx.compose.material.icons.rounded.Celebration
 import androidx.compose.material.icons.rounded.DonutLarge
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.MonetizationOn
 import androidx.compose.material.icons.rounded.PanTool
 import androidx.compose.material.icons.rounded.Redeem
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.rounded.Tag
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.tianaofeng.xingxia.ui.nav.Routes
 import com.tianaofeng.xingxia.ui.theme.hex
 
 enum class ToolCategory(val label: String, val icon: ImageVector) {
@@ -54,6 +56,36 @@ enum class ToolKind(
     companion object {
         fun of(id: String?): ToolKind? = entries.firstOrNull { it.id == id }
         fun inCategory(category: ToolCategory) = entries.filter { it.category == category }
+    }
+}
+
+/**
+ * 可以收藏到首页「快捷工具」的入口：百宝箱里的工具，外加答案之书（与 iOS 的 FavoriteTool 一致）。
+ * 收藏列表（AppSettings.favoriteTools）里存的是 id：工具的 id，答案之书是 "answers"。
+ */
+data class FavoriteTool(
+    val id: String,
+    val label: String,
+    val subtitle: String,
+    val icon: ImageVector,
+    val colors: List<Color>,
+    val route: String,
+) {
+    companion object {
+        const val ANSWERS_ID = "answers"
+
+        private val answers = FavoriteTool(
+            ANSWERS_ID, "答案之书", "默念问题 · 翻开一页", Icons.Rounded.MenuBook, listOf(hex(0xF5B83D), hex(0xB45309)), Routes.ANSWERS,
+        )
+
+        private fun of(tool: ToolKind) = FavoriteTool(tool.id, tool.label, tool.subtitle, tool.icon, tool.colors, Routes.tool(tool))
+
+        /** 认不出的 id（已下线的工具）返回 null */
+        fun of(id: String): FavoriteTool? =
+            if (id == ANSWERS_ID) answers else ToolKind.of(id)?.takeIf { it.available }?.let { of(it) }
+
+        /** 收藏管理页里的全部候选，按百宝箱顺序 */
+        val all: List<FavoriteTool> get() = ToolKind.entries.filter { it.available }.map { of(it) } + answers
     }
 }
 

@@ -336,9 +336,15 @@ fun ColorDot(color: Color, size: Dp, glow: Boolean = false) {
     )
 }
 
+/** 自动换行排列；horizontalAlignment 决定每一行（尤其是不满的最后一行）靠左还是居中 */
 @Composable
-fun Flow(spacing: Dp = 8.dp, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(spacing), verticalArrangement = Arrangement.spacedBy(spacing)) {
+fun Flow(
+    spacing: Dp = 8.dp,
+    modifier: Modifier = Modifier,
+    horizontalAlignment: Alignment.Horizontal = Alignment.Start,
+    content: @Composable () -> Unit,
+) {
+    FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(spacing, horizontalAlignment), verticalArrangement = Arrangement.spacedBy(spacing)) {
         content()
     }
 }

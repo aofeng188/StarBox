@@ -21,12 +21,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.tianaofeng.xingxia.core.DayKey
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import java.time.Duration
 import java.time.LocalDateTime
@@ -151,6 +153,12 @@ fun rememberToday(): DayKey {
     }
     return today
 }
+
+/**
+ * 系统是否关闭了动画（无障碍里的「移除动画」或动画时长缩放为 0），对应 iOS 的「减弱动态效果」。
+ * 读的是 Compose 放进协程上下文的动画时长缩放，系统设置改了会跟着变；在 LaunchedEffect、produceState 里调用。
+ */
+fun CoroutineScope.isReduceMotion(): Boolean = (coroutineContext[MotionDurationScale]?.scaleFactor ?: 1f) == 0f
 
 /** 让 DayKey 能放进 rememberSaveable */
 val DayKeySaver: Saver<DayKey, Int> = Saver(save = { it.rawValue }, restore = { DayKey.fromRaw(it) })

@@ -560,6 +560,7 @@ struct FlippableTarotCard: View {
         .rotation3DEffect(.degrees(isFaceUp ? 180 : 0), axis: (0, 1, 0), perspective: 0.5)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(isFaceUp ? "\(entry.card.name)，\(entry.reversed ? "逆位" : "正位")" : "背面朝上的牌，点按翻开")
+        .accessibilityAddTraits(isFaceUp ? [] : .isButton)
     }
 }
 

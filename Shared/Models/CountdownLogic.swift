@@ -66,11 +66,9 @@ extension Countdown {
     /// 农历某月某日在 start 当天或之后第一次出现的公历日期；小月没有三十时按廿九算
     static func lunarOccurrence(month: Int, day: Int, onOrAfter start: DayKey) -> DayKey? {
         for year in (start.year - 1)...(start.year + 2) {
-            let date = LunarDate.solarDate(gregorianYear: year, month: month, day: day, isLeap: false)
-                ?? LunarDate.solarDate(gregorianYear: year, month: month, day: day - 1, isLeap: false)
-            guard let date else { continue }
-            let candidate = DayKey(date)
-            if candidate >= start { return candidate }
+            let candidate = LunarDate.solarDay(gregorianYear: year, month: month, day: day, isLeap: false)
+                ?? LunarDate.solarDay(gregorianYear: year, month: month, day: day - 1, isLeap: false)
+            if let candidate, candidate >= start { return candidate }
         }
         return nil
     }

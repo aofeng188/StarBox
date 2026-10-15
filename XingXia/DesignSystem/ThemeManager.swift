@@ -120,11 +120,7 @@ final class ThemeManager {
         refresh()
 
         NotificationCenter.default.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main) { _ in
-            Task { @MainActor in
-                let manager = ThemeManager.shared
-                manager.isLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
-                manager.refresh()
-            }
+            Task { @MainActor in ThemeManager.shared.refresh() }
         }
     }
 
@@ -143,6 +139,9 @@ final class ThemeManager {
 
     /// 重新计算当前主题。时段规则依赖时间，由界面定时调用。
     func refresh(now: Date = Date()) {
+        // App 挂起期间切换低电量模式可能收不到通知，回到前台、定时刷新时一并校正
+        let lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+        if lowPower != isLowPowerMode { isLowPowerMode = lowPower }
         let (theme, why) = resolve(now: now)
         if theme.id != current.id {
             current = theme

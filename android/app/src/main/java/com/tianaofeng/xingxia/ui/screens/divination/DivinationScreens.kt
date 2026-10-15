@@ -4,13 +4,16 @@ package com.tianaofeng.xingxia.ui.screens.divination
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -66,6 +69,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -105,7 +113,6 @@ import com.tianaofeng.xingxia.ui.components.SegmentedPicker
 import com.tianaofeng.xingxia.ui.components.StarRatingView
 import com.tianaofeng.xingxia.ui.components.TagChip
 import com.tianaofeng.xingxia.ui.components.TextAction
-import com.tianaofeng.xingxia.ui.components.ToolIcon
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.shareText
@@ -158,18 +165,23 @@ fun DivinationHubScreen() {
             SectionHeader("星座运势", subtitle = "今日 · 明日 · 本周 · 本月", icon = Icons.Rounded.NightsStay) {
                 Icon(Icons.Rounded.ChevronRight, null, tint = palette.tertiaryText)
             }
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                for (sign in ZodiacSign.entries) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        ZodiacBadge(sign, 44.dp)
-                        SecondaryText(sign.shortName, style = Fonts.caption2)
+            // 12 星座两行排开，只作装饰：整张卡是一个入口，读屏只读标题
+            Column(Modifier.clearAndSetSemantics { }, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                for (row in ZodiacSign.entries.chunked(6)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        for (sign in row) {
+                            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                ZodiacBadge(sign, 38.dp)
+                                SecondaryText(sign.shortName, style = Fonts.caption2, maxLines = 1)
+                            }
+                        }
                     }
                 }
             }
         }
 
         val tiles = listOf(
-            MiniTileData(Routes.FORTUNE, Icons.Rounded.AutoAwesome, "运势详解", "五维运势与幸运指南", listOf(palette.accent, palette.accentSecondary)),
+            MiniTileData(Routes.FORTUNE, Icons.Rounded.AutoAwesome, "运势详解", "五维运势与幸运指南", listOf(palette.accent, palette.accentSecondary), palette.onAccent),
             MiniTileData(Routes.ALMANAC, Icons.Rounded.CalendarMonth, "黄历", "农历 · 节气 · 宜忌", listOf(hex(0xEF4444), hex(0xF59E0B))),
             MiniTileData(Routes.BIRTH_CHART, Icons.Rounded.GridOn, "命盘", "八字 · 星盘三巨头", listOf(hex(0xA78BFA), hex(0xEC4899))),
             MiniTileData(Routes.COMPATIBILITY, Icons.Rounded.Favorite, "缘分配对", "星座 + 生肖", listOf(hex(0xFB7185), hex(0xF43F5E))),
@@ -178,7 +190,7 @@ fun DivinationHubScreen() {
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 for (tile in row) {
                     GlassCard(Modifier.weight(1f), padding = 16.dp, spacing = 10.dp, onClick = { navigator.open(tile.route) }) {
-                        ToolIcon(tile.icon, tile.colors, 40.dp)
+                        MiniTileIcon(tile)
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(tile.title, style = Fonts.headline)
                             SecondaryText(tile.subtitle, style = Fonts.caption2, maxLines = 1)
@@ -190,7 +202,24 @@ fun DivinationHubScreen() {
     }
 }
 
-private data class MiniTileData(val route: String, val icon: ImageVector, val title: String, val subtitle: String, val colors: List<Color>)
+/** iconTint：底色用主题强调色时传 palette.onAccent，深色主题的强调色偏亮，白色图标看不清 */
+private data class MiniTileData(val route: String, val icon: ImageVector, val title: String, val subtitle: String, val colors: List<Color>, val iconTint: Color = Color.White)
+
+/** 和 ToolIcon 同款的渐变方块图标，但图标颜色可调 */
+@Composable
+private fun MiniTileIcon(tile: MiniTileData) {
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(shape)
+            .background(Brush.linearGradient(tile.colors))
+            .border(0.8.dp, Color.White.copy(alpha = 0.35f), shape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(tile.icon, null, Modifier.size(18.dp), tint = tile.iconTint)
+    }
+}
 
 @Composable
 private fun SmallHeroCard(title: String, subtitle: String, color: Color, modifier: Modifier, onClick: () -> Unit, art: @Composable () -> Unit) {
@@ -317,7 +346,7 @@ private val FortuneInsightKind?.icon: ImageVector
 @Composable
 private fun InsightRow(text: String, icon: @Composable () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) { icon() }
+        Box(Modifier.size(20.dp).clearAndSetSemantics { }, contentAlignment = Alignment.Center) { icon() }
         Text(text, style = Fonts.subheadline)
     }
 }
@@ -483,7 +512,7 @@ fun AlmanacDetailScreen() {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(term.name, style = Fonts.subheadline.weight(FontWeight.SemiBold), modifier = Modifier.weight(1f))
                     SecondaryText("${term.day.month}月${term.day.day}日 ${term.moment.atZone(ZoneId.systemDefault()).format(timeFormat)}", style = Fonts.caption)
-                    Text("${day.daysTo(term.day)}天后", style = Fonts.caption, color = palette.accent)
+                    Text("${day.daysTo(term.day)}天后", style = Fonts.caption, color = palette.ink(palette.accent))
                 }
             }
         }
@@ -556,6 +585,12 @@ fun HoroscopeScreen() {
                             sign = item
                             AppSettings.lastViewedSign = item.ordinal
                             Haptics.selection()
+                        }
+                        // 读屏只读星座全名和选中状态；点按动作来自前面的 pressable，要放在它后面
+                        .clearAndSetSemantics {
+                            contentDescription = item.label
+                            role = Role.Button
+                            selected = item == sign
                         },
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
@@ -605,7 +640,8 @@ fun HoroscopeScreen() {
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        // 大字号下「星座幸运色」可能折成两行，四个气泡统一取最高的那个高度
+        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             // 和运势卡按五行算的「幸运色」区分开
             LuckyBubble("星座幸运色", Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -650,12 +686,13 @@ fun HoroscopeScreen() {
 private fun LuckyBubble(title: String, modifier: Modifier, content: @Composable () -> Unit) {
     Column(
         modifier
+            .fillMaxHeight()
             .glass(RoundedCornerShape(18.dp))
             .padding(vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        SecondaryText(title, style = Fonts.caption2)
+        SecondaryText(title, style = Fonts.caption2, textAlign = TextAlign.Center)
         content()
     }
 }

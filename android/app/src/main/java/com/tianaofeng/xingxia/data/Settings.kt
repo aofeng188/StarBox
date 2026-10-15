@@ -63,4 +63,17 @@ object AppSettings {
     fun toggleFavorite(toolId: String) {
         favoriteTools = if (toolId in favoriteTools) favoriteTools - toolId else favoriteTools + toolId
     }
+
+    /**
+     * 答案之书以前固定在首页快捷工具末尾，现在改成普通收藏项（id "answers"，与 iOS 一致）：
+     * 升级后第一次启动补进收藏并立即写回，首页看起来和以前一样，之后可以移除。新用户的默认列表同样带上。
+     * 在 Application.onCreate 里 Store.init 之后调用。
+     */
+    fun migrateIfNeeded() {
+        var migrated by Prefs.bool("answersFavoriteMigrated", false)
+        if (migrated) return
+        // 列表有变化时 PrefState 会立即写回 SharedPreferences
+        if ("answers" !in favoriteTools) favoriteTools = favoriteTools + "answers"
+        migrated = true
+    }
 }

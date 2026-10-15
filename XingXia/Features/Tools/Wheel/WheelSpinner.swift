@@ -102,7 +102,7 @@ struct WheelCanvas: View {
                         let fontSize = min(18, max(9, band * sweep * .pi / 180 * 0.6))
                         let title = segment.title.count > 10 ? String(segment.title.prefix(9)) + "…" : segment.title
                         // 扇区底色深浅不一，文字按底色亮度取深字或白字
-                        let resolved = context.resolve(Text(title).font(.system(size: fontSize, weight: .bold)).foregroundColor(color.readableForeground))
+                        let resolved = context.resolve(Text(title).font(.system(size: fontSize, weight: .bold)).foregroundColor(Self.labelColor(on: color)))
                         let measured = resolved.measure(in: CGSize(width: 1000, height: 100))
                         let scale = min(1, (r * 0.56) / max(1, measured.width))
                         var text = context
@@ -143,6 +143,12 @@ struct WheelCanvas: View {
         // 首尾相邻时避免同色
         if index == count - 1 && count > 1 && i == 0 { i = (i + 1) % colors.count }
         return colors[i]
+    }
+
+    /// 扇区标签的文字色。扇区外缘半透明、压在深色底盘上，外圈还有一层暗角，文字处比填充色暗，
+    /// 所以换成深字的亮度分界比通用的 readableForeground（0.18）高，按各主题实测取 0.3
+    static func labelColor(on fill: Color) -> Color {
+        fill.relativeLuminance > 0.3 ? Color(hex: 0x14101F) : .white
     }
 
     /// 扇区区间（从正上方顺时针，单位度）

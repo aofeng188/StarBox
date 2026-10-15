@@ -31,13 +31,16 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import com.tianaofeng.xingxia.core.ZodiacSign
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.Fonts
@@ -51,17 +54,20 @@ import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.ThemeManager
 import com.tianaofeng.xingxia.ui.theme.XingXiaTheme
 import java.time.LocalDateTime
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 每个小组件实例的设置，按 appWidgetId 存在单独的 SharedPreferences 里。
- * 读出来的值放在 Compose 状态里，小组件正在显示时改了设置也会跟着重组。
+ * 读的时候顺带订阅 [version]，小组件正在显示时改了设置也会跟着重组。
+ * 缓存本身是普通 Map：首次加载可能发生在组合过程中，不能往快照状态里写。
  */
 object WidgetConfig {
     private const val HOROSCOPE = "horoscope."
     private const val COUNTDOWN = "countdown."
 
-    private val cache = mutableStateMapOf<String, String>()
-    private var loaded = false
+    private val cache = ConcurrentHashMap<String, String>()
+    private val version = mutableIntStateOf(0)
+    @Volatile private var loaded = false
 
     private fun prefs(context: Context) = context.applicationContext.getSharedPreferences("widgets", Context.MODE_PRIVATE)
 
@@ -74,13 +80,17 @@ object WidgetConfig {
 
     private fun read(context: Context, key: String): String? {
         ensureLoaded(context)
+        // 只为订阅：设置变了 version 会加一，正在显示的小组件随之重组
+        if (version.intValue < 0) return null
         return cache[key]
     }
 
+    /** 只在点击、广播等组合之外的地方调用 */
     private fun write(context: Context, key: String, value: String?) {
         ensureLoaded(context)
         if (value == null) cache.remove(key) else cache[key] = value
         prefs(context).edit().apply { if (value == null) remove(key) else putString(key, value) }.apply()
+        version.intValue++
     }
 
     /** 小组件里选定的星座；null 表示跟随当前档案 */
@@ -198,6 +208,15 @@ private fun WidgetConfigScreen(title: String, subtitle: String, content: LazyLis
         AppearanceMode.DARK -> true
     }
     val palette = ThemeManager.resolve(LocalDateTime.now(), Store.birth, false).first.palette(dark)
+    // App 里单独选了深浅色时，状态栏图标跟着页面而不是系统设置走，否则会白字压白底
+    val activity = LocalContext.current as? ComponentActivity
+    SideEffect {
+        activity?.window?.let { window ->
+            val controller = WindowCompat.getInsetsController(window, window.decorView)
+            controller.isAppearanceLightStatusBars = !dark
+            controller.isAppearanceLightNavigationBars = !dark
+        }
+    }
     XingXiaTheme(palette) {
         CompositionLocalProvider(LocalContentColor provides palette.text) {
             Box(

@@ -367,7 +367,7 @@ struct QuickToolsRow: View {
                                 }
                             Text("添加")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .subtleForeground()
                                 .lineLimit(1)
                         }
                         .frame(width: 66)

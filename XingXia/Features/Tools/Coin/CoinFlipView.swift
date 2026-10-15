@@ -45,34 +45,37 @@ struct CoinFlipView: View {
                                 CubicKeyframe(1.0, duration: 0.15)
                             }
 
-                        CoinView(angle: angle)
-                            .frame(width: 190, height: 190)
-                            .keyframeAnimator(initialValue: CoinToss(), trigger: tossTrigger) { view, toss in
-                                view
-                                    .scaleEffect(toss.scale)
-                                    .offset(y: toss.lift)
-                            } keyframes: { _ in
-                                KeyframeTrack(\.lift) {
-                                    CubicKeyframe(-280, duration: 0.55)
-                                    CubicKeyframe(0, duration: 0.6)
-                                    CubicKeyframe(-24, duration: 0.12)
-                                    CubicKeyframe(0, duration: 0.15)
-                                }
-                                KeyframeTrack(\.scale) {
-                                    CubicKeyframe(1.25, duration: 0.55)
-                                    CubicKeyframe(1.0, duration: 0.6)
-                                }
+                        // 减弱动态效果时只换里层的硬币来交叉淡入结果面；外层的手势和读屏焦点保持同一个视图，不会丢焦点
+                        ZStack {
+                            CoinView(angle: angle)
+                                .id(faceSwap)
+                                .transition(.opacity)
+                        }
+                        .frame(width: 190, height: 190)
+                        .keyframeAnimator(initialValue: CoinToss(), trigger: tossTrigger) { view, toss in
+                            view
+                                .scaleEffect(toss.scale)
+                                .offset(y: toss.lift)
+                        } keyframes: { _ in
+                            KeyframeTrack(\.lift) {
+                                CubicKeyframe(-280, duration: 0.55)
+                                CubicKeyframe(0, duration: 0.6)
+                                CubicKeyframe(-24, duration: 0.12)
+                                CubicKeyframe(0, duration: 0.15)
                             }
-                            .gesture(DragGesture(minimumDistance: 20).onEnded { value in
-                                if value.translation.height < -40 { flip() }
-                            })
-                            .onTapGesture { flip() }
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel(result.map { $0 ? "正面" : "反面" } ?? "硬币")
-                            .accessibilityHint("点按抛硬币")
-                            .accessibilityAddTraits(.isButton)
-                            .id(faceSwap)
-                            .transition(.opacity)
+                            KeyframeTrack(\.scale) {
+                                CubicKeyframe(1.25, duration: 0.55)
+                                CubicKeyframe(1.0, duration: 0.6)
+                            }
+                        }
+                        .gesture(DragGesture(minimumDistance: 20).onEnded { value in
+                            if value.translation.height < -40 { flip() }
+                        })
+                        .onTapGesture { flip() }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(result.map { $0 ? "正面" : "反面" } ?? "硬币")
+                        .accessibilityHint("点按抛硬币")
+                        .accessibilityAddTraits(.isButton)
                     }
                 }
 

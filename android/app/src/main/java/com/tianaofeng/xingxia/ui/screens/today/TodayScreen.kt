@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Celebration
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -37,14 +38,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -119,7 +125,8 @@ fun TodayScreen() {
     }
 
     Screen(title = "今日", isRoot = true, actions = { ProfileSwitcher() }) {
-        TodayHeader(today, almanac, remember(now) { Store.greeting() })
+        // 换档案时问候语里的名字也要跟着换，不能等下一分钟
+        TodayHeader(today, almanac, remember(now, Store.primary?.name) { Store.greeting() })
         if (Store.primary == null) {
             GlassCard(onClick = { navigator.open(Routes.profileEditor(onboarding = Store.profiles.items.isEmpty())) }) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -142,9 +149,8 @@ fun TodayScreen() {
                 HomeCard.HOROSCOPE -> HoroscopeMiniCard(today)
                 HomeCard.STICK -> StickMiniCard(today)
                 HomeCard.QUICK_TOOLS -> QuickToolsRow()
-                // 这两张卡在内部取「今天」，换日时用 key 让它们重建
-                HomeCard.COUNTDOWN -> key(today) { CountdownStrip { navigator.open(Routes.COUNTDOWNS) } }
-                HomeCard.MOOD -> key(today) { MoodCheckInCard { navigator.open(Routes.MOOD) } }
+                HomeCard.COUNTDOWN -> CountdownStrip(today) { navigator.open(Routes.COUNTDOWNS) }
+                HomeCard.MOOD -> MoodCheckInCard(today) { navigator.open(Routes.MOOD) }
                 HomeCard.QUOTE -> QuoteCard(fortune.quote)
             }
         }
@@ -354,8 +360,9 @@ private fun StickMiniCard(today: DayKey) {
 @Composable
 private fun QuickToolsRow() {
     val navigator = LocalNavigator.current
-    val tools = AppSettings.favoriteTools.mapNotNull { ToolKind.of(it) }.filter { it.available }
+    val palette = LocalPalette.current
     GlassCard {
+        // 「添加」先带去百宝箱长按收藏；工具页星标和收藏管理页做好后，文案和去向跟 iOS 对齐
         SectionHeader("快捷工具", subtitle = "在百宝箱长按工具可收藏", icon = Icons.Rounded.Bolt)
         Row(
             Modifier
@@ -363,12 +370,35 @@ private fun QuickToolsRow() {
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            for (tool in tools) {
-                QuickTool(tool.label, { ToolIcon(tool.icon, tool.colors, 54.dp) }) { navigator.open(Routes.tool(tool)) }
+            // 按收藏顺序显示；答案之书不在百宝箱里，收藏 id 是 "answers"，单独映射
+            for (id in AppSettings.favoriteTools) {
+                if (id == "answers") {
+                    QuickTool("答案之书", { ToolIcon(Icons.Rounded.MenuBook, listOf(hex(0xF5B83D), hex(0xB45309)), 54.dp) }) {
+                        navigator.open(Routes.ANSWERS)
+                    }
+                } else {
+                    val tool = ToolKind.of(id)?.takeIf { it.available } ?: continue
+                    QuickTool(tool.label, { ToolIcon(tool.icon, tool.colors, 54.dp) }) { navigator.open(Routes.tool(tool)) }
+                }
             }
-            QuickTool("答案之书", { ToolIcon(Icons.Rounded.MenuBook, listOf(hex(0xF5B83D), hex(0xB45309)), 54.dp) }) {
-                navigator.open(Routes.ANSWERS)
-            }
+            QuickTool("添加", {
+                val accent = palette.accent
+                Box(
+                    Modifier
+                        .size(54.dp)
+                        .drawBehind {
+                            val stroke = 1.5.dp.toPx()
+                            drawRoundRect(
+                                color = accent.copy(alpha = 0.6f),
+                                topLeft = Offset(stroke / 2, stroke / 2),
+                                size = Size(size.width - stroke, size.height - stroke),
+                                cornerRadius = CornerRadius(size.minDimension * 0.3f),
+                                style = Stroke(stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 4.dp.toPx()))),
+                            )
+                        },
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Rounded.Add, "管理快捷工具", Modifier.size(26.dp), tint = palette.ink(accent)) }
+            }) { navigator.switchTab(Routes.TOOLS) }
         }
     }
 }

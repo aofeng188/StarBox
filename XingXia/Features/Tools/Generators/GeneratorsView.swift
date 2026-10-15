@@ -59,6 +59,7 @@ private struct ColorGenerator: View {
             HStack(spacing: 6) {
                 ForEach(Array(colors.enumerated()), id: \.offset) { index, color in
                     let isLocked = locked.contains(index)
+                    let state: [String] = (isLocked ? ["已锁定"] : []) + (copied == index ? ["已拷贝"] : [])
                     // 锁头和拷贝按钮并列叠放，不嵌在拷贝按钮里：点锁头不会误拷贝，读屏也能单独聚焦
                     ZStack(alignment: .top) {
                         Button {
@@ -78,8 +79,8 @@ private struct ColorGenerator: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(color.name.isEmpty ? color.hexString : "\(color.name) \(color.hexString)")
-                        .accessibilityValue(isLocked ? "已锁定" : "")
-                        .accessibilityHint(copied == index ? "已拷贝" : "点按拷贝色值")
+                        .accessibilityValue(state.joined(separator: "，"))
+                        .accessibilityHint("点按拷贝色值")
 
                         Button {
                             if isLocked { locked.remove(index) } else { locked.insert(index) }
@@ -98,6 +99,8 @@ private struct ColorGenerator: View {
                         .accessibilityLabel(isLocked ? "解锁" : "锁定")
                         .accessibilityValue(color.name.isEmpty ? color.hexString : color.name)
                     }
+                    // 每个色块自成一组，读屏按「色块 → 它的锁头」的顺序走，不会先读完五个色块再读五个锁头
+                    .accessibilityElement(children: .contain)
                 }
             }
             .glassCard(padding: 12)
@@ -365,6 +368,7 @@ private struct LetterGenerator: View {
                 if history.count > 12 { history.removeLast() }
                 SoundEngine.shared.play(.pop)
                 Haptics.selection()
+                Announce.post(next)
             }
             if !history.isEmpty {
                 Text(history.joined(separator: "  ")).font(.subheadline.monospaced()).foregroundStyle(.secondary)

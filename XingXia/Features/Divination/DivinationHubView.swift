@@ -32,6 +32,7 @@ struct DivinationHubView: View {
                                     .font(.system(size: 44))
                                     .foregroundStyle(LinearGradient(colors: [Color(hex: 0xF5B83D), Color(hex: 0xB45309)], startPoint: .top, endPoint: .bottom))
                                     .shadow(color: Color(hex: 0xF5B83D).opacity(0.7), radius: 12)
+                                    .accessibilityHidden(true)
                             }
                         }
                         .buttonStyle(.pressableCard)
@@ -56,6 +57,8 @@ struct DivinationHubView: View {
                                     }
                                 }
                             }
+                            // 纯装饰，超大字号下名字挤不进 6 列，字号封顶
+                            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                             .accessibilityHidden(true)
                         }
                         .glassCard(interactive: true)

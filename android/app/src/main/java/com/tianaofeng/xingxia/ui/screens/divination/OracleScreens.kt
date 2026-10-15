@@ -34,16 +34,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.ListAlt
 import androidx.compose.material.icons.rounded.NightsStay
+import androidx.compose.material.icons.rounded.People
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PersonAddAlt1
 import androidx.compose.material.icons.rounded.QuestionAnswer
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.CropPortrait
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -51,12 +58,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -88,11 +97,15 @@ import com.tianaofeng.xingxia.core.SeededGenerator
 import com.tianaofeng.xingxia.core.TarotCard
 import com.tianaofeng.xingxia.core.TrueRandom
 import com.tianaofeng.xingxia.core.chineseNumber
+import com.tianaofeng.xingxia.data.AppSettings
+import com.tianaofeng.xingxia.data.Profile
 import com.tianaofeng.xingxia.data.StickDraw
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.BigActionButton
 import com.tianaofeng.xingxia.ui.components.ChipRow
+import com.tianaofeng.xingxia.ui.components.CircleIconButton
 import com.tianaofeng.xingxia.ui.components.Confetti
+import com.tianaofeng.xingxia.ui.components.EmptyHint
 import com.tianaofeng.xingxia.ui.components.Fonts
 import com.tianaofeng.xingxia.ui.components.GlassButton
 import com.tianaofeng.xingxia.ui.components.GlassCard
@@ -110,6 +123,8 @@ import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.starPath
 import com.tianaofeng.xingxia.ui.components.weight
+import com.tianaofeng.xingxia.ui.nav.LocalNavigator
+import com.tianaofeng.xingxia.ui.nav.Routes
 import com.tianaofeng.xingxia.ui.screens.common.StickTubeIllustration
 import com.tianaofeng.xingxia.ui.screens.common.TarotBackMini
 import com.tianaofeng.xingxia.ui.screens.common.TarotCardBack
@@ -129,19 +144,27 @@ import kotlin.math.sin
 
 private enum class StickPhase { IDLE, SHAKING, DROPPED, REVEALED }
 
+/** 某人今天求过的签；profileId 为 null 表示没有档案时的「自己」 */
+private fun todayStickDraw(profileId: String?): StickDraw? =
+    Store.stickDraws.items.lastOrNull { it.dayKey == DayKey.today.rawValue && it.profileId == profileId }
+
 @Composable
 fun StickScreen() {
     val palette = LocalPalette.current
-    val today = DayKey.today
-    val todayDraw = Store.stickDraws.items.lastOrNull { it.dayKey == today.rawValue && it.profileId == Store.primary?.id }
 
-    var phase by remember { mutableStateOf(if (todayDraw != null) StickPhase.REVEALED else StickPhase.IDLE) }
-    var stick by remember { mutableStateOf(todayDraw?.let { ContentLibrary.stick(it.stickNumber) }) }
+    // 流程状态用 rememberSaveable：去添加家人朋友的档案、切标签再回来时，求签进度和「为谁求」都还在，
+    // 今天的签也只在第一次进入时自动揭示
+    var phase by rememberSaveable { mutableStateOf(if (todayStickDraw(Store.primary?.id) != null) StickPhase.REVEALED else StickPhase.IDLE) }
+    var stickNumber by rememberSaveable { mutableStateOf(todayStickDraw(Store.primary?.id)?.stickNumber) }
+    val stick = stickNumber?.let { ContentLibrary.stick(it) }
+    var wish by rememberSaveable { mutableStateOf("综合") }
+    // 为谁求签（档案 id）；null 表示当前档案自己
+    var targetId by rememberSaveable { mutableStateOf<String?>(null) }
+    val target = targetId?.let { id -> Store.profiles.items.firstOrNull { it.id == id } }
+    var choosingProfile by rememberSaveable { mutableStateOf(false) }
     var energy by remember { mutableFloatStateOf(0f) }
     var wobble by remember { mutableFloatStateOf(0f) }
     var holding by remember { mutableStateOf(false) }
-    var wish by remember { mutableStateOf("综合") }
-    var isExtra by remember { mutableStateOf(false) }
     var confetti by remember { mutableIntStateOf(0) }
     var lastRattle by remember { mutableStateOf(0L) }
     val wishes = listOf("综合", "事业", "感情", "财运", "健康", "学业", "出行")
@@ -158,14 +181,29 @@ fun StickScreen() {
         SoundEngine.play(SoundEffect.CHIME)
         Haptics.success()
         if (s.isLucky) confetti++
-        if (todayDraw == null && !isExtra) {
-            Store.stickDraws.add(StickDraw(today.rawValue, Store.primary?.id, s.n))
+        // 每人每天一签：记在求签对象（自己或选中的家人朋友）名下
+        val owner = targetId ?: Store.primary?.id
+        if (todayStickDraw(owner) == null) {
+            Store.stickDraws.add(StickDraw(DayKey.today.rawValue, owner, s.n))
         }
-        // 「综合」是默认所求，不写进标题，历史里只显示「求签」
-        Store.log("stick", if (wish == "综合") "" else "求$wish", "${s.numberText} ${s.levelDisplayName} · ${s.title}")
+        // 「综合」是默认所求，不写进标题，免得出现「求综合」；为别人求的写「为某某」
+        val who = target?.let { "为${it.name}" } ?: ""
+        Store.log("stick", if (wish == "综合") who else "${who}求$wish", "${s.numberText} ${s.levelDisplayName} · ${s.title}")
     }
 
-    OnShake(enabled = phase == StickPhase.IDLE || phase == StickPhase.SHAKING) {
+    /** 回到摇签前的状态；这个人今天已经求过就直接显示那一支 */
+    fun startFor(profileId: String?) {
+        targetId = profileId
+        wish = "综合"
+        energy = 0f
+        wobble = 0f
+        holding = false
+        val existing = todayStickDraw(profileId ?: Store.primary?.id)
+        stickNumber = existing?.stickNumber
+        phase = if (existing != null) StickPhase.REVEALED else StickPhase.IDLE
+    }
+
+    OnShake(enabled = !choosingProfile && (phase == StickPhase.IDLE || phase == StickPhase.SHAKING)) {
         energy += 0.45f
         phase = StickPhase.SHAKING
         rattle()
@@ -185,7 +223,7 @@ fun StickScreen() {
                 energy = maxOf(0f, energy - 0.002f)
             }
             if (energy >= 1f) {
-                stick = ContentLibrary.stick(TrueRandom.int(1..ContentLibrary.sticks.size))
+                stickNumber = TrueRandom.int(1..ContentLibrary.sticks.size)
                 holding = false
                 phase = StickPhase.DROPPED
             }
@@ -203,19 +241,53 @@ fun StickScreen() {
 
     Box(Modifier.fillMaxSize()) {
         val current = stick
-        if (phase == StickPhase.REVEALED && current != null) {
-            StickResult(current, wish, isExtra) {
-                isExtra = true
-                energy = 0f
-                wobble = 0f
-                stick = null
-                phase = StickPhase.IDLE
+        if (choosingProfile) {
+            StickProfilePicker(onBack = { choosingProfile = false }) { profile ->
+                choosingProfile = false
+                startFor(profile.id)
+            }
+        } else if (phase == StickPhase.REVEALED && current != null) {
+            // 换了一支签或换了人就当新页面，重新盖章
+            key(current.n, targetId) {
+                StickResult(
+                    current,
+                    wish,
+                    forName = target?.let { "${it.avatar} ${it.name}" },
+                    onAgain = { choosingProfile = true },
+                    onMine = { startFor(null) },
+                )
             }
         } else {
             Screen(title = "求签", scrollable = false, horizontalAlignment = Alignment.CenterHorizontally) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(if (phase == StickPhase.DROPPED) "签已落地" else "心中默念所求之事", style = Fonts.serif(26, bold = true))
-                    SecondaryText(if (phase == StickPhase.DROPPED) "点按签文，看看今天的指引" else "摇动手机，或按住下方按钮摇签")
+                    SecondaryText(
+                        when {
+                            phase == StickPhase.DROPPED -> "点按签文，看看今天的指引"
+                            AppSettings.shakeEnabled -> "摇动手机，或按住下方按钮摇签"
+                            else -> "按住下方按钮摇签"
+                        },
+                    )
+                }
+                if (target != null) {
+                    Row(
+                        Modifier
+                            .clip(CircleShape)
+                            .background(palette.subtle(0.08f))
+                            .padding(start = 14.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text("为 ${target.avatar} ${target.name} 求签", style = Fonts.subheadline.weight(FontWeight.SemiBold))
+                        Box(
+                            Modifier
+                                .size(36.dp)
+                                .pressable { startFor(null) },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(Icons.Rounded.Close, "不为${target.name}求了，回到自己的签", Modifier.size(18.dp), tint = palette.secondaryText)
+                        }
+                    }
                 }
                 if (phase == StickPhase.IDLE) {
                     ChipRow { for (item in wishes) SelectChip(item, wish == item) { wish = item } }
@@ -331,8 +403,12 @@ private fun SingleStick(number: Int, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * 解签结果。forName：为家人朋友求的签写「为 某某 求得」，null 是自己的签；
+ * onMine：看完别人的签，回到自己的今日一签
+ */
 @Composable
-private fun StickResult(stick: FortuneStick, wish: String, isExtra: Boolean, onAgain: () -> Unit) {
+private fun StickResult(stick: FortuneStick, wish: String, forName: String?, onAgain: () -> Unit, onMine: () -> Unit) {
     val palette = LocalPalette.current
     val ink = stickLevelInk(stick.level, palette.isDark)
     val stamp = remember(stick.n) { Animatable(0f) }
@@ -343,6 +419,17 @@ private fun StickResult(stick: FortuneStick, wish: String, isExtra: Boolean, onA
         Haptics.heavy()
     }
     Screen(title = "求签") {
+        if (forName != null) {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text(
+                    "为 $forName 求得",
+                    style = Fonts.subheadline.weight(FontWeight.SemiBold),
+                    modifier = Modifier
+                        .glass(CircleShape)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+        }
         GlassCard(padding = 22.dp, tint = stickLevelColor(stick.level).copy(alpha = 0.08f), spacing = 18.dp) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -416,8 +503,59 @@ private fun StickResult(stick: FortuneStick, wish: String, isExtra: Boolean, onA
         }
 
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SecondaryText(if (isExtra) "这一签不计入今日一签" else "心诚则灵 · 一日一签", style = Fonts.footnote)
-            GlassButton("为家人朋友再求一签", Icons.Rounded.Refresh, onClick = onAgain)
+            SecondaryText("心诚则灵 · 一日一签", style = Fonts.footnote)
+            GlassButton("为家人朋友再求一签", Icons.Rounded.People, onClick = onAgain)
+            if (forName != null) GlassButton("看我的今日一签", Icons.Rounded.Person, onClick = onMine)
+        }
+    }
+}
+
+/** 为谁求签：列出当前档案以外的家人朋友 */
+@Composable
+private fun StickProfilePicker(onBack: () -> Unit, onPick: (Profile) -> Unit) {
+    val navigator = LocalNavigator.current
+    val palette = LocalPalette.current
+    val others = Store.sortedProfiles.filter { it.id != Store.primary?.id }
+    Screen(title = "为谁求签", onBack = onBack) {
+        if (others.isEmpty()) {
+            GlassCard {
+                EmptyHint(Icons.Rounded.People, "还没有家人朋友的档案", "添加他们的生日后，就能为他们各求一支今日签")
+            }
+        } else {
+            GlassCard(padding = 8.dp, spacing = 0.dp) {
+                others.forEachIndexed { index, profile ->
+                    val drawn = todayStickDraw(profile.id)
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(20.dp))
+                            .pressable { onPick(profile) }
+                            .padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Box(
+                            Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(palette.accent.copy(alpha = 0.18f)),
+                            contentAlignment = Alignment.Center,
+                        ) { Text(profile.avatar, style = Fonts.title) }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(profile.name, style = Fonts.headline)
+                            SecondaryText(profile.relation, style = Fonts.caption)
+                        }
+                        if (drawn != null) {
+                            SecondaryText("今日已求 · ${ContentLibrary.stick(drawn.stickNumber).numberText}", style = Fonts.caption)
+                        }
+                    }
+                    if (index < others.size - 1) HorizontalDivider(color = palette.subtle(0.08f))
+                }
+            }
+            SecondaryText("每人每天一签，今天已经求过的会直接显示那一支", style = Fonts.caption)
+        }
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            GlassButton("添加家人朋友", Icons.Rounded.PersonAddAlt1) { navigator.open(Routes.profileEditor()) }
         }
     }
 }
@@ -564,10 +702,11 @@ fun TarotScreen() {
             SoundEngine.play(SoundEffect.CARD_FLIP)
             Haptics.impact()
             if (flipped.size == picked.size) {
+                // 先记下这次占卜，再等收尾音效：翻完马上点「重新开始」会取消这个任务，记录不能跟着丢
+                save()
                 delay(400)
                 SoundEngine.play(SoundEffect.SPARKLE)
                 if (picked.all { !it.reversed }) confetti++
-                save()
             }
         }
     }
@@ -853,7 +992,19 @@ fun AnswerBookScreen() {
 
     OnShake(enabled = !isOpen) { open() }
 
-    Screen(title = "答案之书", horizontalAlignment = Alignment.CenterHorizontally, spacing = 22.dp) {
+    val favorite = "answers" in AppSettings.favoriteTools
+    Screen(
+        title = "答案之书",
+        horizontalAlignment = Alignment.CenterHorizontally,
+        spacing = 22.dp,
+        actions = {
+            // 收藏到首页快捷工具（收藏 id 是 "answers"）
+            CircleIconButton(if (favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder, if (favorite) "取消收藏" else "收藏到首页") {
+                AppSettings.toggleFavorite("answers")
+                Haptics.selection()
+            }
+        },
+    ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(if (isOpen) "这是宇宙给你的答案" else "心中默念一个问题", style = Fonts.serif(24, bold = true))
             SecondaryText(if (isOpen) "答案只是提示，选择权永远在你" else "最好是能用「是」或「否」回答的问题")

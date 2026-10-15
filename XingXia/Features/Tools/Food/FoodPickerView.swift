@@ -73,11 +73,14 @@ struct FoodPickerView: View {
 
                     if let result, !isRolling {
                         HStack(spacing: 10) {
-                            Button(acceptedTitle == result.title ? "已记录" : "就吃这个", systemImage: "checkmark.circle.fill") { accept(result) }
-                                .buttonStyle(.glassProminent)
-                                .tint(palette.accent)
-                                .foregroundStyle(palette.onAccent)
-                                .disabled(acceptedTitle == result.title)
+                            Button { accept(result) } label: {
+                                // 和 BigActionButton 一样把文字色放在 label 里，深色主题的亮 accent 上用深字
+                                Label(acceptedTitle == result.title ? "已记录" : "就吃这个", systemImage: "checkmark.circle.fill")
+                                    .foregroundStyle(palette.onAccent)
+                            }
+                            .buttonStyle(.glassProminent)
+                            .tint(palette.accent)
+                            .disabled(acceptedTitle == result.title)
                             if let item = result.mapItem {
                                 Button("导航", systemImage: "location.fill") {
                                     item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
@@ -337,13 +340,14 @@ struct FoodPickerView: View {
         return (best.key, best.value)
     }
 
-    private func roll() {
+    /// excluded：刚拉黑的菜。@Query 的黑名单不一定立刻刷新，这里显式排除，免得马上又抽到它
+    private func roll(excluding excluded: String? = nil) {
         guard !isRolling else { return }
-        let candidates = pool
+        let candidates = pool.filter { $0.title != excluded }
         guard !candidates.isEmpty else { return }
         let weights: [Double] = switch source {
         case .library: candidates.map { FoodLibrary.weight(for: $0.title, logs: logs, smart: smartDedupe) }
-        case .menus: (currentMenu?.sortedItems ?? []).filter { $0.weight > 0 }.map(\.weight)
+        case .menus: (currentMenu?.sortedItems ?? []).filter { $0.weight > 0 && $0.name != excluded }.map(\.weight)
         case .nearby: candidates.map { _ in 1 }
         }
         let index = TrueRandom.weightedIndex(weights) ?? 0
@@ -382,7 +386,9 @@ struct FoodPickerView: View {
         context.insert(BlockedFood(name: name))
         try? context.save()
         Haptics.warning()
-        roll()
+        // 先收起当前结果：筛完没菜可抽时，也不会留着「不想吃」让人重复拉黑同一道菜
+        result = nil
+        roll(excluding: name)
     }
 
     private func searchNearby() async {

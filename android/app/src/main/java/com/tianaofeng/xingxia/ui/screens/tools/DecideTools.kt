@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.PanTool
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.ThumbDown
@@ -285,8 +286,9 @@ fun FoodScreen() {
     }
 
     Box(Modifier.fillMaxSize()) {
+        // 顶栏右侧还有收藏星标，黑名单用图标按钮（与 iOS 工具栏一致），数量放进读屏描述
         Screen(title = "今天吃什么", actions = {
-            TextAction("黑名单（${Store.blockedFoods.items.size}）") { showBlocked = true }
+            CircleIconButton(Icons.Rounded.PanTool, "黑名单（${Store.blockedFoods.items.size}）") { showBlocked = true }
         }) {
             SegmentedPicker(FoodSource.entries, source, { it.label }) {
                 source = it

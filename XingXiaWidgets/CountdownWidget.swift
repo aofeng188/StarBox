@@ -125,7 +125,9 @@ struct CountdownWidgetView: View {
             if family == .accessoryRectangular {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(value.emoji) \(value.title)").font(.headline).lineLimit(1)
-                    Text(status.isToday ? "就是今天" : "\(status.prefix) \(status.days) \(status.suffix)").font(.title3.bold()).widgetAccentable()
+                    // 和下面大号样式一致：倒数日「就是今天」、生日「生日快乐」，纪念日周年当天仍显示第几天
+                    Text(status.isToday && status.suffix != "天" ? status.prefix + status.suffix : "\(status.prefix) \(status.days) \(status.suffix)")
+                        .font(.title3.bold()).widgetAccentable()
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {

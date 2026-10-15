@@ -1,21 +1,28 @@
 package com.tianaofeng.xingxia.ui.screens.records
 
+import android.content.Context
+import android.view.accessibility.AccessibilityManager
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +36,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.GridOn
 import androidx.compose.material.icons.rounded.HourglassEmpty
@@ -51,8 +59,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -68,7 +78,19 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -84,6 +106,7 @@ import com.tianaofeng.xingxia.core.FortuneEngine
 import com.tianaofeng.xingxia.core.LunarDate
 import com.tianaofeng.xingxia.core.pearson
 import com.tianaofeng.xingxia.data.Countdown
+import com.tianaofeng.xingxia.data.MoodEntry
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.BigActionButton
 import com.tianaofeng.xingxia.ui.components.CircleIconButton
@@ -95,6 +118,7 @@ import com.tianaofeng.xingxia.ui.components.GlassButton
 import com.tianaofeng.xingxia.ui.components.GlassCard
 import com.tianaofeng.xingxia.ui.components.GradientIcon
 import com.tianaofeng.xingxia.ui.components.Haptics
+import com.tianaofeng.xingxia.ui.components.ReadableWidth
 import com.tianaofeng.xingxia.ui.components.ScoreRing
 import com.tianaofeng.xingxia.ui.components.Screen
 import com.tianaofeng.xingxia.ui.components.SecondaryText
@@ -113,6 +137,7 @@ import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.hex
 import com.tianaofeng.xingxia.ui.theme.readableForeground
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneOffset
@@ -146,6 +171,12 @@ fun MoodPicker(selected: Int?, size: Dp = 46.dp, onSelect: (MoodLevel) -> Unit) 
                     .clickable {
                         Haptics.selection()
                         onSelect(mood)
+                    }
+                    // 读屏读心情名称和选中状态，不读表情符号
+                    .clearAndSetSemantics {
+                        contentDescription = mood.label
+                        role = Role.Button
+                        this.selected = isSelected
                     },
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -183,154 +214,337 @@ fun MoodCheckInCard(today: DayKey = DayKey.today, onOpen: () -> Unit) {
 @Composable
 fun MoodScreen() {
     val palette = LocalPalette.current
+    val context = LocalContext.current
+    val view = LocalView.current
+    val scope = rememberCoroutineScope()
     val today = rememberToday()
+    // 提到外面：补记完回来时停在原来的位置；点「今天」时滚回顶部的输入卡片
+    val scroll = rememberScrollState()
     val entries = Store.moods.items.sortedByDescending { it.dayKey }
-    val todayEntry = Store.todayMood(today)
-    var note by remember(today) { mutableStateOf(todayEntry?.note ?: "") }
-    var tags by remember(today) { mutableStateOf(todayEntry?.tags?.toSet() ?: emptySet()) }
+    // 心情月历显示的月份（yyyyMM）；null 表示本月，跨月时自动翻到新的月份
+    var shownMonth by rememberSaveable { mutableStateOf<Int?>(null) }
+    val currentMonth = YearMonth.of(today.year, today.month)
+    val month = shownMonth?.let { YearMonth.of(it / 100, it % 100) }?.takeIf { it < currentMonth } ?: currentMonth
+    // 正在补记或修改的过去某天
+    var editingDay by rememberSaveable { mutableStateOf<Int?>(null) }
+    // 刚删除的记录，几秒内可以撤销
+    var deleted by remember { mutableStateOf<MoodEntry?>(null) }
 
-    fun saveNote() {
-        val entry = Store.todayMood(today) ?: return
-        if (entry.note == note && entry.tags == tags.sorted()) return
-        Store.moods.update { list ->
-            list.map { if (it.dayKey == today.rawValue) it.copy(note = note, tags = tags.sorted()) else it }
+    LaunchedEffect(deleted) {
+        if (deleted == null) return@LaunchedEffect
+        // 读屏用户找到「撤销」需要更久
+        val touchExploring = (context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager)?.isTouchExplorationEnabled == true
+        delay(if (touchExploring) 10_000L else 5_000L)
+        deleted = null
+    }
+
+    /** 今天回到顶部的输入卡片；过去的日子打开补记页 */
+    fun edit(day: DayKey) {
+        if (day > today) return
+        if (day == today) {
+            scope.launch { scroll.animateScrollTo(0) }
+        } else {
+            editingDay = day.rawValue
         }
     }
 
-    // 笔记边写边存（停顿半秒后写入），离开页面时再存一次，不必非点「保存」
-    LaunchedEffect(note) {
-        delay(500)
-        saveNote()
+    fun delete(entry: MoodEntry) {
+        Store.moods.update { list -> list.filter { it.dayKey != entry.dayKey } }
+        Haptics.tap()
+        deleted = entry
+        DayKey.fromRaw(entry.dayKey)?.let { view.announceForAccessibility("已删除${DateText.monthDay(it)}的心情，可以撤销") }
     }
-    val latestSave by rememberUpdatedState { saveNote() }
-    DisposableEffect(Unit) { onDispose { latestSave() } }
 
-    Screen(title = "心情打卡") {
-        GlassCard(spacing = 14.dp) {
-            SectionHeader("今天的心情", subtitle = DateText.monthDay(today), icon = Icons.Rounded.SentimentSatisfied)
-            MoodPicker(todayEntry?.mood, 52.dp) {
-                Store.setMood(it.value, today)
-                saveNote()
-            }
-            GlassTextField(note, "写一句话记录今天…", singleLine = false) { note = it }
-            Flow(spacing = 6.dp) {
-                for (tag in MoodLevel.TAGS) {
-                    val on = tag in tags
-                    Text(
-                        "#$tag",
-                        style = Fonts.caption.copy(fontWeight = FontWeight.Medium),
-                        color = if (on) palette.onAccent else palette.text,
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .then(if (on) Modifier.background(palette.accentBrush) else Modifier.background(palette.subtle(0.07f)))
-                            .clickable {
-                                tags = if (on) tags - tag else tags + tag
-                                saveNote()
-                            }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                    )
-                }
-            }
-            if (todayEntry != null) {
-                GlassButton("保存", Icons.Rounded.Favorite) {
-                    saveNote()
-                    Haptics.success()
-                }
-            } else {
-                SecondaryText("先选一个心情，再写笔记和标签", style = Fonts.caption)
-            }
+    fun undoDelete() {
+        val snapshot = deleted ?: return
+        deleted = null
+        // 删除后那天可能又记过心情，这时不再恢复，避免同一天出现两条
+        if (Store.moods.items.any { it.dayKey == snapshot.dayKey }) {
+            view.announceForAccessibility("这天已经重新记录了心情，没有恢复")
+            return
         }
+        Store.moods.update { it + snapshot }
+        Haptics.success()
+        view.announceForAccessibility("已恢复")
+    }
 
-        MonthHeatmap(entries.associate { it.dayKey to it.mood }, today)
-
-        correlationInsight()?.let { insight ->
-            GlassCard {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    GradientIcon(Icons.Rounded.AutoAwesome, 22.dp)
-                    Text(insight, style = Fonts.subheadline)
-                }
-            }
+    val editing = editingDay?.let { DayKey.fromRaw(it) }?.takeIf { it <= today }
+    if (editing != null) {
+        Screen(
+            title = "${DateText.monthDay(editing)} ${DateText.weekday(editing)}",
+            onBack = { editingDay = null },
+            actions = { TextAction("完成") { editingDay = null } },
+        ) {
+            GlassCard { MoodDayEditor(editing) }
         }
+        return
+    }
 
-        val recent = entries.take(60)
-        GlassCard(spacing = 10.dp) {
-            SectionHeader("心情分布", subtitle = "最近 ${recent.size} 次", icon = Icons.Rounded.BarChart)
-            val counts = MoodLevel.entries.map { mood -> mood to recent.count { it.mood == mood.value } }
-            val max = maxOf(1, counts.maxOf { it.second })
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .height(140.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                for ((mood, count) in counts) {
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        SecondaryText("$count", style = Fonts.caption)
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height((90f * count / max).coerceAtLeast(3f).dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Brush.verticalGradient(listOf(mood.color, mood.color.copy(alpha = 0.6f)))),
-                        )
-                        Text(mood.emoji, style = Fonts.subheadline)
+    Box(Modifier.fillMaxSize()) {
+        Screen(title = "心情打卡", scrollState = scroll) {
+            GlassCard(spacing = 14.dp) {
+                SectionHeader("今天的心情", subtitle = DateText.monthDay(today), icon = Icons.Rounded.SentimentSatisfied)
+                // 跨天时换成新的一天；旧的编辑器离开前会把内容存回原来那天
+                key(today) { MoodDayEditor(today, showsSaveButton = true) }
+            }
+
+            MonthHeatmap(
+                entries.associate { it.dayKey to it.mood }, today, month,
+                onShift = { delta ->
+                    val target = month.plusMonths(delta.toLong())
+                    if (target <= currentMonth) {
+                        shownMonth = if (target == currentMonth) null else target.year * 100 + target.monthValue
+                        Haptics.selection()
+                    }
+                },
+                onSelect = { edit(it) },
+            )
+
+            correlationInsight()?.let { insight ->
+                GlassCard {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        GradientIcon(Icons.Rounded.AutoAwesome, 22.dp)
+                        Text(insight, style = Fonts.subheadline)
                     }
                 }
             }
+
+            val recent = entries.take(60)
+            GlassCard(spacing = 10.dp) {
+                SectionHeader("心情分布", subtitle = "最近 ${recent.size} 次", icon = Icons.Rounded.BarChart)
+                val counts = MoodLevel.entries.map { mood -> mood to recent.count { it.mood == mood.value } }
+                val max = maxOf(1, counts.maxOf { it.second })
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(140.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    for ((mood, count) in counts) {
+                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            SecondaryText("$count", style = Fonts.caption)
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height((90f * count / max).coerceAtLeast(3f).dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Brush.verticalGradient(listOf(mood.color, mood.color.copy(alpha = 0.6f)))),
+                            )
+                            Text(mood.emoji, style = Fonts.subheadline)
+                        }
+                    }
+                }
+            }
+
+            GlassCard(spacing = 10.dp) {
+                SectionHeader("心情日记", subtitle = if (entries.isEmpty()) null else "长按可修改或删除", icon = Icons.Rounded.MenuBook)
+                if (entries.isEmpty()) SecondaryText("还没有记录，从今天开始吧")
+                val diary = entries.take(30).mapNotNull { entry ->
+                    val mood = MoodLevel.of(entry.mood)
+                    val key = DayKey.fromRaw(entry.dayKey)
+                    if (mood != null && key != null) Triple(entry, mood, key) else null
+                }
+                for ((entry, mood, key) in diary) {
+                    MoodDiaryRow(entry, mood, key, onEdit = { edit(key) }, onDelete = { delete(entry) })
+                }
+            }
         }
 
-        GlassCard(spacing = 10.dp) {
-            SectionHeader("心情日记", icon = Icons.Rounded.MenuBook)
-            if (entries.isEmpty()) SecondaryText("还没有记录，从今天开始吧")
-            val diary = entries.take(30).mapNotNull { entry ->
-                val mood = MoodLevel.of(entry.mood)
-                val key = DayKey.fromRaw(entry.dayKey)
-                if (mood != null && key != null) Triple(entry, mood, key) else null
-            }
-            for ((entry, mood, key) in diary) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(mood.emoji, style = Fonts.title2)
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("${DateText.monthDay(key)} ${DateText.weekday(key)} · ${mood.label}", style = Fonts.subheadline.copy(fontWeight = FontWeight.SemiBold))
-                        if (entry.note.isNotEmpty()) SecondaryText(entry.note)
-                        if (entry.tags.isNotEmpty()) Text(entry.tags.joinToString(" ") { "#$it" }, style = Fonts.caption, color = palette.accent)
-                    }
-                    CircleIconButton(Icons.Rounded.Delete, "删除", size = 30.dp) {
-                        Store.moods.update { list -> list.filter { it.dayKey != entry.dayKey } }
-                    }
+        deleted?.let { snapshot ->
+            val key = DayKey.fromRaw(snapshot.dayKey)
+            if (key != null) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+                        .widthIn(max = ReadableWidth)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        // 压在页面内容上，底色不透明一些才读得清
+                        .background(palette.backgroundBottom.copy(alpha = 0.94f))
+                        .glass(RoundedCornerShape(20.dp))
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(Icons.Rounded.Delete, null, Modifier.size(18.dp), tint = palette.secondaryText)
+                    Text("已删除 ${DateText.monthDay(key)} 的心情", style = Fonts.subheadline, color = palette.text, modifier = Modifier.weight(1f))
+                    TextAction("撤销") { undoDelete() }
                 }
             }
         }
     }
 }
 
+/** 心情日记的一行：点按或长按弹出「修改 / 删除」，读屏可直接用自定义操作 */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MonthHeatmap(map: Map<Int, Int>, today: DayKey) {
+private fun MoodDiaryRow(entry: MoodEntry, mood: MoodLevel, key: DayKey, onEdit: () -> Unit, onDelete: () -> Unit) {
     val palette = LocalPalette.current
-    val first = DayKey(today.year, today.month, 1)
-    val days = YearMonth.of(today.year, today.month).lengthOfMonth()
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .combinedClickable(onClickLabel = "修改或删除", onLongClick = { menu = true }) { menu = true }
+                .semantics {
+                    customActions = listOf(
+                        CustomAccessibilityAction("修改") { onEdit(); true },
+                        CustomAccessibilityAction("删除") { onDelete(); true },
+                    )
+                },
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(mood.emoji, style = Fonts.title2)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("${DateText.monthDay(key)} ${DateText.weekday(key)} · ${mood.label}", style = Fonts.subheadline.copy(fontWeight = FontWeight.SemiBold))
+                if (entry.note.isNotEmpty()) SecondaryText(entry.note)
+                if (entry.tags.isNotEmpty()) Text(entry.tags.joinToString(" ") { "#$it" }, style = Fonts.caption, color = palette.ink(palette.accent))
+            }
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(
+                text = { Text("修改") },
+                leadingIcon = { Icon(Icons.Rounded.Edit, null) },
+                onClick = {
+                    menu = false
+                    onEdit()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("删除", color = palette.negative) },
+                leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = palette.negative) },
+                onClick = {
+                    menu = false
+                    onDelete()
+                },
+            )
+        }
+    }
+}
+
+/** 某一天的心情、一句话和标签。文字停顿片刻后自动保存，离开时再存一次（与 iOS 的 MoodDayEditor 一致） */
+@Composable
+private fun MoodDayEditor(day: DayKey, showsSaveButton: Boolean = false) {
+    val palette = LocalPalette.current
+    val focus = LocalFocusManager.current
+    val entry = Store.moods.items.lastOrNull { it.dayKey == day.rawValue }
+    var note by remember(day) { mutableStateOf(entry?.note ?: "") }
+    var tags by remember(day) { mutableStateOf(entry?.tags?.toSet() ?: emptySet()) }
+
+    fun saveNote() {
+        val current = Store.moods.items.lastOrNull { it.dayKey == day.rawValue } ?: return
+        val sortedTags = tags.sorted()
+        if (current.note == note && current.tags == sortedTags) return
+        Store.moods.update { list ->
+            list.map { if (it.dayKey == day.rawValue) it.copy(note = note, tags = sortedTags) else it }
+        }
+    }
+
+    // 记录被删除或撤销恢复后，输入框跟着更新（新建记录时这句话已经先存进去了，内容不变）
+    val exists = entry != null
+    LaunchedEffect(day, exists) {
+        val current = Store.moods.items.lastOrNull { it.dayKey == day.rawValue }
+        note = current?.note ?: ""
+        tags = current?.tags?.toSet() ?: emptySet()
+    }
+    // 边写边存（停顿半秒后写入），离开时再存一次，不必非点「保存」
+    LaunchedEffect(day, note) {
+        delay(500)
+        saveNote()
+    }
+    val latestSave by rememberUpdatedState { saveNote() }
+    DisposableEffect(day) { onDispose { latestSave() } }
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        MoodPicker(entry?.mood, 52.dp) {
+            Store.setMood(it.value, day)
+            saveNote()
+        }
+        GlassTextField(note, if (day == DayKey.today) "写一句话记录今天…" else "写一句话记录这一天…", singleLine = false) { note = it }
+        if (entry == null && note.isNotBlank()) SecondaryText("选一个心情后，这句话会一起保存", style = Fonts.caption)
+        Flow(spacing = 6.dp) {
+            for (tag in MoodLevel.TAGS) {
+                val on = tag in tags
+                Text(
+                    "#$tag",
+                    style = Fonts.caption.copy(fontWeight = FontWeight.Medium),
+                    color = if (on) palette.onAccent else palette.text,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .then(if (on) Modifier.background(palette.accentBrush) else Modifier.background(palette.subtle(0.07f)))
+                        .clickable {
+                            tags = if (on) tags - tag else tags + tag
+                            saveNote()
+                        }
+                        .clearAndSetSemantics {
+                            contentDescription = "标签 $tag"
+                            role = Role.Button
+                            this.selected = on
+                        }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
+        }
+        if (showsSaveButton && entry != null) {
+            GlassButton("保存", Icons.Rounded.Check) {
+                focus.clearFocus()
+                saveNote()
+                Haptics.success()
+            }
+        }
+    }
+}
+
+@Composable
+private fun MonthHeatmap(map: Map<Int, Int>, today: DayKey, month: YearMonth, onShift: (Int) -> Unit, onSelect: (DayKey) -> Unit) {
+    val palette = LocalPalette.current
+    val first = DayKey(month.year, month.monthValue, 1)
+    val days = month.lengthOfMonth()
     val leading = (first.weekday + 6) % 7
-    val monthEntries = map.filterKeys { it / 100 == today.year * 100 + today.month }
+    val isCurrentMonth = month.year == today.year && month.monthValue == today.month
+    val monthEntries = map.filterKeys { it / 100 == month.year * 100 + month.monthValue }
     val average = if (monthEntries.isEmpty()) null else
         "打卡 %d 天 · 平均 %.1f".format(monthEntries.size, monthEntries.values.average())
+    val title = if (month.year == today.year) "${month.monthValue}月心情" else "${month.year}年${month.monthValue}月心情"
     GlassCard(spacing = 10.dp) {
-        SectionHeader("${today.month}月心情", subtitle = average, icon = Icons.Rounded.GridOn)
+        SectionHeader(title, subtitle = average, icon = Icons.Rounded.GridOn) {
+            CircleIconButton(Icons.Rounded.ChevronLeft, "上个月", size = 30.dp) { onShift(-1) }
+            CircleIconButton(Icons.Rounded.ChevronRight, "下个月", size = 30.dp, enabled = !isCurrentMonth) { onShift(1) }
+        }
         CalendarGrid(leading, days, cellHeight = 34.dp) { day ->
-            val key = DayKey(today.year, today.month, day)
+            val key = DayKey(month.year, month.monthValue, day)
             val mood = MoodLevel.of(map[key.rawValue])
+            val isFuture = key > today
             Box(
                 Modifier
                     .fillMaxWidth()
                     .height(34.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(mood?.color?.copy(alpha = 0.75f) ?: palette.subtle(if (key > today) 0.02f else 0.06f))
-                    .then(if (key == today) Modifier.border(1.5.dp, palette.accent, RoundedCornerShape(8.dp)) else Modifier),
+                    .background(mood?.color?.copy(alpha = 0.75f) ?: palette.subtle(if (isFuture) 0.02f else 0.06f))
+                    .then(if (key == today) Modifier.border(1.5.dp, palette.accent, RoundedCornerShape(8.dp)) else Modifier)
+                    // 过去的日子点一下补记或修改，未来的不能点
+                    .clickable(enabled = !isFuture) {
+                        Haptics.selection()
+                        onSelect(key)
+                    }
+                    .clearAndSetSemantics {
+                        contentDescription = "${key.month}月${key.day}日，" + (mood?.let { "心情${it.label}" } ?: "未记录")
+                        role = Role.Button
+                    },
                 contentAlignment = Alignment.Center,
             ) {
-                if (mood != null) Text(mood.emoji, style = Fonts.caption) else SecondaryText("$day", style = Fonts.caption2)
+                if (mood != null) {
+                    Text(mood.emoji, style = Fonts.caption)
+                } else {
+                    SecondaryText("$day", style = Fonts.caption2, modifier = Modifier.alpha(if (isFuture) 0.5f else 1f))
+                }
             }
         }
+        SecondaryText("点过去的日子可以补记心情", style = Fonts.caption2)
     }
 }
 
@@ -545,8 +759,11 @@ private fun CountdownEditor(existing: Countdown?, onDone: () -> Unit) {
     var lunarMonth by rememberSaveable { mutableStateOf(existing?.lunarMonth ?: 1) }
     var lunarDay by rememberSaveable { mutableStateOf(existing?.lunarDay ?: 1) }
     var repeats by rememberSaveable { mutableStateOf(existing?.repeatsYearly ?: false) }
-    // 农历生日是否记录出生年份（打开才显示年龄）
-    var recordsBirthYear by rememberSaveable { mutableStateOf(existing?.knowsBirthYear ?: false) }
+    // 农历生日是否记录出生年份（打开才显示年龄）。只有原本就是生日时 date 才是出生日期；
+    // 倒数日、纪念日改成生日时 date 是目标日或开始日，不能当出生年份（与 iOS 一致）
+    var recordsBirthYear by rememberSaveable {
+        mutableStateOf(existing != null && existing.kindValue == CountdownKind.BIRTHDAY && existing.knowsBirthYear)
+    }
     var colorIndex by rememberSaveable { mutableStateOf(existing?.colorIndex ?: 0) }
     var pinned by rememberSaveable { mutableStateOf(existing?.pinned ?: false) }
     var showDate by rememberSaveable { mutableStateOf(false) }
@@ -604,7 +821,12 @@ private fun CountdownEditor(existing: Countdown?, onDone: () -> Unit) {
                             .size(42.dp)
                             .clip(CircleShape)
                             .background(if (emoji == item) palette.accent.copy(alpha = 0.3f) else Color.Transparent)
-                            .clickable { emoji = item },
+                            .clickable { emoji = item }
+                            .clearAndSetSemantics {
+                                contentDescription = "图标 $item"
+                                role = Role.Button
+                                this.selected = emoji == item
+                            },
                         contentAlignment = Alignment.Center,
                     ) { Text(item, style = Fonts.title2) }
                 }
@@ -670,10 +892,15 @@ private fun CountdownEditor(existing: Countdown?, onDone: () -> Unit) {
                             .padding(3.dp)
                             .clip(CircleShape)
                             .background(fill)
-                            .clickable { colorIndex = index },
+                            .clickable { colorIndex = index }
+                            .clearAndSetSemantics {
+                                contentDescription = "颜色 ${index + 1}，${colorName(fill)}"
+                                role = Role.Button
+                                this.selected = isSelected
+                            },
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (isSelected) Icon(Icons.Rounded.Check, "已选颜色 ${index + 1}", Modifier.size(16.dp), tint = fill.readableForeground)
+                        if (isSelected) Icon(Icons.Rounded.Check, null, Modifier.size(16.dp), tint = fill.readableForeground)
                     }
                 }
             }
@@ -739,6 +966,26 @@ private fun <T> OptionRow(title: String, value: String, options: List<Pair<T, St
     }
 }
 
+/** 读屏用的颜色名称，按色相粗分（与 iOS 一致） */
+private fun colorName(color: Color): String {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(color.toArgb(), hsv)
+    val hue = hsv[0]
+    val saturation = hsv[1]
+    val brightness = hsv[2]
+    if (saturation < 0.15f) return if (brightness < 0.4f) "深灰" else "灰色"
+    return when {
+        hue < 15f || hue >= 345f -> "红色"
+        hue < 40f -> "橙色"
+        hue < 70f -> if (brightness < 0.7f) "金色" else "黄色"
+        hue < 165f -> "绿色"
+        hue < 195f -> "青色"
+        hue < 245f -> "蓝色"
+        hue < 290f -> "紫色"
+        else -> "粉色"
+    }
+}
+
 // endregion
 
 // region 运势日历
@@ -798,6 +1045,14 @@ fun FortuneCalendarScreen() {
                         .clickable {
                             selected = day
                             Haptics.selection()
+                        }
+                        // 读屏读完整日期、分数、心情和求签情况（与 iOS 一致）
+                        .clearAndSetSemantics {
+                            contentDescription = "${day.month}月${day.day}日，运势 $score 分" +
+                                (mood?.let { "，心情${it.label}" } ?: "") +
+                                (if (sticks[day.rawValue] != null) "，已求签" else "")
+                            role = Role.Button
+                            this.selected = isSelected
                         },
                 ) {
                     Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -927,8 +1182,28 @@ fun WeekMoodCard(today: DayKey = DayKey.today, onOpen: () -> Unit) {
                 val day = today.adding(-offset)
                 val mood = MoodLevel.of(Store.moods.items.lastOrNull { it.dayKey == day.rawValue }?.mood)
                 val score = FortuneEngine.daily(birth, day).score
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(mood?.emoji ?: "·", style = Fonts.title3, modifier = Modifier.height(28.dp))
+                val dayName = if (offset == 0) "今天" else DateText.weekday(day)
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .clearAndSetSemantics {
+                            contentDescription = "$dayName，${mood?.let { "心情${it.label}" } ?: "未记录心情"}，运势 $score 分"
+                        },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Box(Modifier.height(28.dp), contentAlignment = Alignment.Center) {
+                        if (mood != null) {
+                            Text(mood.emoji, style = Fonts.title3)
+                        } else {
+                            // 没记心情：浅色空心圆（与 iOS 一致）
+                            Box(
+                                Modifier
+                                    .size(16.dp)
+                                    .border(1.5.dp, palette.text.copy(alpha = 0.25f), CircleShape),
+                            )
+                        }
+                    }
                     Box(Modifier.height(50.dp), contentAlignment = Alignment.BottomCenter) {
                         Box(
                             Modifier
@@ -938,7 +1213,7 @@ fun WeekMoodCard(today: DayKey = DayKey.today, onOpen: () -> Unit) {
                                 .background(palette.accentBrush),
                         )
                     }
-                    SecondaryText(if (offset == 0) "今天" else DateText.weekday(day), style = Fonts.caption2)
+                    SecondaryText(dayName, style = Fonts.caption2)
                 }
             }
         }

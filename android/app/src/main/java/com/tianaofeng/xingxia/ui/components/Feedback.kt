@@ -142,6 +142,11 @@ fun Confetti(trigger: Int, modifier: Modifier = Modifier, count: Int = 90) {
     var t by remember { mutableStateOf(0.0) }
     LaunchedEffect(trigger) {
         if (trigger == 0) return@LaunchedEffect
+        // 系统关闭了动画时不放彩带（与 iOS 的「减弱动态效果」一致）
+        if (isReduceMotion()) {
+            particles = emptyList()
+            return@LaunchedEffect
+        }
         particles = List(count) {
             Particle(
                 angle = Random.nextDouble(-PI * 0.95, -PI * 0.05),

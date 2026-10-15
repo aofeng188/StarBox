@@ -13,10 +13,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.XingXia">
 
-        <!-- 旋转、深浅色切换、折叠屏展开等由 Compose 自行响应，不重建 Activity，编辑中的表单和进行中的占卜不会丢 -->
+        <!-- 旋转、深浅色切换、折叠屏展开、调整字体大小等由 Compose 自行响应，不重建 Activity，编辑中的表单和进行中的占卜不会丢 -->
         <activity
             android:name=".MainActivity"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode|keyboardHidden|density"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode|keyboardHidden|density|fontScale"
             android:exported="true"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">

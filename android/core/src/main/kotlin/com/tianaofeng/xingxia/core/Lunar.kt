@@ -6,6 +6,7 @@ package com.tianaofeng.xingxia.core
  * 数据表按紫金历/香港天文台口径，由 lunar-javascript 的精确天文算法逐日生成。
  * ICU（iOS 的 `Calendar(identifier: .chinese)` 也基于它）在少数年份与官方农历不符，
  * 例如把 1987 年闰六月算成闰七月、把 2027 年春节算成 2 月 7 日（官方为 2 月 6 日），这里以官方为准。
+ * iOS 的 Shared/Almanac/Almanac.swift 里 LunarTable 是这份数据表的同一份拷贝，改数据要两边一起改。
  *
  * 每个农历年一个整数，低 13 位依次是各月是否为大月（30 天），
  * 第 13–16 位是闰月月份（0 表示无闰月），第 17 位起是正月初一距当年公历元旦的天数。

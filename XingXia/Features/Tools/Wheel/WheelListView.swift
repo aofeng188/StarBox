@@ -38,8 +38,9 @@ struct WheelListView: View {
         segments.filter { $0.id != pendingElimination }.count
     }
 
+    /// 当前转盘里已淘汰（含待移出）的选项数；编辑时删掉的选项、换转盘前留下的记录不算
     private var eliminatedCount: Int {
-        eliminated.count + (pendingElimination == nil ? 0 : 1)
+        (template?.options ?? []).filter { eliminated.contains($0.id) || $0.id == pendingElimination }.count
     }
 
     var body: some View {
@@ -146,6 +147,11 @@ struct WheelListView: View {
         // 关掉淘汰模式后「恢复全部」不再显示，已移出的选项要放回盘面
         .onChange(of: template?.removeAfterSpin) { _, isOn in
             if isOn != true { restoreAll() }
+        }
+        // 在编辑器里删掉当前转盘后会自动换到另一个，上一个转盘的结果和淘汰状态一并清掉
+        .onChange(of: template?.id) { _, _ in
+            restoreAll()
+            resultTitle = nil
         }
         .onAppear {
             spinner.onFrame = { angle in tick(angle) }
@@ -316,6 +322,9 @@ struct WheelListView: View {
             context.insert(option)
         }
         try? context.save()
+        // 和点模板 chip 一样，换到新转盘时清掉上一个转盘的淘汰状态和结果
+        restoreAll()
+        resultTitle = nil
         lastTemplateID = template.id.uuidString
         editing = template
     }

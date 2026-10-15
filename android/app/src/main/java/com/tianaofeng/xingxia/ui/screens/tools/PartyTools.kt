@@ -257,7 +257,8 @@ private fun LotteryDraw(pool: LotteryPool, onBack: () -> Unit, onEdit: () -> Uni
     OnShake { draw() }
 
     Box(Modifier.fillMaxSize()) {
-        Screen(title = "${pool.icon} ${pool.name}", onBack = onBack, actions = { CircleIconButton(Icons.Rounded.Edit, "编辑", onClick = onEdit) }) {
+        // 抽奖动画进行中不能编辑或重置：结果在动画结束时才写回，会覆盖掉中途的修改
+        Screen(title = "${pool.icon} ${pool.name}", onBack = onBack, actions = { CircleIconButton(Icons.Rounded.Edit, "编辑", enabled = !drawing, onClick = onEdit) }) {
             GachaMachine(drawing, palette.spectrum)
             GlassCard(Modifier.heightIn(min = 90.dp), horizontalAlignment = Alignment.CenterHorizontally, spacing = 8.dp) {
                 val rolling = rollingText
@@ -270,16 +271,16 @@ private fun LotteryDraw(pool: LotteryPool, onBack: () -> Unit, onEdit: () -> Uni
                     available.isNotEmpty() -> Text("准备好了吗？", style = Fonts.title3)
                     // 奖池为空、权重全为 0、抽完了，分别给出提示
                     pool.items.isEmpty() -> {
-                        Text("先添加奖品", style = Fonts.title3)
-                        SecondaryText("点右上角的编辑按钮添加奖品", style = Fonts.caption)
+                        Text("先添加奖品吧", style = Fonts.title3)
+                        SecondaryText("点右上角「编辑」添加奖品或选项", style = Fonts.caption)
                     }
                     pool.items.none { it.weight > 0 } -> {
-                        Text("没有可抽的奖品", style = Fonts.title3)
-                        SecondaryText("所有奖品的权重都是 0，去编辑里调高一些", style = Fonts.caption)
+                        Text("所有奖品权重都是 0", style = Fonts.title3)
+                        SecondaryText("在「编辑」里调高权重才能抽", style = Fonts.caption)
                     }
                     else -> {
                         Text("奖品已经抽完啦", style = Fonts.title3)
-                        SecondaryText("点奖池右上角的「重置」恢复数量", style = Fonts.caption)
+                        SecondaryText("点下方奖池的「重置」可以再来一轮", style = Fonts.caption)
                     }
                 }
             }
@@ -288,7 +289,7 @@ private fun LotteryDraw(pool: LotteryPool, onBack: () -> Unit, onEdit: () -> Uni
 
             GlassCard(spacing = 8.dp) {
                 SectionHeader("奖池", subtitle = if (pool.removeAfterDraw) "抽中后数量减少" else "可重复抽中", icon = Icons.Rounded.Inventory2) {
-                    if (pool.removeAfterDraw) TextAction("重置") {
+                    if (pool.removeAfterDraw) TextAction("重置", enabled = !drawing) {
                         save { p -> p.copy(items = p.items.map { it.copy(remaining = it.quantity) }) }
                         results = emptyList()
                         Haptics.success()

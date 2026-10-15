@@ -46,7 +46,7 @@ struct BirthChartView: View {
         let sun = ZodiacSign.sunSign(of: birth)
         let moon = ZodiacSign.moonSign(at: birth.moment)
         let rising = ZodiacSign.ascendant(of: birth)
-        let lunar = LunarDate(birth.birthday)
+        let lunar = LunarDate(birth.dayKey)
 
         VStack(spacing: 16) {
             VStack(spacing: 6) {

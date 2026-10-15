@@ -25,10 +25,12 @@ struct CountdownListView: View {
                 if let hero = sorted.first {
                     CountdownHero(countdown: hero)
                         .onTapGesture { editing = hero }
+                        .accessibilityAddTraits(.isButton)
                 }
                 ForEach(sorted.dropFirst()) { countdown in
                     CountdownRow(countdown: countdown)
                         .onTapGesture { editing = countdown }
+                        .accessibilityAddTraits(.isButton)
                         .contextMenu { menu(for: countdown) }
                 }
                 Button {
@@ -301,7 +303,8 @@ struct CountdownEditor: View {
         lunarMonth = countdown.lunarMonth
         lunarDay = countdown.lunarDay
         repeatsYearly = countdown.repeatsYearly
-        recordsBirthYear = countdown.knowsBirthYear
+        // 只有原本就是生日时 date 才是出生日期；倒数日改成生日时 date 是目标日，不能当出生年份
+        recordsBirthYear = countdown.kindValue == .birthday && countdown.knowsBirthYear
         colorIndex = countdown.colorIndex
         pinned = countdown.pinned
     }

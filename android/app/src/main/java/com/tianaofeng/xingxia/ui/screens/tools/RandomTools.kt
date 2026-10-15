@@ -356,7 +356,8 @@ fun DiceScreen() {
                 .pressable { roll() },
             contentAlignment = Alignment.Center,
         ) {
-            Flow(spacing = 22.dp, modifier = Modifier.padding(24.dp)) {
+            // 4、5 颗时第二行不满，也要居中
+            Flow(spacing = 22.dp, modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 faces.forEachIndexed { i, value ->
                     DieFace(
                         value,
