@@ -205,8 +205,8 @@ struct TagChip: View {
         .fixedSize()
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .foregroundStyle(color ?? palette.accent)
-        .background((color ?? palette.accent).opacity(0.14), in: .capsule)
+        .foregroundStyle(palette.ink(color ?? palette.accent))
+        .background((color ?? palette.accent).opacity(palette.isDark ? 0.14 : 0.16), in: .capsule)
     }
 }
 

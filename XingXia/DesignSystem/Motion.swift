@@ -16,20 +16,29 @@ extension UIWindow {
 }
 
 private struct ShakeModifier: ViewModifier {
+    let isEnabled: Bool
     let action: () -> Void
     @Environment(AppSettings.self) private var settings
+    @Environment(\.scenePhase) private var scenePhase
+    /// 只有正在屏幕上的页面才响应：切到别的标签、被推入的页面盖住时都会 onDisappear
+    @State private var isVisible = false
 
     func body(content: Content) -> some View {
-        content.onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in
-            if settings.shakeEnabled { action() }
-        }
+        content
+            .onAppear { isVisible = true }
+            .onDisappear { isVisible = false }
+            .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in
+                guard isEnabled, isVisible, scenePhase == .active, settings.shakeEnabled else { return }
+                action()
+            }
     }
 }
 
 extension View {
-    /// 摇一摇触发（受设置里「摇一摇」开关控制）
-    func onShake(perform action: @escaping () -> Void) -> some View {
-        modifier(ShakeModifier(action: action))
+    /// 摇一摇触发（受设置里「摇一摇」开关控制，只在页面可见、App 在前台时响应）。
+    /// 页面上弹出 sheet 时传 `isEnabled: false`，避免被盖住的页面继续响应。
+    func onShake(isEnabled: Bool = true, perform action: @escaping () -> Void) -> some View {
+        modifier(ShakeModifier(isEnabled: isEnabled, action: action))
     }
 }
 
