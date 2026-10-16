@@ -11,7 +11,7 @@ struct FortuneDetailView: View {
     var body: some View {
         let day = today.adding(days: offset)
         let fortune = FortuneEngine.daily(for: app.birth, on: day)
-        // 看的不是今天时，文案里的「今日」改成「昨日 / 明日」
+        // 看的不是今天时，页面自己拼的「今日…」改成「昨日 / 明日」（JSON 文案本身不含相对日期）
         let dayWord = Self.dayWord(offset)
         let moon = MoonInfo.on(day)
         let moonText = "\(dayWord)月相为\(moon.name.name)，亮面约 \(Int((moon.illumination * 100).rounded()))%，月亮行经\(fortune.moonSign.name)。"
@@ -48,8 +48,7 @@ struct FortuneDetailView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         SectionHeader(title: "运势解读", subtitle: "依据你的八字与\(dayWord)天象", symbol: "scope")
                         ForEach(Array(fortune.insights.enumerated()), id: \.offset) { index, text in
-                            FortuneInsightRow(symbol: Self.symbol(for: fortune.insightKinds[safe: index]),
-                                              text: dayWord == "今日" ? text : text.replacingOccurrences(of: "今日", with: dayWord))
+                            FortuneInsightRow(symbol: Self.symbol(for: fortune.insightKinds[safe: index]), text: text)
                         }
                         // 月亮星座那条解读总在最后，月相紧跟其后
                         FortuneInsightRow(symbol: moon.name.symbol, text: moonText)
