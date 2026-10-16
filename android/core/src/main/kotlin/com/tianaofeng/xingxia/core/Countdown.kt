@@ -116,6 +116,26 @@ data class CountdownSpec(
     }
 }
 
+/** 由档案生日生成的「虚拟倒数日」（不入库、不可编辑删除），规则与 iOS 的 CountdownItem.profileBirthdays 一致 */
+object ProfileBirthdays {
+    const val EMOJI = "🎂"
+
+    fun title(name: String): String = "${name.trim()}的生日"
+
+    /** 农历录入的档案按农历生日每年重复（闰月出生的按平月过） */
+    fun spec(birthday: DayKey, enteredAsLunar: Boolean): CountdownSpec {
+        if (!enteredAsLunar) return CountdownSpec(CountdownKind.BIRTHDAY, birthday, repeatsYearly = true)
+        val lunar = birthday.lunar()
+        return CountdownSpec(CountdownKind.BIRTHDAY, birthday, repeatsYearly = true, isLunar = true, lunarMonth = lunar.month, lunarDay = lunar.day)
+    }
+
+    /** 名字为空，或已经手动建了同一人的生日倒数（manualBirthdayTitles 为 kind 是生日的倒数日标题，包含名字即算）时不生成 */
+    fun shouldSkip(name: String, manualBirthdayTitles: List<String>): Boolean {
+        val trimmed = name.trim()
+        return trimmed.isEmpty() || manualBirthdayTitles.any { it.contains(trimmed) }
+    }
+}
+
 /** 皮尔逊相关系数；样本方差为 0 时返回 null */
 fun pearson(pairs: List<Pair<Double, Double>>): Double? {
     if (pairs.size < 2) return null

@@ -6,6 +6,7 @@ import com.ibm.icu.util.TimeZone
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -144,8 +145,9 @@ class RandomTest {
 class EngineTest {
     @Test
     fun contentLoads() {
-        assertEquals(60, ContentLibrary.sticks.size)
-        assertEquals(22, ContentLibrary.tarot.size)
+        // 第二批扩到 100 支签、78 张塔罗（共享 JSON 由内容代理追加，追加前仍是 60 / 22）
+        assertTrue(ContentLibrary.sticks.size in setOf(60, 100), "${ContentLibrary.sticks.size}")
+        assertTrue(ContentLibrary.tarot.size in setOf(22, 78), "${ContentLibrary.tarot.size}")
         assertTrue(ContentLibrary.answers.size > 100)
         assertTrue(ContentLibrary.foods.size > 150)
         assertEquals(5, ContentLibrary.fortune.levels.size)
@@ -276,6 +278,79 @@ class EngineTest {
         assertEquals("第一签", stick.numberText)
         assertEquals(6, stick.areas.size)
         assertEquals("第五十九签", ContentLibrary.stick(59).numberText)
+        val last = ContentLibrary.sticks.last()
+        assertEquals("第${chineseNumber(last.n)}签", last.numberText)
+        if (ContentLibrary.sticks.size == 100) assertEquals("第一百签", ContentLibrary.stick(100).numberText)
+        // 与 iOS StickLibrary.chineseNumber 相同的写法
+        assertEquals(
+            listOf("十", "十九", "六十", "一百", "一百零一", "一百零五", "一百一十", "一百一十五", "一百二十", "九百九十九", "1000"),
+            listOf(10, 19, 60, 100, 101, 105, 110, 115, 120, 999, 1000).map { chineseNumber(it) },
+        )
+    }
+
+    @Test
+    fun sticksCoverAllNumbers() {
+        // 求签按数组长度取号，签号 1…N 连续不重复
+        val sticks = ContentLibrary.sticks
+        assertEquals((1..sticks.size).toList(), sticks.map { it.n })
+        for (stick in sticks) {
+            assertEquals(4, stick.poem.size, "第 ${stick.n} 支")
+            assertTrue(stick.poem.all { it.length == 7 }, "第 ${stick.n} 支不是七言：${stick.poem}")
+            assertTrue(stick.level in listOf("上上", "上吉", "中吉", "中平", "下"), "第 ${stick.n} 支 ${stick.level}")
+            assertTrue(stick.title.isNotBlank() && stick.meaning.isNotBlank(), "第 ${stick.n} 支")
+            assertEquals(stick, ContentLibrary.stick(stick.n))
+        }
+        assertEquals(sticks.size, sticks.map { it.title }.toSet().size, "签题重复")
+        // 抽签用 1…sticks.size，最后一支也能取到，不会退回第一支
+        assertEquals(sticks.size, ContentLibrary.stick(sticks.size).n)
+    }
+
+    @Test
+    fun tarotFullDeck() {
+        val deck = ContentLibrary.tarot
+        assertEquals((0 until deck.size).toList(), deck.map { it.id })
+        assertEquals(22, ContentLibrary.tarotDeck(false).size)
+        assertTrue(ContentLibrary.tarotDeck(false).all { it.isMajor && it.id < 22 })
+        assertEquals(deck, ContentLibrary.tarotDeck(true))
+        val ranks = listOf("A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "侍从", "骑士", "王后", "国王")
+        // 22 张大阿卡纳后按权杖、圣杯、宝剑、星币各 14 张（小阿卡纳追加进 JSON 之后才检查）
+        if (deck.size > 22) assertEquals(78, deck.size)
+        for ((i, suit) in TarotSuit.entries.withIndex()) {
+            if (deck.size <= 22) break
+            val cards = deck.subList(22 + i * 14, 22 + (i + 1) * 14)
+            assertTrue(cards.all { it.tarotSuit == suit && !it.isMajor }, suit.label)
+            assertEquals(ranks, cards.map { it.rankText }, suit.label)
+            assertTrue(cards.all { it.name.startsWith(suit.label) }, suit.label)
+        }
+        for (card in deck) {
+            assertTrue(card.keywords.isNotEmpty() && card.upright.isNotBlank() && card.reversed.isNotBlank(), card.name)
+            assertTrue(!card.keywordsReversed.isNullOrEmpty() && !card.adviceReversed.isNullOrBlank(), card.name)
+        }
+        assertEquals(deck.size, deck.map { it.name }.toSet().size)
+        assertEquals("XXI", ContentLibrary.tarotCard(21)?.rankText)
+        assertEquals(null, ContentLibrary.tarotCard(deck.size))
+    }
+
+    /** 小阿卡纳的 suit 字段能解码；大阿卡纳没有 suit */
+    @Test
+    fun tarotSuitDecodes() {
+        val json = Json { ignoreUnknownKeys = true }
+        val queen = json.decodeFromString(
+            TarotCard.serializer(),
+            """{"id":49,"name":"圣杯王后","en":"Queen of Cups","roman":"Queen","symbol":"drop.fill","keywords":["共情"],"upright":"u","reversed":"r","love":"l","career":"c","advice":"a","keywordsReversed":["情绪化"],"loveReversed":"lr","careerReversed":"cr","adviceReversed":"ar","suit":"cups"}""",
+        )
+        assertEquals(TarotSuit.CUPS, queen.tarotSuit)
+        assertFalse(queen.isMajor)
+        assertEquals("王后", queen.rankText)
+        val ace = json.decodeFromString(
+            TarotCard.serializer(),
+            """{"id":22,"name":"权杖一","en":"Ace of Wands","roman":"A","symbol":"flame.fill","keywords":["灵感"],"upright":"u","reversed":"r","love":"l","career":"c","advice":"a","suit":"wands"}""",
+        )
+        assertEquals(TarotSuit.WANDS, ace.tarotSuit)
+        assertEquals("A", ace.rankText)
+        assertTrue(ContentLibrary.tarot.take(22).all { it.isMajor && it.suit == null })
+        assertNull(TarotSuit.of("major"))
+        assertEquals(listOf("wands", "cups", "swords", "pentacles"), TarotSuit.entries.map { it.key })
     }
 }
 
@@ -338,6 +413,23 @@ class CountdownTest {
         assertEquals(366, status.days)
         assertTrue(status.isToday)
         assertEquals("今天是 1 周年纪念日", status.caption)
+    }
+
+    @Test
+    fun profileBirthdays() {
+        // 公历录入：按公历每年重复
+        val solar = ProfileBirthdays.spec(DayKey(1998, 6, 18), enteredAsLunar = false)
+        assertEquals(DayKey(2027, 6, 18), solar.nextOccurrence(today))
+        assertEquals("6月18日 · 即将 29 岁", solar.status(today).caption)
+        // 农历录入：1998-06-18 是农历五月廿四，按农历每年重复
+        val lunar = ProfileBirthdays.spec(DayKey(1998, 6, 18), enteredAsLunar = true)
+        assertTrue(lunar.isLunar)
+        assertEquals(5 to 24, lunar.lunarMonth to lunar.lunarDay)
+        assertEquals(LunarDate.solarDate(2027, 5, 24, false), lunar.nextOccurrence(today))
+        assertEquals("小明的生日", ProfileBirthdays.title(" 小明 "))
+        assertTrue(ProfileBirthdays.shouldSkip("小明", listOf("小明生日")))
+        assertTrue(ProfileBirthdays.shouldSkip("  ", emptyList()))
+        assertFalse(ProfileBirthdays.shouldSkip("小明", listOf("妈妈的生日")))
     }
 
     @Test
