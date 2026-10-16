@@ -361,6 +361,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = XingXia;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "用于搜索你附近的餐厅，帮你决定今天去哪儿吃。位置只在本机使用，不会上传。";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "用于把分享卡片保存到你的相册。";
 				INFOPLIST_KEY_NSSupportsLiveActivities = NO;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -394,6 +395,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = XingXia;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "用于搜索你附近的餐厅，帮你决定今天去哪儿吃。位置只在本机使用，不会上传。";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "用于把分享卡片保存到你的相册。";
 				INFOPLIST_KEY_NSSupportsLiveActivities = NO;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

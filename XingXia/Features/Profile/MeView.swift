@@ -7,6 +7,7 @@ struct MeView: View {
     @Environment(\.palette) private var palette
     @Query(sort: \Profile.sortIndex) private var profiles: [Profile]
     @Query private var records: [DecisionRecord]
+    @AppStorage(Backup.lastExportKey) private var lastBackup: Double = 0
     @State private var editing: Profile?
     @State private var creating = false
 
@@ -33,6 +34,9 @@ struct MeView: View {
                     Divider().padding(.leading, 58)
                     MeRow(route: .settings, symbol: "gearshape.fill", colors: [Color(hex: 0x94A3B8), Color(hex: 0x475569)],
                           title: "设置", value: "音效 · 震动 · 提醒")
+                    Divider().padding(.leading, 58)
+                    MeRow(route: .backup, symbol: "externaldrive.fill", colors: [Color(hex: 0x2DD4BF), Color(hex: 0x0EA5E9)],
+                          title: "数据备份", value: backupValue)
                 }
                 .glassCard(padding: 6)
 
@@ -53,6 +57,16 @@ struct MeView: View {
         .navigationTitle("我的")
         .sheet(item: $editing) { profile in NavigationStack { ProfileEditorView(profile: profile) } }
         .sheet(isPresented: $creating) { NavigationStack { ProfileEditorView(profile: nil, isOnboarding: profiles.isEmpty) } }
+    }
+
+    /// 「我的」里数据备份一行的说明：上次导出是哪天
+    private var backupValue: String {
+        guard lastBackup > 0 else { return "导出 · 恢复" }
+        switch DayKey(Date(timeIntervalSince1970: lastBackup)).days(to: .today) {
+        case ...0: return "今天已备份"
+        case 1: return "昨天已备份"
+        case let days: return "\(days) 天前备份"
+        }
     }
 
     private var daysTogether: Int {

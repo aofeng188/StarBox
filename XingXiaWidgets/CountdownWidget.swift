@@ -38,6 +38,13 @@ struct CountdownValue: Sendable {
     var entity: CountdownEntity { CountdownEntity(id: id, title: title, emoji: emoji) }
 }
 
+extension CountdownValue {
+    init(item: CountdownItem, today: DayKey) {
+        self.init(id: item.id, title: item.title, emoji: item.emoji, kind: item.kind, status: item.status(today: today),
+                  colorIndex: item.colorIndex, pinned: item.pinned)
+    }
+}
+
 @MainActor
 enum CountdownStore {
     private static let container: ModelContainer? = try? AppSchema.makeContainer()
@@ -46,16 +53,16 @@ enum CountdownStore {
         all(on: [.today]).first ?? []
     }
 
-    /// 读一次库，按给定的每一天分别计算状态
+    /// 读一次库，按给定的每一天分别计算状态。含档案生日（App 里关掉了，或读不到档案时跳过）
     static func all(on days: [DayKey]) -> [[CountdownValue]] {
         guard let container else { return days.map { _ in [] } }
-        let items = (try? container.mainContext.fetch(FetchDescriptor<Countdown>(sortBy: [SortDescriptor(\.createdAt)]))) ?? []
-        return days.map { day in
-            items.map {
-                CountdownValue(id: $0.id, title: $0.title, emoji: $0.emoji, kind: $0.kindValue, status: $0.status(today: day),
-                               colorIndex: $0.colorIndex, pinned: $0.pinned)
-            }
-        }
+        let context = container.mainContext
+        let countdowns = (try? context.fetch(FetchDescriptor<Countdown>(sortBy: [SortDescriptor(\.createdAt)]))) ?? []
+        let profiles = CountdownItem.profileBirthdaysEnabled
+            ? ((try? context.fetch(FetchDescriptor<Profile>(sortBy: [SortDescriptor(\.sortIndex)]))) ?? [])
+            : []
+        let items = CountdownItem.all(countdowns, profiles: profiles, includeProfiles: true)
+        return days.map { day in items.map { CountdownValue(item: $0, today: day) } }
     }
 }
 

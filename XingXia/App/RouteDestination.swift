@@ -22,6 +22,10 @@ struct RouteDestination: View {
         case .profiles: ProfileListView()
         case .themes: ThemeSettingsView()
         case .settings: SettingsView()
+        case .auspicious: AuspiciousDaysView()
+        case .skyCalendar: SkyCalendarView()
+        case .tarotJournal: TarotJournalView()
+        case .backup: BackupView()
         }
     }
 }

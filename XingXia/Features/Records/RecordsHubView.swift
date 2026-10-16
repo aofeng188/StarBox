@@ -4,16 +4,20 @@ import Combine
 
 struct RecordsHubView: View {
     @Environment(AppState.self) private var app
+    @Environment(AppSettings.self) private var settings
     @Environment(\.palette) private var palette
     @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \DecisionRecord.date, order: .reverse) private var records: [DecisionRecord]
     @Query(sort: \MoodEntry.dayKey, order: .reverse) private var moods: [MoodEntry]
     @Query(sort: \Countdown.createdAt) private var countdowns: [Countdown]
+    @Query(sort: \Profile.sortIndex) private var profiles: [Profile]
 
     /// 零点和回到前台时刷新，App 跨天常驻时心情卡和一周条不会停在昨天
     @State private var today = DayKey.today
 
     var body: some View {
+        // 倒数日含档案生日（开关打开时），和倒数日列表一致
+        let countdownItems = CountdownItem.all(countdowns, profiles: profiles, includeProfiles: settings.profileBirthdaysInCountdowns)
         ScrollView {
             VStack(spacing: 16) {
                 MoodCheckInCard(today: today)
@@ -65,7 +69,7 @@ struct RecordsHubView: View {
                     .buttonStyle(.pressableCard)
                     NavigationLink(value: AppRoute.countdowns) {
                         RecordTile(symbol: "hourglass", colors: [Color(hex: 0x22D3EE), Color(hex: 0x6366F1)], title: "倒数日",
-                                   value: "\(countdowns.count)", caption: nextCountdownText)
+                                   value: "\(countdownItems.count)", caption: nextCountdownText(countdownItems))
                     }
                     .buttonStyle(.pressableCard)
                 }
@@ -108,14 +112,9 @@ struct RecordsHubView: View {
         if now != today { today = now }
     }
 
-    private var nextCountdownText: String {
-        let upcoming = countdowns
-            .filter { $0.kindValue != .anniversary }
-            .map { ($0, $0.status(today: today)) }
-            .filter { $0.1.prefix != "已过" }
-            .min { $0.1.days < $1.1.days }
-        guard let (countdown, status) = upcoming else { return "添加重要日子" }
-        return status.isToday ? "\(countdown.title) 就是今天" : "\(countdown.title) 还有\(status.days)天"
+    private func nextCountdownText(_ items: [CountdownItem]) -> String {
+        guard let next = CountdownItem.nearest(items, today: today) else { return "添加重要日子" }
+        return next.status.isToday ? "\(next.item.title) 就是今天" : "\(next.item.title) 还有\(next.status.days)天"
     }
 }
 

@@ -15,7 +15,12 @@ struct HomeEditorView: View {
                             Image(systemName: card.symbol)
                                 .frame(width: 28)
                                 .foregroundStyle(.tint)
-                            Text(card.name)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(card.name)
+                                if card == .family {
+                                    Text("有两个及以上档案时显示").font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
                             Spacer()
                             Toggle(card.name, isOn: Binding(
                                 get: { visible },

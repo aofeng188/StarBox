@@ -3,20 +3,21 @@ import Combine
 
 struct FortuneDetailView: View {
     @Environment(AppState.self) private var app
-    @Environment(ThemeManager.self) private var themes
     @Environment(\.palette) private var palette
     @Environment(\.scenePhase) private var scenePhase
     @State private var today = DayKey.today
     @State private var offset = 0
-    @State private var shareImage: Image?
 
     var body: some View {
         let day = today.adding(days: offset)
         let fortune = FortuneEngine.daily(for: app.birth, on: day)
         // 看的不是今天时，文案里的「今日」改成「昨日 / 明日」
         let dayWord = Self.dayWord(offset)
-        let moonPhase = FortuneMoonPhase(Astronomy.moonPhase(day.date))
-        let moonText = "\(dayWord)月相为\(moonPhase.name)，月亮行经\(fortune.moonSign.name)。"
+        let moon = MoonInfo.on(day)
+        let moonText = "\(dayWord)月相为\(moon.name.name)，亮面约 \(Int((moon.illumination * 100).rounded()))%，月亮行经\(fortune.moonSign.name)。"
+        let ownerName = app.primary?.name
+        // 分享卡标题：看的不是今天时写具体日期
+        let shareTitle = offset == 0 ? "星匣 · 今日运势" : "星匣 · \(DateText.monthDay(day))运势"
 
         ScrollView {
             VStack(spacing: 16) {
@@ -51,11 +52,11 @@ struct FortuneDetailView: View {
                                               text: dayWord == "今日" ? text : text.replacingOccurrences(of: "今日", with: dayWord))
                         }
                         // 月亮星座那条解读总在最后，月相紧跟其后
-                        FortuneInsightRow(symbol: moonPhase.symbol, text: moonText)
+                        FortuneInsightRow(symbol: moon.name.symbol, text: moonText)
                     }
                     .glassCard()
                 } else {
-                    FortuneInsightRow(symbol: moonPhase.symbol, text: moonText)
+                    FortuneInsightRow(symbol: moon.name.symbol, text: moonText)
                         .glassCard()
                     NavigationLink(value: AppRoute.profiles) {
                         Label("填写生日后可查看基于八字与星座的专属解读", systemImage: "lock.fill")
@@ -130,15 +131,13 @@ struct FortuneDetailView: View {
         .navigationTitle("运势详解")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                if let shareImage {
-                    ShareLink(item: shareImage, preview: SharePreview("我的\(DateText.monthDay(day))运势", image: shareImage)) {
-                        Image(systemName: "square.and.arrow.up")
+                ShareCardButton(title: "分享运势", previewTitle: "我的\(DateText.monthDay(day))运势") { style in
+                    ShareCardFrame(style: style, day: day, title: shareTitle) {
+                        FortuneShareContent(fortune: fortune, name: ownerName, style: style)
                     }
                 }
             }
         }
-        // 换日期、主题或档案（生日、名字）后重新渲染分享图
-        .task(id: ShareImageKey(day: day, themeID: themes.current.id, profile: app.primary)) { renderShareImage(fortune: fortune) }
         // 跨过零点、或者隔天从后台回来时刷新「今天」
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: DispatchQueue.main)) { _ in
             refreshToday()
@@ -152,15 +151,6 @@ struct FortuneDetailView: View {
     private func refreshToday() {
         let now = DayKey.today
         if now != today { today = now }
-    }
-
-    @MainActor
-    private func renderShareImage(fortune: DailyFortune) {
-        // ImageRenderer 不一定带上页面的环境值，主题显式传入；分享图是白字，统一用主题的深色版本
-        let card = FortuneShareCard(fortune: fortune, name: app.primary?.name, theme: themes.current.dark)
-        let renderer = ImageRenderer(content: card)
-        renderer.scale = 3
-        if let image = renderer.uiImage { shareImage = Image(uiImage: image) }
     }
 
     private static func dayWord(_ offset: Int) -> String {
@@ -182,13 +172,6 @@ struct FortuneDetailView: View {
     }
 }
 
-/// 分享图用到的输入，任何一项变了都要重新渲染
-private struct ShareImageKey: Equatable, Sendable {
-    let day: DayKey
-    let themeID: String
-    let profile: ProfileSnapshot?
-}
-
 private struct FortuneInsightRow: View {
     let symbol: String
     let text: String
@@ -203,24 +186,6 @@ private struct FortuneInsightRow: View {
             Text(text).font(.subheadline).lineSpacing(3)
             Spacer(minLength: 0)
         }
-    }
-}
-
-/// 八相月相。Astronomy.moonPhase 返回日月黄经差 / 360：0 新月、0.25 上弦、0.5 满月、0.75 下弦，按最近的一相取
-private enum FortuneMoonPhase: Int {
-    case new, waxingCrescent, firstQuarter, waxingGibbous, full, waningGibbous, lastQuarter, waningCrescent
-
-    init(_ phase: Double) {
-        self = FortuneMoonPhase(rawValue: Int((phase * 8).rounded()) % 8) ?? .new
-    }
-
-    var name: String {
-        ["新月", "娥眉月", "上弦月", "盈凸月", "满月", "亏凸月", "下弦月", "残月"][rawValue]
-    }
-
-    var symbol: String {
-        ["moonphase.new.moon", "moonphase.waxing.crescent", "moonphase.first.quarter", "moonphase.waxing.gibbous",
-         "moonphase.full.moon", "moonphase.waning.gibbous", "moonphase.last.quarter", "moonphase.waning.crescent"][rawValue]
     }
 }
 
@@ -247,44 +212,100 @@ private struct LuckyCell<Icon: View>: View {
     }
 }
 
-/// 用于分享的运势卡片图片
-struct FortuneShareCard: View {
+/// 运势分享卡的内容，放在 ShareCardFrame 里：分数环、等级、星级、摘要、四项指标和幸运项
+struct FortuneShareContent: View {
     let fortune: DailyFortune
+    /// 档案名字，「我」或空时不署名
     let name: String?
-    /// 当前主题的深色版本（卡片是深底白字）
-    let theme: ThemePalette
+    let style: ShareCardStyle
+
+    private var signatureText: String? {
+        guard let name, !name.isEmpty, name != "我" else { return nil }
+        return "—— 来自 \(name) 的分享"
+    }
 
     var body: some View {
-        VStack(spacing: 16) {
-            Text("星匣 · \(DateText.monthDay(fortune.day))运势").font(.headline).foregroundStyle(.white.opacity(0.8))
-            Text("\(fortune.day.year)年 · 农历\(LunarDate(fortune.day).text) · \(DateText.weekday(fortune.day))")
-                .font(.subheadline).foregroundStyle(.white.opacity(0.6))
-            Text("\(fortune.score)")
-                .font(.system(size: 88, weight: .heavy, design: .rounded))
-                .foregroundStyle(theme.accentGradient)
-            Text(fortune.levelName).font(.system(size: 36, weight: .bold)).foregroundStyle(.white)
-            Text(fortune.summary).font(.body).foregroundStyle(.white.opacity(0.9)).multilineTextAlignment(.center)
-            HStack(spacing: 20) {
-                Text("宜 " + fortune.funYi.joined(separator: " ")).foregroundStyle(Color(hex: 0x6EE7B7))
-                Text("忌 " + fortune.funJi.prefix(2).joined(separator: " ")).foregroundStyle(Color(hex: 0xFDA4AF))
+        let tall = style.isTall
+        let signature = signatureText
+        VStack(spacing: tall ? 18 : 14) {
+            if tall {
+                VStack(spacing: 10) {
+                    ShareScoreRing(score: fortune.score, size: 140, lineWidth: 13, label: "运势指数")
+                    GradientText(text: fortune.levelName, font: .system(size: 40, weight: .heavy, design: .rounded))
+                    StarRatingView(stars: fortune.stars, size: 16)
+                }
+            } else {
+                HStack(spacing: 20) {
+                    ShareScoreRing(score: fortune.score, size: 112, lineWidth: 11, label: "运势指数")
+                    VStack(alignment: .leading, spacing: 8) {
+                        GradientText(text: fortune.levelName, font: .system(size: 36, weight: .heavy, design: .rounded))
+                        StarRatingView(stars: fortune.stars, size: 15)
+                        if let signature {
+                            Text(signature)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.white.opacity(0.6))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
-            .font(.subheadline.weight(.medium))
-            HStack(spacing: 6) {
-                Circle().fill(Color(fortune.luckyColor)).frame(width: 14, height: 14)
-                Text("幸运色 \(fortune.luckyColor.name) · 幸运数字 \(fortune.luckyNumber)")
+
+            Text(fortune.summary)
+                .font(.system(size: tall ? 16 : 14))
+                .lineSpacing(4)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.white.opacity(0.92))
+                .lineLimit(tall ? 4 : 3)
+                .minimumScaleFactor(0.85)
+
+            HStack(spacing: 8) {
+                ForEach(FortuneCategory.allCases) { category in
+                    let value = fortune.score(category)
+                    VStack(spacing: 5) {
+                        Image(systemName: category.symbol)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(style.palette.accentGradient)
+                            .accessibilityHidden(true)
+                        Text(category.shortName)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7))
+                        Text("\(value)")
+                            .font(.system(size: 19, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(.white)
+                        ShareMeter(value: value)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .padding(.horizontal, 8)
+                    .background(.white.opacity(0.07), in: .rect(cornerRadius: 14))
+                    .accessibilityElement(children: .combine)
+                }
             }
-            .font(.footnote).foregroundStyle(.white.opacity(0.8))
-            if let name, name != "我" { Text("—— 来自 \(name) 的分享").font(.caption).foregroundStyle(.white.opacity(0.5)) }
+
+            VStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    ShareChip(text: "幸运色 \(fortune.luckyColor.name)", dot: Color(fortune.luckyColor))
+                    ShareChip(text: "幸运数字 \(fortune.luckyNumber)")
+                    ShareChip(text: "喜神 \(fortune.luckyDirection)")
+                }
+                if tall {
+                    HStack(spacing: 6) {
+                        ShareChip(text: "吉时 \(fortune.luckyHour.hourName)")
+                        ShareChip(text: "幸运物 \(fortune.luckyItem)")
+                        ShareChip(text: "贵人 \(fortune.noblemanSign.name)")
+                    }
+                }
+            }
+
+            if tall, let signature {
+                Text(signature)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .lineLimit(1)
+            }
         }
-        .padding(32)
-        .frame(width: 360)
-        .background {
-            ZStack {
-                theme.backgroundGradient
-                Circle().fill(theme.nebula[0].opacity(0.6)).frame(width: 260).blur(radius: 70).offset(x: -100, y: -160)
-                Circle().fill(theme.nebula[1].opacity(0.5)).frame(width: 220).blur(radius: 70).offset(x: 120, y: 160)
-            }
-        }
-        .clipShape(.rect(cornerRadius: 32))
     }
 }

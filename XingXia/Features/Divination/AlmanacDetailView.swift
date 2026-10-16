@@ -5,6 +5,7 @@ struct AlmanacDetailView: View {
     @Environment(AppState.self) private var app
     @Environment(\.palette) private var palette
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var scheme
     @State private var today = DayKey.today
     @State private var day = DayKey.today
     @State private var showPicker = false
@@ -53,6 +54,15 @@ struct AlmanacDetailView: View {
                         TagChip(text: almanac.jianChu.name, color: almanac.jianChu.isLucky ? Color(hex: 0x34D399) : Color(hex: 0xFBBF24))
                         TagChip(text: "\(almanac.deity.name) · \(almanac.deity.pathName)", color: almanac.deity.isYellowPath ? Color(hex: 0xFBBF24) : Color(hex: 0x94A3B8))
                     }
+                    if !almanac.shensha.isEmpty {
+                        // 神煞多时（大字号下）一行放不下就竖排
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 8) { shenshaChips(almanac.shensha) }
+                            VStack(spacing: 6) { shenshaChips(almanac.shensha) }
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("神煞：\(almanac.shensha.joined(separator: "、"))")
+                    }
                     if !almanac.festivals.isEmpty {
                         HStack(spacing: 8) {
                             ForEach(almanac.festivals, id: \.self) { TagChip(text: $0, color: Color(hex: 0xFB7185)) }
@@ -67,6 +77,23 @@ struct AlmanacDetailView: View {
                     SectionHeader(title: "黄历宜忌", subtitle: almanac.jianChu.summary, symbol: "book.closed.fill")
                     YiJiRow(isYi: true, items: almanac.yi)
                     YiJiRow(isYi: false, items: almanac.ji)
+                    if !almanac.shensha.isEmpty {
+                        Divider().opacity(0.4)
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(almanac.shensha, id: \.self) { name in
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    Text(name)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(palette.ink(shenshaColor(name)))
+                                    Text(Shensha.notes[name] ?? "")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .accessibilityElement(children: .combine)
+                            }
+                        }
+                    }
                 }
                 .glassCard()
 
@@ -117,7 +144,7 @@ struct AlmanacDetailView: View {
                 }
                 .glassCard()
 
-                Text("黄历宜忌按「建除十二神」与「黄黑道值神」推算，仅作传统文化参考。")
+                Text("黄历宜忌按「建除十二神」「黄黑道值神」推算，并参考天德、月德、天赦、四离四绝等神煞，仅作传统文化参考。")
                     .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             .pageContent()
@@ -174,6 +201,18 @@ struct AlmanacDetailView: View {
     private func move(_ delta: Int) {
         Haptics.selection()
         withAnimation(.snappy) { day = day.adding(days: delta) }
+    }
+
+    @ViewBuilder
+    private func shenshaChips(_ names: [String]) -> some View {
+        ForEach(names, id: \.self) { name in
+            TagChip(text: name, color: shenshaColor(name), symbol: Shensha.isLucky(name) ? "sparkle" : "exclamationmark.triangle")
+        }
+    }
+
+    /// 吉神用金色，四离、四绝这类凶日沿用黑道日的灰色
+    private func shenshaColor(_ name: String) -> Color {
+        Shensha.isLucky(name) ? Color.gold(scheme) : Color(hex: 0x94A3B8)
     }
 
     private static func dayWord(for day: DayKey, today: DayKey) -> String {

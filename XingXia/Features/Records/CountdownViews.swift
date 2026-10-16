@@ -4,34 +4,33 @@ import WidgetKit
 
 struct CountdownListView: View {
     @Environment(\.modelContext) private var context
+    @Environment(AppSettings.self) private var settings
     @Environment(\.palette) private var palette
     @Query(sort: \Countdown.createdAt) private var countdowns: [Countdown]
+    @Query(sort: \Profile.sortIndex) private var profiles: [Profile]
     @State private var editing: Countdown?
+    @State private var viewingBirthday: CountdownItem?
     @State private var creating = false
 
-    private var sorted: [Countdown] {
-        countdowns.sorted { a, b in
-            if a.pinned != b.pinned { return a.pinned }
-            let sa = a.status(), sb = b.status()
-            let ka = a.kindValue == .anniversary || sa.prefix == "已过" ? 10_000 + sa.days : sa.days
-            let kb = b.kindValue == .anniversary || sb.prefix == "已过" ? 10_000 + sb.days : sb.days
-            return ka < kb
-        }
-    }
-
     var body: some View {
+        let today = DayKey.today
+        let items = CountdownItem.sorted(CountdownItem.all(countdowns, profiles: profiles,
+                                                           includeProfiles: settings.profileBirthdaysInCountdowns), today: today)
         ScrollView {
             VStack(spacing: 14) {
-                if let hero = sorted.first {
-                    CountdownHero(countdown: hero)
-                        .onTapGesture { editing = hero }
+                if let hero = items.first {
+                    CountdownHero(item: hero, today: today)
+                        .onTapGesture { open(hero) }
                         .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { open(hero) }
+                        .contextMenu { menu(for: hero) }
                 }
-                ForEach(sorted.dropFirst()) { countdown in
-                    CountdownRow(countdown: countdown)
-                        .onTapGesture { editing = countdown }
+                ForEach(items.dropFirst()) { item in
+                    CountdownRow(item: item, today: today)
+                        .onTapGesture { open(item) }
                         .accessibilityAddTraits(.isButton)
-                        .contextMenu { menu(for: countdown) }
+                        .accessibilityAction { open(item) }
+                        .contextMenu { menu(for: item) }
                 }
                 Button {
                     creating = true
@@ -39,7 +38,7 @@ struct CountdownListView: View {
                     Label("添加倒数日", systemImage: "plus.circle.fill").frame(maxWidth: .infinity).padding(.vertical, 6)
                 }
                 .buttonStyle(.glass)
-                if countdowns.isEmpty {
+                if items.isEmpty {
                     EmptyHint(symbol: "hourglass", title: "还没有倒数日", message: "生日、纪念日、假期、考试……重要的日子都可以记在这里")
                 }
             }
@@ -49,48 +48,73 @@ struct CountdownListView: View {
         .cosmicBackground()
         .navigationTitle("倒数日")
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Toggle(isOn: Binding(get: { settings.profileBirthdaysInCountdowns },
+                                         set: { settings.profileBirthdaysInCountdowns = $0 })) {
+                        Label("显示档案里的生日", systemImage: "person.crop.circle.badge.clock")
+                    }
+                } label: {
+                    Label("显示选项", systemImage: "ellipsis.circle")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) { Button("添加", systemImage: "plus") { creating = true } }
         }
         .sheet(item: $editing) { item in NavigationStack { CountdownEditor(countdown: item) } }
+        .sheet(item: $viewingBirthday) { item in NavigationStack { ProfileBirthdayDetail(item: item) } }
         .sheet(isPresented: $creating) { NavigationStack { CountdownEditor(countdown: nil) } }
     }
 
-    @ViewBuilder
-    private func menu(for countdown: Countdown) -> some View {
-        Button(countdown.pinned ? "取消置顶" : "置顶到首页", systemImage: countdown.pinned ? "pin.slash" : "pin") {
-            countdown.pinned.toggle()
-            try? context.save()
-            WidgetCenter.shared.reloadAllTimelines()
+    /// 数据库里的倒数日打开编辑；档案生日只能查看
+    private func open(_ item: CountdownItem) {
+        if item.isFromProfile {
+            viewingBirthday = item
+        } else {
+            editing = countdowns.first { $0.id == item.id }
         }
-        Button("编辑", systemImage: "pencil") { editing = countdown }
-        Button("删除", systemImage: "trash", role: .destructive) {
-            context.delete(countdown)
-            try? context.save()
-            WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    @ViewBuilder
+    private func menu(for item: CountdownItem) -> some View {
+        if item.isFromProfile {
+            Button("查看", systemImage: "info.circle") { viewingBirthday = item }
+        } else if let countdown = countdowns.first(where: { $0.id == item.id }) {
+            Button(countdown.pinned ? "取消置顶" : "置顶到首页", systemImage: countdown.pinned ? "pin.slash" : "pin") {
+                countdown.pinned.toggle()
+                try? context.save()
+                WidgetCenter.shared.reloadAllTimelines()
+            }
+            Button("编辑", systemImage: "pencil") { editing = countdown }
+            Button("删除", systemImage: "trash", role: .destructive) {
+                context.delete(countdown)
+                try? context.save()
+                WidgetCenter.shared.reloadAllTimelines()
+            }
         }
     }
 }
 
 private struct CountdownHero: View {
-    let countdown: Countdown
+    let item: CountdownItem
+    let today: DayKey
     @Environment(\.palette) private var palette
 
     var body: some View {
-        let status = countdown.status()
-        let color = palette.color(at: countdown.colorIndex)
+        let status = item.status(today: today)
+        let color = palette.color(at: item.colorIndex)
         // 色块装饰用原色，文字和数字用调过明暗的版本，浅色模式下粉彩色也读得清
-        let ink = palette.inkColor(at: countdown.colorIndex)
+        let ink = palette.inkColor(at: item.colorIndex)
         VStack(spacing: 10) {
             HStack {
-                Text(countdown.emoji).font(.title)
-                Text(countdown.title).font(.title3.bold())
-                if countdown.pinned { Image(systemName: "pin.fill").font(.caption).foregroundStyle(.secondary) }
+                Text(item.emoji).font(.title)
+                Text(item.title).font(.title3.bold())
+                if item.pinned { Image(systemName: "pin.fill").font(.caption).foregroundStyle(.secondary).accessibilityLabel("已置顶") }
                 Spacer()
-                TagChip(text: countdown.kindValue.name, color: color, symbol: countdown.kindValue.symbol)
+                CountdownSourceChip(item: item, color: color)
             }
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(status.prefix).font(.title3).foregroundStyle(.secondary)
-                if status.isToday && countdown.kindValue != .anniversary {
+                if status.isToday && item.kind != .anniversary {
                     Text(status.suffix).font(.system(size: 64, weight: .heavy, design: .rounded)).foregroundStyle(ink)
                 } else {
                     Text("\(status.days)")
@@ -110,29 +134,33 @@ private struct CountdownHero: View {
 }
 
 private struct CountdownRow: View {
-    let countdown: Countdown
+    let item: CountdownItem
+    let today: DayKey
     @Environment(\.palette) private var palette
 
     var body: some View {
-        let status = countdown.status()
-        let color = palette.color(at: countdown.colorIndex)
-        let ink = palette.inkColor(at: countdown.colorIndex)
+        let status = item.status(today: today)
+        let color = palette.color(at: item.colorIndex)
+        let ink = palette.inkColor(at: item.colorIndex)
         HStack(spacing: 14) {
-            Text(countdown.emoji)
+            Text(item.emoji)
                 .font(.title2)
                 .frame(width: 48, height: 48)
                 .background(Circle().fill(color.opacity(0.18)))
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
-                    Text(countdown.title).font(.headline)
-                    if countdown.pinned { Image(systemName: "pin.fill").font(.caption2).foregroundStyle(.secondary) }
+                    Text(item.title).font(.headline)
+                    if item.pinned { Image(systemName: "pin.fill").font(.caption2).foregroundStyle(.secondary).accessibilityLabel("已置顶") }
                 }
                 Text(status.caption).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                if item.isFromProfile {
+                    CountdownSourceChip(item: item, color: color)
+                }
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 0) {
                 Text(status.prefix).font(.caption2).foregroundStyle(.secondary)
-                if status.isToday && countdown.kindValue != .anniversary {
+                if status.isToday && item.kind != .anniversary {
                     Text(status.suffix).font(.title3.bold()).foregroundStyle(ink)
                 } else {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
@@ -144,6 +172,84 @@ private struct CountdownRow: View {
         }
         .glassCard(padding: 14, interactive: true)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// 类型标签；档案生日标「来自档案」
+private struct CountdownSourceChip: View {
+    let item: CountdownItem
+    let color: Color
+
+    var body: some View {
+        if item.isFromProfile {
+            TagChip(text: "来自档案", color: color, symbol: "person.crop.circle")
+        } else {
+            TagChip(text: item.kind.name, color: color, symbol: item.kind.symbol)
+        }
+    }
+}
+
+/// 档案生日的详情：不能编辑删除，生日要在档案里改
+private struct ProfileBirthdayDetail: View {
+    let item: CountdownItem
+    @Environment(AppState.self) private var app
+    @Environment(\.dismiss) private var dismiss
+    @Query(sort: \Profile.sortIndex) private var profiles: [Profile]
+
+    var body: some View {
+        let today = DayKey.today
+        let status = item.status(today: today)
+        let profile = profiles.first { $0.id == item.profileID }
+        let birth = item.spec.origin
+        ScrollView {
+            VStack(spacing: 16) {
+                CountdownHero(item: item, today: today)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    if let profile {
+                        LabeledContent("档案") { Text("\(profile.avatar) \(profile.name)") }
+                    }
+                    LabeledContent("公历生日") { Text(DateText.full(birth)) }
+                    if item.spec.isLunar {
+                        let lunar = LunarDate(birth)
+                        LabeledContent("农历生日") { Text("\(lunar.monthName)\(lunar.dayName)") }
+                    }
+                    LabeledContent("下一次") {
+                        Text("\(DateText.full(status.targetDay)) \(DateText.weekday(status.targetDay))")
+                    }
+                    LabeledContent("生肖") { Text(profile.map { "\($0.animal.animalEmoji) 属\($0.animal.animal)" } ?? "—") }
+                }
+                .font(.subheadline)
+                .glassCard()
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(item.spec.isLunar ? "这一天按档案里的农历生日每年自动换算。" : "这一天由档案里的生日自动生成，每年重复。")
+                    Text("想修改生日请到「我的 › 档案」；不想在倒数日里看到档案生日，可以在「设置」或倒数日页右上角关掉。")
+                        .subtleForeground()
+                }
+                .font(.footnote)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassCard()
+
+                Button {
+                    dismiss()
+                    app.open(.profiles)
+                } label: {
+                    Label("管理档案", systemImage: "person.2").frame(maxWidth: .infinity).padding(.vertical, 6)
+                }
+                .buttonStyle(.glass)
+            }
+            .pageContent()
+            .padding(.bottom, 30)
+        }
+        .cosmicBackground(dimmed: true)
+        .navigationTitle(item.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("完成", systemImage: "checkmark") { dismiss() }
+            }
+        }
     }
 }
 

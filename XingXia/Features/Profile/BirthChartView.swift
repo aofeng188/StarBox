@@ -262,6 +262,15 @@ struct CompatibilityView: View {
         }
         .cosmicBackground()
         .navigationTitle("缘分配对")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                ShareCardButton(title: "分享配对", previewTitle: "\(a.title) × \(b.title) 缘分配对") { style in
+                    ShareCardFrame(style: style, title: "星匣 · 缘分配对") {
+                        CompatibilityShareContent(left: a, right: b, result: result, style: style)
+                    }
+                }
+            }
+        }
         .onAppear {
             guard !initialized else { return }
             initialized = true
@@ -308,5 +317,113 @@ struct CompatibilityView: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// 缘分配对分享卡的内容：两人的头像和名字、星座和生肖、契合度和一句话结论
+private struct CompatibilityShareContent: View {
+    typealias Side = (sign: ZodiacSign, animal: EarthlyBranch?, title: String, avatar: String)
+
+    let left: Side
+    let right: Side
+    let result: Compatibility
+    let style: ShareCardStyle
+
+    var body: some View {
+        let tall = style.isTall
+        VStack(spacing: tall ? 18 : 14) {
+            HStack(alignment: .top, spacing: 0) {
+                person(left, tall: tall)
+                Image(systemName: "heart.fill")
+                    .font(.system(size: tall ? 26 : 22))
+                    .foregroundStyle(style.palette.accentGradient)
+                    .shadow(color: style.palette.accent.opacity(0.6), radius: 8)
+                    .frame(width: 44)
+                    .padding(.top, tall ? 24 : 20)
+                    .accessibilityHidden(true)
+                person(right, tall: tall)
+            }
+
+            if tall {
+                VStack(spacing: 10) {
+                    ShareScoreRing(score: result.score, size: 130, lineWidth: 12, label: "契合度")
+                    GradientText(text: result.title, font: .system(size: 32, weight: .heavy, design: .rounded))
+                    Text("\(left.sign.name) × \(right.sign.name) · \(result.aspect.name)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.65))
+                }
+            } else {
+                HStack(spacing: 18) {
+                    ShareScoreRing(score: result.score, size: 96, lineWidth: 10, label: "契合度")
+                    VStack(alignment: .leading, spacing: 6) {
+                        GradientText(text: result.title, font: .system(size: 28, weight: .heavy, design: .rounded))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        Text("\(left.sign.name) × \(right.sign.name)")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.65))
+                        Text(result.aspect.name)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.65))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
+            Text(Self.firstSentence(result.summary))
+                .font(.system(size: tall ? 16 : 14))
+                .lineSpacing(4)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.white.opacity(0.92))
+                .lineLimit(tall ? 4 : 3)
+                .minimumScaleFactor(0.85)
+
+            // 9:16 再加一句生肖或元素的说明
+            if tall {
+                Text(result.animalNote ?? result.elementNote)
+                    .font(.system(size: 13))
+                    .lineSpacing(3)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.white.opacity(0.7))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+            }
+        }
+    }
+
+    private func person(_ side: Side, tall: Bool) -> some View {
+        let size: CGFloat = tall ? 72 : 60
+        return VStack(spacing: 6) {
+            // 头像是装饰，读屏读名字和星座
+            if side.avatar.isEmpty {
+                ZodiacBadge(sign: side.sign, size: size)
+                    .accessibilityHidden(true)
+            } else {
+                Text(side.avatar)
+                    .font(.system(size: size * 0.62))
+                    .frame(width: size, height: size)
+                    .background(Circle().fill(style.palette.accent.opacity(0.22)))
+                    .overlay(Circle().strokeBorder(style.palette.accent.opacity(0.5), lineWidth: 1))
+                    .accessibilityHidden(true)
+            }
+            Text(side.title)
+                .font(.system(size: tall ? 18 : 16, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(side.animal.map { "\(side.sign.name) · 属\($0.animal)" } ?? side.sign.dateRange)
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.65))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// 取摘要的第一句当结论
+    private static func firstSentence(_ text: String) -> String {
+        guard let end = text.firstIndex(where: { "。！？".contains($0) }) else { return text }
+        return String(text[...end])
     }
 }

@@ -65,20 +65,49 @@ struct SettingsView: View {
                         }
                     ), displayedComponents: .hourAndMinute)
                 }
+                Toggle(isOn: $settings.skyReminders) { Label("天象提醒", systemImage: "moon.stars.fill") }
+                    .onChange(of: settings.skyReminders) { _, on in
+                        Task {
+                            if on {
+                                let granted = await NotificationScheduler.requestAuthorization()
+                                if !granted {
+                                    settings.skyReminders = false
+                                    notificationDenied = true
+                                }
+                            }
+                            NotificationScheduler.reschedule()
+                        }
+                    }
             } header: {
                 Text("提醒")
             } footer: {
-                Text("每天在设定时间推送当天的运势摘要与宜忌。")
+                Text("每日运势提醒在设定时间推送当天的运势摘要与宜忌；天象提醒在满月、新月和流星雨极大的前一天晚上 8 点提醒。")
             }
             .glassRows()
 
-            Section("数据") {
+            Section {
+                Toggle(isOn: $settings.profileBirthdaysInCountdowns) { Label("档案生日自动倒数", systemImage: "gift.fill") }
+            } header: {
+                Text("倒数日")
+            } footer: {
+                Text("档案里的生日会自动出现在倒数日列表、首页和小组件里，农历录入的按农历每年重复。关掉后只显示你自己添加的倒数日。")
+            }
+            .glassRows()
+
+            Section {
+                NavigationLink(value: AppRoute.backup) {
+                    Label("数据备份", systemImage: "externaldrive.fill")
+                }
                 Button("清空决策历史", role: .destructive) { showClearHistory = true }
                 Button("恢复默认首页布局") {
                     settings.homeCards = HomeCard.allCases
                     settings.hiddenHomeCards = []
                     Haptics.success()
                 }
+            } header: {
+                Text("数据")
+            } footer: {
+                Text("数据只保存在本机。换手机、侧载重签前，可以在「数据备份」导出一份，iPhone 和 Android 版可以互相导入。")
             }
             .glassRows()
 

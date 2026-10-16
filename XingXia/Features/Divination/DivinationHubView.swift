@@ -2,11 +2,17 @@ import SwiftUI
 
 struct DivinationHubView: View {
     @Environment(AppState.self) private var app
+    @Environment(AppSettings.self) private var settings
     @Environment(\.palette) private var palette
     @State private var isWide = false
     @State private var fold: ClosedRange<CGFloat>?
+    /// 择吉日页上次选的事项，入口卡片按它推荐最近的好日子
+    @AppStorage("auspiciousEvent") private var auspiciousEventID = AuspiciousEvent.moving.rawValue
+    @State private var teaser: AuspiciousTeaser?
 
     var body: some View {
+        let teaserKey = AuspiciousTeaserKey(event: AuspiciousEvent(rawValue: auspiciousEventID) ?? .moving, today: .today,
+                                            animal: app.primary.map { BaZi($0.birth).zodiacAnimal })
         ScrollView {
             // 宽屏（Duo 展开横持）左右两栏，其余上下排
             ColumnsLayout(columns: isWide ? 2 : 1, spacing: 14, fold: fold) {
@@ -21,7 +27,7 @@ struct DivinationHubView: View {
 
                     HStack(spacing: 14) {
                         NavigationLink(value: AppRoute.tarot) {
-                            SmallHeroCard(title: "塔罗占卜", subtitle: "大阿卡纳 · 四种牌阵", colors: [Color(hex: 0x6D28D9), Color(hex: 0x2563EB)]) {
+                            SmallHeroCard(title: "塔罗占卜", subtitle: settings.tarotFullDeck ? "78 张 · 四种牌阵" : "大阿卡纳 · 四种牌阵", colors: [Color(hex: 0x6D28D9), Color(hex: 0x2563EB)]) {
                                 TarotBackMini()
                             }
                         }
@@ -73,6 +79,8 @@ struct DivinationHubView: View {
                         MiniTile(route: .birthChart, symbol: "circle.hexagongrid.fill", title: "命盘", subtitle: "八字 · 星盘三巨头", colors: [Color(hex: 0xA78BFA), Color(hex: 0xEC4899)])
                         MiniTile(route: .compatibility, symbol: "heart.circle.fill", title: "缘分配对", subtitle: "星座 + 生肖", colors: [Color(hex: 0xFB7185), Color(hex: 0xF43F5E)])
                     }
+
+                    auspiciousCard
                 }
             }
             .foldGap($fold)
@@ -82,6 +90,66 @@ struct DivinationHubView: View {
         }
         .cosmicBackground()
         .navigationTitle("占卜")
+        .task(id: teaserKey) { await loadTeaser(teaserKey) }
+    }
+
+    /// 择吉日入口：附上最近 30 天里办上次所选事项的首选日子
+    private var auspiciousCard: some View {
+        NavigationLink(value: AppRoute.auspicious) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    SectionHeader(title: "择吉日", subtitle: "搬家 · 开业 · 领证 · 出行", symbol: "calendar.badge.checkmark")
+                    Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                }
+                HStack(spacing: 0) {
+                    ForEach(AuspiciousEvent.allCases.prefix(5)) { event in
+                        Text(event.emoji)
+                            .font(.title3)
+                            .frame(width: 40, height: 40)
+                            .background(Circle().fill(palette.accent.opacity(palette.isDark ? 0.14 : 0.12)))
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                .accessibilityHidden(true)
+                if let teaser {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(teaser.headline).font(.subheadline.weight(.semibold))
+                        Text(teaser.day.summary)
+                            .font(.caption)
+                            .subtleForeground()
+                            .lineLimit(2)
+                    }
+                }
+            }
+            .glassCard(interactive: true)
+        }
+        .buttonStyle(.pressableCard)
+        .accessibilityLabel("择吉日")
+        .accessibilityHint(teaser.map { "\($0.headline)。\($0.day.summary)" } ?? "选一件事，找出未来一段时间里的好日子")
+    }
+
+    private func loadTeaser(_ key: AuspiciousTeaserKey) async {
+        let best = await Task.detached(priority: .utility) {
+            AuspiciousDays.find(key.event, from: key.today, days: 30, animal: key.animal, limit: 1).first
+        }.value
+        guard !Task.isCancelled else { return }
+        teaser = best.map { AuspiciousTeaser(event: key.event, day: $0) }
+    }
+}
+
+private struct AuspiciousTeaserKey: Hashable, Sendable {
+    let event: AuspiciousEvent
+    let today: DayKey
+    let animal: EarthlyBranch?
+}
+
+private struct AuspiciousTeaser {
+    let event: AuspiciousEvent
+    let day: AuspiciousDay
+
+    var headline: String {
+        "近 30 天最宜\(event.name)：\(DateText.monthDay(day.day)) \(DateText.weekday(day.day))"
     }
 }
 

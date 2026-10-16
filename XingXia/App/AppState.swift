@@ -23,17 +23,26 @@ enum AppRoute: Hashable {
     case profiles
     case themes
     case settings
+    /// 择吉日
+    case auspicious
+    /// 天象日历
+    case skyCalendar
+    /// 塔罗手记
+    case tarotJournal
+    /// 数据备份
+    case backup
 
     var tab: AppTab {
         switch self {
         case .tool: .tools
-        case .fortune, .almanac, .horoscope, .stick, .tarot, .answers, .birthChart, .compatibility: .divination
+        case .skyCalendar: .today
+        case .fortune, .almanac, .horoscope, .stick, .tarot, .answers, .birthChart, .compatibility, .auspicious, .tarotJournal: .divination
         case .countdowns, .mood, .history, .fortuneCalendar: .records
-        case .profiles, .themes, .settings: .me
+        case .profiles, .themes, .settings, .backup: .me
         }
     }
 
-    /// xingxia://tool/coin、xingxia://fortune 等
+    /// xingxia://tool/coin、xingxia://fortune、xingxia://auspicious 等
     init?(url: URL) {
         guard url.scheme == "xingxia" else { return nil }
         let host = url.host() ?? ""
@@ -52,6 +61,10 @@ enum AppRoute: Hashable {
         case "mood": self = .mood
         case "history": self = .history
         case "calendar": self = .fortuneCalendar
+        case "auspicious": self = .auspicious
+        case "sky": self = .skyCalendar
+        case "tarot-journal": self = .tarotJournal
+        case "backup": self = .backup
         default: return nil
         }
     }

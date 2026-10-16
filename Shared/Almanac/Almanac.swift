@@ -255,6 +255,80 @@ struct DayDeity: Sendable {
     var pathName: String { isYellowPath ? "黄道吉日" : "黑道日" }
 }
 
+/// 神煞：吉神（天德、天德合、月德、月德合、天赦日）与凶日（四绝日、四离日）。两端算法一致。
+enum Shensha {
+    /// 吉神；其余（四绝日、四离日）是凶日
+    static let lucky: Set<String> = ["天德", "天德合", "月德", "月德合", "天赦日"]
+
+    static func isLucky(_ name: String) -> Bool { lucky.contains(name) }
+
+    /// 黄历页上的简短解释
+    static let notes: [String: String] = [
+        "天德": "天之福德所临，诸事逢凶化吉。",
+        "天德合": "与天德相合，吉庆同于天德。",
+        "月德": "当月德神所在，宜祈福、修造。",
+        "月德合": "与月德相合，百事顺遂。",
+        "天赦日": "上天赦宥之日，宜祭祀、祈福、解除。",
+        "四绝日": "四立前一天，旧季之气将绝，忌出行、嫁娶。",
+        "四离日": "二分二至前一天，阴阳分离，忌出行、嫁娶。",
+    ]
+
+    // 以下按节气月排列：下标 0 = 寅月（正月，立春起）… 11 = 丑月（十二月）
+    /// 天德：日干或日支与之相同
+    private static let tianDe = ["丁", "申", "壬", "辛", "亥", "甲", "癸", "寅", "丙", "乙", "巳", "庚"]
+    /// 天德合：日干或日支与之相同
+    private static let tianDeHe = ["壬", "巳", "丁", "丙", "寅", "己", "戊", "亥", "辛", "庚", "申", "乙"]
+    /// 月德：寅午戌月丙、亥卯未月甲、申子辰月壬、巳酉丑月庚，比日干
+    private static let yueDe = ["丙", "甲", "壬", "庚", "丙", "甲", "壬", "庚", "丙", "甲", "壬", "庚"]
+    /// 月德合：寅午戌月辛、亥卯未月己、申子辰月丁、巳酉丑月乙，比日干
+    private static let yueDeHe = ["辛", "己", "丁", "乙", "辛", "己", "丁", "乙", "辛", "己", "丁", "乙"]
+    /// 天赦：寅卯辰月戊寅、巳午未月甲午、申酉戌月戊申、亥子丑月甲子，下标 = 月序 / 3
+    private static let tianShe = ["戊寅", "甲午", "戊申", "甲子"]
+
+    /// 某天的神煞，按天德、天德合、月德、月德合、天赦日、四绝日、四离日的顺序。
+    /// monthIndex 为节气月序（与月柱相同，交节当天算新月），day 为日柱，
+    /// tomorrowTerm 为次日（北京时间）交的节气名，没有则为 nil。
+    static func of(monthIndex: Int, day: GanZhi, tomorrowTerm: String?) -> [String] {
+        let m = ((monthIndex % 12) + 12) % 12
+        let stem = day.stem.name
+        let branch = day.branch.name
+        var result: [String] = []
+        if tianDe[m] == stem || tianDe[m] == branch { result.append("天德") }
+        if tianDeHe[m] == stem || tianDeHe[m] == branch { result.append("天德合") }
+        if yueDe[m] == stem { result.append("月德") }
+        if yueDeHe[m] == stem { result.append("月德合") }
+        if tianShe[m / 3] == day.name { result.append("天赦日") }
+        if let tomorrowTerm {
+            if ["立春", "立夏", "立秋", "立冬"].contains(tomorrowTerm) { result.append("四绝日") }
+            if ["春分", "夏至", "秋分", "冬至"].contains(tomorrowTerm) { result.append("四离日") }
+        }
+        return result
+    }
+
+    /// 按神煞调整宜忌（在建除、值神的处理之后）。
+    /// 原列表里没有的新项按规则顺序放在最前，原有项位置不变，整体去重。
+    static func adjust(yi: [String], ji: [String], shensha: [String]) -> (yi: [String], ji: [String]) {
+        var addYi: [String] = []
+        if shensha.contains(where: { ["天德", "天德合", "月德", "月德合"].contains($0) }) {
+            addYi += ["祈福", "求嗣"]
+        }
+        if shensha.contains("天赦日") { addYi += ["祭祀", "祈福", "解除"] }
+        var newYi = prepending(addYi, to: yi)
+        var newJi = ji
+        if shensha.contains("四绝日") || shensha.contains("四离日") {
+            newJi = prepending(["出行", "嫁娶"], to: newJi)
+            newYi.removeAll { $0 == "出行" || $0 == "嫁娶" }
+        }
+        return (yi: newYi, ji: newJi)
+    }
+
+    private static func prepending(_ items: [String], to list: [String]) -> [String] {
+        var seen = Set<String>()
+        let fresh = items.filter { !list.contains($0) }
+        return (fresh + list).filter { seen.insert($0).inserted }
+    }
+}
+
 /// 某一天的完整黄历
 struct AlmanacDay: Sendable {
     let key: DayKey
@@ -268,6 +342,8 @@ struct AlmanacDay: Sendable {
     let deity: DayDeity
     let yi: [String]
     let ji: [String]
+    /// 神煞标签（天德、月德、天赦日、四离日等），顺序见 `Shensha.of`
+    let shensha: [String]
     let festivals: [String]
 
     init(_ key: DayKey) {
@@ -295,8 +371,14 @@ struct AlmanacDay: Sendable {
             if !ji.contains("大事勿用") && jianChu.index == 6 { ji.append("大事勿用") }
         }
         if jianChu.index == 6 { yi = ["求医", "治病", "破旧"] }
-        self.yi = yi
-        self.ji = ji
+
+        // 神煞：节气月 + 日柱；四绝、四离看次日（北京时间）是否交四立、二分二至
+        let tomorrowTerm: String? = nextTerm.day == key.adding(days: 1) ? nextTerm.name : nil
+        let shensha = Shensha.of(monthIndex: monthIndex, day: day, tomorrowTerm: tomorrowTerm)
+        let adjusted = Shensha.adjust(yi: yi, ji: ji, shensha: shensha)
+        self.shensha = shensha
+        self.yi = adjusted.yi
+        self.ji = adjusted.ji
         festivals = Festivals.on(key, lunar: lunar)
     }
 
