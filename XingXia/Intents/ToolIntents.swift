@@ -32,16 +32,8 @@ struct WhatToEatIntent: AppIntent {
     }
 }
 
-struct FlipCoinIntent: AppIntent {
-    static let title: LocalizedStringResource = "抛硬币"
-    static let description = IntentDescription("抛一枚硬币，看看是正面还是反面。")
-
-    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
-        let heads = Bool.random()
-        return .result(dialog: heads ? "是正面！" : "是反面！",
-                       view: IntentSnippet(emoji: heads ? "🌞" : "🌙", title: heads ? "正面" : "反面", subtitle: "星匣 · 抛硬币"))
-    }
-}
+// 抛硬币的 FlipCoinIntent 定义在 Shared/Intents/WidgetIntents.swift：交互式小组件和 Siri 共用同一个，
+// App 与小组件两个 target 都会编译 Shared，这里再定义一个会重名。
 
 struct RollDiceIntent: AppIntent {
     static let title: LocalizedStringResource = "掷骰子"

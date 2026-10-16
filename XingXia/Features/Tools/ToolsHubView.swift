@@ -1,9 +1,43 @@
 import SwiftUI
 
-struct ToolsHubView: View {
+/// 收藏的工具横排一行（问一问顶部）。没有收藏时不占位置
+struct FavoriteToolsRow: View {
     @Environment(AppSettings.self) private var settings
-    @State private var search = ""
 
+    var body: some View {
+        let favorites = settings.favoriteTools.compactMap(FavoriteTool.init(id:))
+        if !favorites.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionHeader(title: "我的收藏", symbol: "star.fill")
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(favorites) { tool in
+                            NavigationLink(value: tool.route) {
+                                HStack(spacing: 10) {
+                                    ToolIcon(symbol: tool.symbol, colors: tool.colors, size: 36)
+                                    Text(tool.name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                                }
+                                .padding(.leading, 8)
+                                .padding(.trailing, 14)
+                                .padding(.vertical, 8)
+                                .glassEffect(.regular.interactive(), in: .capsule)
+                            }
+                            .buttonStyle(.pressableCard)
+                            .contextMenu { FavoriteMenuButton(id: tool.id, settings: settings) }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                    .padding(.horizontal, 16)
+                }
+                .pageBleed()
+            }
+        }
+    }
+}
+
+/// 全部工具，按「帮我决定 / 随机一下 / 聚会时光」分区排成格子，长按可收藏到首页
+struct ToolCategorySections: View {
+    @Environment(AppSettings.self) private var settings
     @State private var columnCount = 2
 
     private var columns: [GridItem] {
@@ -11,71 +45,23 @@ struct ToolsHubView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                let matches = ToolKind.allCases.filter(matchesSearch)
-                if search.isEmpty {
-                    let favorites = settings.favoriteTools.compactMap(FavoriteTool.init(id:))
-                    if !favorites.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            SectionHeader(title: "我的收藏", symbol: "star.fill")
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 12) {
-                                    ForEach(favorites) { tool in
-                                        NavigationLink(value: tool.route) {
-                                            HStack(spacing: 10) {
-                                                ToolIcon(symbol: tool.symbol, colors: tool.colors, size: 36)
-                                                Text(tool.name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
-                                            }
-                                            .padding(.leading, 8)
-                                            .padding(.trailing, 14)
-                                            .padding(.vertical, 8)
-                                            .glassEffect(.regular.interactive(), in: .capsule)
-                                        }
-                                        .buttonStyle(.pressableCard)
-                                        .contextMenu { favoriteButton(tool.id) }
-                                    }
-                                }
-                                .padding(.vertical, 2)
-                                .padding(.horizontal, 16)
-                            }
-                            .pageBleed()
-                        }
-                    }
-                    ForEach(ToolCategory.allCases) { category in
-                        VStack(alignment: .leading, spacing: 12) {
-                            SectionHeader(title: category.name, symbol: category.symbol)
-                            let tools = ToolKind.tools(in: category)
-                            // 两栏且单数时最后一个做成通栏；其他列数直接排进网格
-                            let hasWideTile = columnCount == 2 && !tools.count.isMultiple(of: 2)
-                            LazyVGrid(columns: columns, spacing: 14) {
-                                ForEach(hasWideTile ? Array(tools.dropLast()) : tools) { tile($0) }
-                            }
-                            if hasWideTile, let last = tools.last {
-                                wideTile(last)
-                            }
-                        }
-                    }
-                } else if matches.isEmpty {
-                    EmptyHint(symbol: "magnifyingglass", title: "没有找到「\(search)」", message: "试试「吃」「硬币」「抽奖」等关键词")
-                } else {
+        VStack(alignment: .leading, spacing: 22) {
+            ForEach(ToolCategory.allCases) { category in
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeader(title: category.name, symbol: category.symbol)
+                    let tools = ToolKind.tools(in: category)
+                    // 两栏且单数时最后一个做成通栏；其他列数直接排进网格
+                    let hasWideTile = columnCount == 2 && !tools.count.isMultiple(of: 2)
                     LazyVGrid(columns: columns, spacing: 14) {
-                        ForEach(matches) { tile($0) }
+                        ForEach(hasWideTile ? Array(tools.dropLast()) : tools) { tile($0) }
+                    }
+                    if hasWideTile, let last = tools.last {
+                        wideTile(last)
                     }
                 }
             }
-            .columnCount($columnCount, minimum: 158)
-            .pageContent(maxWidth: PageMetrics.gridWidth)
-            .padding(.bottom, 30)
         }
-        .cosmicBackground()
-        .navigationTitle("百宝箱")
-        .searchable(text: $search, prompt: "搜索工具")
-    }
-
-    private func matchesSearch(_ tool: ToolKind) -> Bool {
-        guard !search.isEmpty else { return true }
-        return tool.name.contains(search) || tool.subtitle.contains(search) || tool.keywords.contains(search)
+        .columnCount($columnCount, minimum: 158)
     }
 
     private func tile(_ tool: ToolKind) -> some View {
@@ -101,7 +87,7 @@ struct ToolsHubView: View {
             .clipShape(.rect(cornerRadius: 28))
         }
         .buttonStyle(.pressableCard)
-        .contextMenu { favoriteButton(tool.rawValue) }
+        .contextMenu { FavoriteMenuButton(id: tool.rawValue, settings: settings) }
     }
 
     private func wideTile(_ tool: ToolKind) -> some View {
@@ -128,11 +114,16 @@ struct ToolsHubView: View {
             .clipShape(.rect(cornerRadius: 28))
         }
         .buttonStyle(.pressableCard)
-        .contextMenu { favoriteButton(tool.rawValue) }
+        .contextMenu { FavoriteMenuButton(id: tool.rawValue, settings: settings) }
     }
+}
 
-    @ViewBuilder
-    private func favoriteButton(_ id: String) -> some View {
+/// 长按菜单里的「收藏到首页 / 取消收藏」
+struct FavoriteMenuButton: View {
+    let id: String
+    let settings: AppSettings
+
+    var body: some View {
         let isFavorite = settings.isFavorite(id)
         Button(isFavorite ? "取消收藏" : "收藏到首页", systemImage: isFavorite ? "star.slash" : "star") {
             settings.toggleFavorite(id)

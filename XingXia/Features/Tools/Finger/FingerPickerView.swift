@@ -127,6 +127,11 @@ struct FingerPickerView: View {
 
             VStack {
                 if touches.isEmpty || phase == .waiting {
+                    QuestionBanner()
+                        .frame(maxWidth: 480)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        .opacity(touches.isEmpty ? 1 : 0)
                     controls
                         .opacity(touches.isEmpty ? 1 : 0)
                 }

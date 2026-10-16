@@ -89,6 +89,7 @@ struct AnswerBookView: View {
             }
         }
         .onShake(isEnabled: !sharing) { if !isOpen { open() } }
+        .prefillsQuestion($question)
     }
 
     private var book: some View {

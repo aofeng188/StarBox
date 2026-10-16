@@ -253,6 +253,7 @@ struct DiceView: View {
 
     var body: some View {
         StageScaffold(spacing: 14) {
+            QuestionBanner()
             // 结果
             HStack(spacing: 10) {
                 if results.isEmpty || isRolling {

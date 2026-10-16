@@ -50,6 +50,7 @@ struct FoodPickerView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                QuestionBanner()
                 Picker("来源", selection: $source.animation(.snappy)) {
                     ForEach(Source.allCases) { Text($0.name).tag($0) }
                 }

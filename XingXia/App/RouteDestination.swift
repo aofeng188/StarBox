@@ -26,6 +26,7 @@ struct RouteDestination: View {
         case .skyCalendar: SkyCalendarView()
         case .tarotJournal: TarotJournalView()
         case .backup: BackupView()
+        case .annualReview(let year): AnnualReviewView(year: year)
         }
     }
 }

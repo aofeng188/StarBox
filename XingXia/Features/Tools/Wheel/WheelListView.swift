@@ -46,6 +46,7 @@ struct WheelListView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 18) {
+                QuestionBanner()
                 if let template {
                     // 模板切换
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -155,6 +156,12 @@ struct WheelListView: View {
         }
         .onAppear {
             spinner.onFrame = { angle in tick(angle) }
+            // 从问一问带着「A 还是 B」进来：选项写进「问一问」转盘并切过去
+            if let id = AskWheel.applyPending(in: context, templates: templates) {
+                restoreAll()
+                resultTitle = nil
+                lastTemplateID = id.uuidString
+            }
         }
         .onDisappear { spinner.stop() }
     }

@@ -101,6 +101,8 @@ struct FortuneStickView: View {
 
     private var shakeStage: some View {
         StageScaffold(spacing: 22, minHeight: 500) {
+            QuestionBanner()
+                .padding(.top, 8)
             VStack(spacing: 8) {
                 Text(phase == .dropped ? "签已落地" : "心中默念所求之事")
                     .font(AppFont.serif(26, weight: .bold))

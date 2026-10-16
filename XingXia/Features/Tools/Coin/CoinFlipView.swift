@@ -117,6 +117,7 @@ struct CoinFlipView: View {
         .navigationTitle("抛硬币")
         .navigationBarTitleDisplayMode(.inline)
         .onShake(isEnabled: !editingQuestion) { flip() }
+        .prefillsQuestion($question)
     }
 
     private func flip() {

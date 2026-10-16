@@ -258,6 +258,11 @@ struct TarotView: View {
             }
         }
         .tarotParallax(isActive: phase == .reading)
+        .prefillsQuestion($question)
+        .onAppear {
+            // 问一问推荐了具体牌阵时预选
+            if phase == .setup, let pending = AppState.shared.takePendingTarotSpread() { spread = pending }
+        }
     }
 
     // MARK: 选择牌阵
