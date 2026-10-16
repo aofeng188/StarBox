@@ -300,7 +300,7 @@ fun FortuneDetailScreen() {
     val day = today.adding(offset)
     val birth = Store.birth
     val fortune = remember(day, birth) { FortuneEngine.daily(birth, day) }
-    // 看的不是今天时，文案里的「今日」改成「昨日 / 明日」
+    // 看的不是今天时，页面自己拼的「今日…」改成「昨日 / 明日」（JSON 文案本身不含相对日期）
     val dayWord = relativeDayWord(offset)
     // 当天晚上 21:00（北京时间）的月相，与 iOS 一致
     val moon = remember(day) { MoonInfo.on(day) }
@@ -333,7 +333,7 @@ fun FortuneDetailScreen() {
             GlassCard {
                 SectionHeader("运势解读", subtitle = "依据你的八字与${dayWord}天象", icon = Icons.Rounded.Explore)
                 fortune.insights.forEachIndexed { index, text ->
-                    InsightRow(text.forDay(dayWord)) { GradientIcon(fortune.insightKinds.getOrNull(index).icon, size = 20.dp) }
+                    InsightRow(text) { GradientIcon(fortune.insightKinds.getOrNull(index).icon, size = 20.dp) }
                 }
                 // 月亮星座那条解读总在最后，月相紧跟其后
                 InsightRow(moonText) { Text(moon.name.emoji, style = Fonts.subheadline) }
@@ -424,9 +424,6 @@ private fun relativeDayWord(daysFromToday: Int): String = when (daysFromToday) {
     1 -> "明日"
     else -> "当日"
 }
-
-/** 把文案里的「今日」换成所看那天的称呼（只在界面层替换，不改 JSON） */
-private fun String.forDay(dayWord: String): String = if (dayWord == "今日") this else replace("今日", dayWord)
 
 @Composable
 private fun LuckyCell(data: LuckyCellData, modifier: Modifier) {

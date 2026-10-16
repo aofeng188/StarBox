@@ -554,8 +554,7 @@ private class BackupRestorer(private val mode: BackupMode) {
 
     private fun newId(): String = UUID.randomUUID().toString()
 
-    /** 权重：必须是正数，否则按 1 */
-    // 权重 0 是合法设置（停用该项），原样保留；缺失或负数按 1；上限 1000，与 iOS 一致
+    /** 权重：0 是用户设的「不参与」，原样保留；缺失或负数按 1；过大的截到 1000（与 iOS 一致） */
     private fun weight(value: Double?): Double = if (value != null && value >= 0) minOf(value, 1000.0) else 1.0
 
     // 各类数据

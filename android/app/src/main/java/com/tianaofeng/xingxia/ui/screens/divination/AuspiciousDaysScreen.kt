@@ -32,6 +32,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -44,6 +45,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -53,6 +55,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.tianaofeng.xingxia.core.AuspiciousDay
 import com.tianaofeng.xingxia.core.AuspiciousDays
@@ -300,17 +303,17 @@ private fun AuspiciousDayRow(
     val relative = relativeText(today, day)
     val date = if (day.year == today.year) DateText.monthDay(day) else DateText.full(day)
     val spoken = (if (isBest) "首选，" else "") + "$date ${DateText.weekday(day)}，农历${lunar.text}，$relative。${item.summary}"
-    GlassCard(modifier, padding = 16.dp, tint = if (item.clashesUser) palette.caution.copy(alpha = 0.08f) else null) {
-        Row(
-            Modifier.clearAndSetSemantics { contentDescription = spoken },
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            DateBadge(day, today)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("农历${lunar.text}", style = Fonts.subheadline.weight(FontWeight.SemiBold), modifier = Modifier.weight(1f, fill = false))
-                    if (isBest) TagChip("首选", palette.gold, Icons.Rounded.WorkspacePremium)
-                }
+    // 大字号时日期块放到上面，理由标签才有整行的宽度（TagChip 不换行，最长的「宜…」有 12 个字）
+    val density = LocalDensity.current
+    val isLarge = density.fontScale >= 1.5f
+    val details: @Composable (Modifier) -> Unit = { detailModifier ->
+        Column(detailModifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("农历${lunar.text}", style = Fonts.subheadline.weight(FontWeight.SemiBold), modifier = Modifier.weight(1f, fill = false))
+                if (isBest) TagChip("首选", palette.gold, Icons.Rounded.WorkspacePremium)
+            }
+            // 标签字号封顶，字号再大最长的标签也不超出卡片
+            CompositionLocalProvider(LocalDensity provides Density(density.density, density.fontScale.coerceAtMost(1.8f))) {
                 Flow(spacing = 6.dp) {
                     for (reason in item.reasons) {
                         TagChip(
@@ -320,6 +323,25 @@ private fun AuspiciousDayRow(
                         )
                     }
                 }
+            }
+        }
+    }
+    GlassCard(modifier, padding = 16.dp, tint = if (item.clashesUser) palette.caution.copy(alpha = 0.08f) else null) {
+        if (isLarge) {
+            Column(
+                Modifier.clearAndSetSemantics { contentDescription = spoken },
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                DateBadge(day, today)
+                details(Modifier.fillMaxWidth())
+            }
+        } else {
+            Row(
+                Modifier.clearAndSetSemantics { contentDescription = spoken },
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                DateBadge(day, today)
+                details(Modifier.weight(1f))
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

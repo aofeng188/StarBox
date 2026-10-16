@@ -163,7 +163,14 @@ object SkyReminders {
         val now = LocalDateTime.now()
         val next = items().filter { it.fireAt.isAfter(now) }.minByOrNull { it.fireAt } ?: return
         val millis = next.fireAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, millis, pendingIntent(context, next.remindDay))
+        val operation = pendingIntent(context, next.remindDay)
+        // 提醒可能排在几周后：Android 8–11 上非精确闹钟最多可推迟「距触发时间」的 3/4，过了提醒日 show() 就不发了。
+        // 这几个版本用精确闹钟（不需要权限）；Android 12 起非精确闹钟在触发后一小时内送达，且精确闹钟要单独授权
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, millis, operation)
+        } else {
+            alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, millis, operation)
+        }
     }
 
     private fun ensureChannel(context: Context) {

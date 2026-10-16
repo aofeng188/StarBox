@@ -302,7 +302,7 @@ fun TagChip(text: String, color: Color? = null, icon: ImageVector? = null) {
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         if (icon != null) Icon(icon, null, Modifier.size(12.dp), tint = ink)
-        Text(text, style = Fonts.caption.weight(FontWeight.Medium), color = ink, maxLines = 1)
+        Text(text, style = Fonts.caption.weight(FontWeight.Medium), color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
