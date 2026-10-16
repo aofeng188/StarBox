@@ -326,7 +326,9 @@ private struct MoodDayEditor: View {
                 .lineLimit(1...4)
                 .focused($noteFocused)
                 .padding(12)
-                .background(.primary.opacity(0.05), in: .rect(cornerRadius: 14))
+                .background(.primary.opacity(0.07), in: .rect(cornerRadius: 14))
+                // 深色玻璃上底色几乎看不出，加一道细边标出输入框
+                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.primary.opacity(noteFocused ? 0.25 : 0.12), lineWidth: 1))
             if entry == nil && !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text("选一个心情后，这句话会一起保存").font(.caption).foregroundStyle(.primary.opacity(0.7))
             }

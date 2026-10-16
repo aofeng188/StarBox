@@ -33,6 +33,7 @@ enum NotificationScheduler {
         let minute = AppSettings.shared.reminderMinute
         let birth = AppState.shared.birth
         let name = AppState.shared.primary?.name
+        let prefix = Self.prefix
 
         Task.detached(priority: .utility) {
             let center = UNUserNotificationCenter.current()
