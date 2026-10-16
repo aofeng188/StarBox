@@ -7,8 +7,10 @@ import androidx.compose.material.icons.rounded.Celebration
 import androidx.compose.material.icons.rounded.DonutLarge
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.MonetizationOn
+import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.PanTool
 import androidx.compose.material.icons.rounded.Redeem
 import androidx.compose.material.icons.rounded.Restaurant
@@ -94,6 +96,8 @@ fun toolInfo(tool: String): Triple<String, ImageVector, List<Color>> {
     ToolKind.of(tool)?.let { return Triple(it.label, it.icon, it.colors) }
     return when (tool) {
         "stick" -> Triple("求签", Icons.Rounded.Celebration, listOf(hex(0xFF8A3D), hex(0xE11D48)))
+        "jiaobei" -> Triple("掷筊", Icons.Rounded.NightsStay, listOf(hex(0xEF4444), hex(0x9F1239)))
+        "nearby" -> Triple("附近餐厅", Icons.Rounded.LocationOn, listOf(hex(0xFF9F43), hex(0xFF4D6D)))
         "tarot" -> Triple("塔罗牌", Icons.Rounded.Style, listOf(hex(0x8B5CF6), hex(0x3B82F6)))
         "answers" -> Triple("答案之书", Icons.Rounded.AutoFixHigh, listOf(hex(0xF5B83D), hex(0xB45309)))
         else -> Triple("其他", Icons.Rounded.Casino, listOf(hex(0x94A3B8), hex(0x64748B)))

@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 /** 首页模块 */
 enum class HomeCard(val key: String, val label: String) {
     FORTUNE("fortune", "今日运势"),
+    FAMILY("family", "家人今日"),
     ALMANAC("almanac", "宜忌"),
     HOROSCOPE("horoscope", "星座运势"),
     STICK("stick", "今日一签"),
@@ -37,18 +38,39 @@ object AppSettings {
     var dailyReminderEnabled by Prefs.bool("dailyReminderEnabled", false)
     var reminderHour by Prefs.int("reminderHour", 8)
     var reminderMinute by Prefs.int("reminderMinute", 0)
+    /** 塔罗用完整 78 张（关掉只用 22 张大阿卡纳） */
+    var tarotFullDeck by Prefs.bool("tarotFullDeck", true)
+    /** 满月、新月、流星雨极大前一天晚上提醒 */
+    var skyReminders by Prefs.bool("skyReminders", false)
+    /** 上次导出备份的时间（毫秒），0 表示没导出过 */
+    var backupLastExportAt by Prefs.long("backupLastExportAt", 0L)
 
-    /** 新版本加入的模块追加到末尾 */
+    private val profileBirthdaysState by lazy { Prefs.bool("profileBirthdaysInCountdowns", true) }
+
+    /** 档案里的生日自动出现在倒数日列表、首页和小组件里（与 iOS 同名同义） */
+    var profileBirthdaysInCountdowns: Boolean
+        get() = profileBirthdaysState.value
+        set(value) {
+            if (value == profileBirthdaysState.value) return
+            profileBirthdaysState.value = value
+            // 倒数日小组件跟着变
+            Store.onDataChanged()
+        }
+
+    /** 新版本加入的模块放到默认顺序里它前一个模块的后面（如「家人今日」跟在「今日运势」后面），找不到就追加到末尾（与 iOS 一致） */
     var homeCards: List<HomeCard>
         get() {
-            val stored = homeCardKeys.value.mapNotNull { HomeCard.of(it) }
-            val missing = HomeCard.entries.filter { it !in stored }
-            // 新模块按默认顺序插到「每日一句」前面
-            return if (HomeCard.QUOTE in stored) {
-                stored.takeWhile { it != HomeCard.QUOTE } + missing + stored.dropWhile { it != HomeCard.QUOTE }
-            } else {
-                stored + missing
+            val cards = homeCardKeys.value.mapNotNull { HomeCard.of(it) }.distinct().toMutableList()
+            HomeCard.entries.forEachIndexed { index, card ->
+                if (card in cards) return@forEachIndexed
+                val anchor = if (index == 0) -1 else cards.indexOf(HomeCard.entries[index - 1])
+                when {
+                    index == 0 -> cards.add(0, card)
+                    anchor >= 0 -> cards.add(anchor + 1, card)
+                    else -> cards.add(card)
+                }
             }
+            return cards
         }
         set(value) { homeCardKeys.value = value.map { it.key } }
 

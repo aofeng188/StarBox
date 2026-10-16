@@ -67,7 +67,9 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
@@ -519,10 +521,14 @@ fun WheelScreen() {
     var lastTemplateId by Prefs.string("wheel.lastTemplate", "")
     val templates = Store.wheels.items.sortedBy { it.createdAt }
     val template = templates.firstOrNull { it.id == lastTemplateId } ?: templates.firstOrNull()
+    val view = LocalView.current
     val eliminated = remember { mutableStateListOf<String>() }
     // 淘汰模式下刚转到、还在 1.2 秒展示期内的选项
     var pendingElimination by remember { mutableStateOf<String?>(null) }
     val segments = template?.options.orEmpty().filter { it.weight > 0 && it.id !in eliminated }
+    // 去掉待淘汰项后还能转的个数；「恢复全部」只算当前转盘里已淘汰或待淘汰的（与 iOS 一致）
+    val spinnableCount = segments.count { it.id != pendingElimination }
+    val eliminatedCount = template?.options.orEmpty().count { it.id in eliminated || it.id == pendingElimination }
     val angle = remember { Animatable(0f) }
     var spinning by remember { mutableStateOf(false) }
     var resultTitle by remember { mutableStateOf<String?>(null) }
@@ -548,16 +554,31 @@ fun WheelScreen() {
         if (id !in eliminated) eliminated.add(id)
     }
 
+    fun restoreAll() {
+        eliminated.clear()
+        pendingElimination = null
+    }
+
+    // 关掉淘汰模式后「恢复全部」不再显示，已移出的选项要放回盘面
+    LaunchedEffect(template?.removeAfterSpin) {
+        if (template?.removeAfterSpin != true) restoreAll()
+    }
+    // 换转盘（含在编辑器里删掉当前转盘）时，上一个转盘的结果和淘汰状态一并清掉
+    LaunchedEffect(template?.id) {
+        restoreAll()
+        resultTitle = null
+    }
+
     fun spin() {
         if (spinning) return
-        // 上一个淘汰项还在展示期就又转了：先让它立刻出局，免得被重复抽中
+        val spun = template
+        // 先确认去掉待淘汰项后还能转，再让它立刻出局（免得被重复抽中），落点按移出后的扇区计算
+        val options = spun?.options.orEmpty().filter { it.weight > 0 && it.id !in eliminated && it.id != pendingElimination }
+        if (options.size < 2) return
         pendingElimination?.let {
             eliminate(it)
             pendingElimination = null
         }
-        val spun = template
-        val options = spun?.options.orEmpty().filter { it.weight > 0 && it.id !in eliminated }
-        if (options.size < 2) return
         val index = TrueRandom.weightedIndex(options.map { it.weight }) ?: return
         val range = wheelRanges(options)[index]
         val width = range.endInclusive - range.start
@@ -580,6 +601,7 @@ fun WheelScreen() {
             SoundEngine.play(SoundEffect.SUCCESS)
             Haptics.success()
             confetti++
+            view.announceForAccessibility("转到了：${picked.title}")
             Store.log(ToolKind.WHEEL.id, spun?.name ?: "", picked.title)
             if (spun?.removeAfterSpin == true) {
                 pendingElimination = picked.id
@@ -635,8 +657,7 @@ fun WheelScreen() {
                         // 转动中不能换转盘，否则结果和停下的位置对不上
                         if (spinning) return@SelectChip
                         lastTemplateId = item.id
-                        eliminated.clear()
-                        pendingElimination = null
+                        restoreAll()
                         resultTitle = null
                     }
                 }
@@ -663,7 +684,7 @@ fun WheelScreen() {
                 Box(
                     Modifier
                         .size(84.dp)
-                        .pressable(!spinning && segments.size >= 2) { spin() }
+                        .pressable(!spinning && spinnableCount >= 2) { spin() }
                         .clip(CircleShape)
                         .background(palette.accentBrush),
                     contentAlignment = Alignment.Center,
@@ -686,11 +707,8 @@ fun WheelScreen() {
                 GlassCard(padding = 14.dp) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         SecondaryText("淘汰模式：转到的选项会暂时移出", style = Fonts.caption, modifier = Modifier.weight(1f))
-                        if (eliminated.isNotEmpty()) {
-                            TextAction("恢复全部（${eliminated.size}）", enabled = !spinning) {
-                                eliminated.clear()
-                                pendingElimination = null
-                            }
+                        if (eliminatedCount > 0) {
+                            TextAction("恢复全部（$eliminatedCount）", enabled = !spinning) { restoreAll() }
                         }
                     }
                 }
@@ -746,7 +764,9 @@ private fun WheelCanvas(segments: List<WheelOption>, rotation: Float, colors: Li
                 val band = r * 0.57f
                 val fontSize = min(18f, max(9f, (band * sweep * Math.PI.toFloat() / 180 * 0.6f) / density))
                 val title = if (segment.title.length > 10) segment.title.take(9) + "…" else segment.title
-                val layout = measurer.measure(AnnotatedString(title), TextStyle(fontSize = fontSize.sp, fontWeight = FontWeight.Bold, color = color.readableForeground))
+                // 扇区外缘半透明、压在深色底盘上还有暗角，换深字的亮度分界取 0.3（与 iOS 的 labelColor(on:) 一致）
+                val label = if (color.luminance() > 0.3f) hex(0x14101F) else Color.White
+                val layout = measurer.measure(AnnotatedString(title), TextStyle(fontSize = fontSize.sp, fontWeight = FontWeight.Bold, color = label))
                 val textScale = min(1f, (r * 0.56f) / max(1f, layout.size.width.toFloat()))
                 rotate(mid, center) {
                     translate(center.x + band, center.y) {

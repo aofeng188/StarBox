@@ -9,6 +9,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Paid
+import androidx.compose.material.icons.rounded.EventAvailable
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FormatQuote
@@ -44,9 +46,9 @@ import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Tag
 import androidx.compose.material.icons.rounded.Waves
 import androidx.compose.material.icons.rounded.WbSunny
-import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -56,9 +58,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -68,19 +72,23 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tianaofeng.xingxia.core.AlmanacDay
-import com.tianaofeng.xingxia.core.Astronomy
-import com.tianaofeng.xingxia.core.DailyFortune
+import com.tianaofeng.xingxia.core.AuspiciousDay
+import com.tianaofeng.xingxia.core.AuspiciousDays
+import com.tianaofeng.xingxia.core.AuspiciousEvent
+import com.tianaofeng.xingxia.core.ContentLibrary
 import com.tianaofeng.xingxia.core.DateText
 import com.tianaofeng.xingxia.core.DayKey
 import com.tianaofeng.xingxia.core.FortuneCategory
@@ -88,12 +96,13 @@ import com.tianaofeng.xingxia.core.FortuneEngine
 import com.tianaofeng.xingxia.core.FortuneInsightKind
 import com.tianaofeng.xingxia.core.HoroscopeEngine
 import com.tianaofeng.xingxia.core.HoroscopePeriod
-import com.tianaofeng.xingxia.core.LunarDate
+import com.tianaofeng.xingxia.core.MoonInfo
+import com.tianaofeng.xingxia.core.Shensha
 import com.tianaofeng.xingxia.core.SolarTerms
 import com.tianaofeng.xingxia.core.StarRating
 import com.tianaofeng.xingxia.core.ZodiacSign
-import com.tianaofeng.xingxia.core.roundHalfAway
 import com.tianaofeng.xingxia.data.AppSettings
+import com.tianaofeng.xingxia.data.Prefs
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.ColorDot
 import com.tianaofeng.xingxia.ui.components.Flow
@@ -115,7 +124,7 @@ import com.tianaofeng.xingxia.ui.components.TagChip
 import com.tianaofeng.xingxia.ui.components.TextAction
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
-import com.tianaofeng.xingxia.ui.components.shareText
+import com.tianaofeng.xingxia.ui.components.rememberToday
 import com.tianaofeng.xingxia.ui.components.weight
 import com.tianaofeng.xingxia.ui.nav.LocalNavigator
 import com.tianaofeng.xingxia.ui.nav.Routes
@@ -126,8 +135,11 @@ import com.tianaofeng.xingxia.ui.screens.common.YiJiRow
 import com.tianaofeng.xingxia.ui.screens.common.ZodiacBadge
 import com.tianaofeng.xingxia.ui.screens.common.icon
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
+import com.tianaofeng.xingxia.ui.theme.ThemePalette
 import com.tianaofeng.xingxia.ui.theme.hex
 import com.tianaofeng.xingxia.ui.theme.toColor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -153,7 +165,8 @@ fun DivinationHubScreen() {
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            SmallHeroCard("塔罗占卜", "大阿卡纳 · 四种牌阵", hex(0x6D28D9), Modifier.weight(1f), { navigator.open(Routes.TAROT) }) {
+            val tarotSubtitle = if (AppSettings.tarotFullDeck) "${ContentLibrary.tarot.size} 张 · 四种牌阵" else "大阿卡纳 · 四种牌阵"
+            SmallHeroCard("塔罗占卜", tarotSubtitle, hex(0x6D28D9), Modifier.weight(1f), { navigator.open(Routes.TAROT) }) {
                 TarotBackMini()
             }
             SmallHeroCard("答案之书", "默念问题 · 翻开一页", hex(0xD97706), Modifier.weight(1f), { navigator.open(Routes.ANSWERS) }) {
@@ -199,6 +212,49 @@ fun DivinationHubScreen() {
                 }
             }
         }
+
+        AuspiciousHubCard()
+    }
+}
+
+/** 择吉日入口：附上最近 30 天里办上次所选事项（择吉日页记下的 "auspiciousEvent"）的首选日子 */
+@Composable
+private fun AuspiciousHubCard() {
+    val navigator = LocalNavigator.current
+    val palette = LocalPalette.current
+    val today = rememberToday()
+    val eventKey = remember { Prefs.string(AUSPICIOUS_EVENT_KEY, AuspiciousEvent.MOVING.key) }
+    val event = AuspiciousEvent.of(eventKey.value) ?: AuspiciousEvent.MOVING
+    val animal = Store.primary?.animal
+    val teaser by produceState<AuspiciousDay?>(null, event, today, animal) {
+        value = withContext(Dispatchers.Default) { AuspiciousDays.find(event, today, days = 30, animal = animal, limit = 1).firstOrNull() }
+    }
+    val headline = teaser?.let { "近 30 天最宜${event.label}：${DateText.monthDay(it.day)} ${DateText.weekday(it.day)}" }
+    GlassCard(onClick = { navigator.open(Routes.AUSPICIOUS) }) {
+        SectionHeader("择吉日", subtitle = "搬家 · 开业 · 领证 · 出行", icon = Icons.Rounded.EventAvailable) {
+            Icon(Icons.Rounded.ChevronRight, null, tint = palette.tertiaryText)
+        }
+        // 事项图案只作装饰
+        Row(Modifier.fillMaxWidth().clearAndSetSemantics { }) {
+            for (item in AuspiciousEvent.entries.take(5)) {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(palette.accent.copy(alpha = if (palette.isDark) 0.14f else 0.12f)),
+                        contentAlignment = Alignment.Center,
+                    ) { Text(item.emoji, style = Fonts.title3) }
+                }
+            }
+        }
+        val day = teaser
+        if (headline != null && day != null) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(headline, style = Fonts.subheadline.weight(FontWeight.SemiBold))
+                SecondaryText(day.summary, style = Fonts.caption, maxLines = 2)
+            }
+        }
     }
 }
 
@@ -239,20 +295,27 @@ fun FortuneDetailScreen() {
     val navigator = LocalNavigator.current
     val palette = LocalPalette.current
     var offset by remember { mutableIntStateOf(0) }
-    val day = DayKey.today.adding(offset)
+    // 过零点、隔天回到前台时「今天」跟着换
+    val today = rememberToday()
+    val day = today.adding(offset)
     val birth = Store.birth
     val fortune = remember(day, birth) { FortuneEngine.daily(birth, day) }
     // 看的不是今天时，文案里的「今日」改成「昨日 / 明日」
     val dayWord = relativeDayWord(offset)
-    val context = LocalContext.current
-    val moonPhase = remember(day) { moonPhaseOf(day) }
-    val moonText = "${dayWord}月相为${moonPhase.first}，月亮行经${fortune.moonSign.label}。"
+    // 当天晚上 21:00（北京时间）的月相，与 iOS 一致
+    val moon = remember(day) { MoonInfo.on(day) }
+    val moonText = "${dayWord}月相为${moon.name.label}，亮面约 ${moon.percent}%，月亮行经${fortune.moonSign.label}。"
+    val ownerName = Store.primary?.name
+    // 分享卡标题：看的不是今天时写具体日期
+    val shareTitle = if (offset == 0) "星匣 · 今日运势" else "星匣 · ${DateText.monthDay(day)}运势"
 
     Screen(
         title = "运势详解",
         actions = {
-            CircleIconButton(Icons.Rounded.Share, "分享") {
-                shareText(context, fortuneShareText(fortune, Store.primary?.name), "我的${DateText.monthDay(day)}运势")
+            ShareCardButton("分享运势", "fortune") { style ->
+                ShareCardFrame(style, day, shareTitle) {
+                    FortuneShareContent(fortune, ownerName, style)
+                }
             }
         },
     ) {
@@ -273,10 +336,10 @@ fun FortuneDetailScreen() {
                     InsightRow(text.forDay(dayWord)) { GradientIcon(fortune.insightKinds.getOrNull(index).icon, size = 20.dp) }
                 }
                 // 月亮星座那条解读总在最后，月相紧跟其后
-                InsightRow(moonText) { Text(moonPhase.second, style = Fonts.subheadline) }
+                InsightRow(moonText) { Text(moon.name.emoji, style = Fonts.subheadline) }
             }
         } else {
-            GlassCard { InsightRow(moonText) { Text(moonPhase.second, style = Fonts.subheadline) } }
+            GlassCard { InsightRow(moonText) { Text(moon.name.emoji, style = Fonts.subheadline) } }
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 GlassButton("填写生日后可查看基于八字与星座的专属解读", Icons.Rounded.Lock) { navigator.open(Routes.PROFILES) }
             }
@@ -351,25 +414,8 @@ private fun InsightRow(text: String, icon: @Composable () -> Unit) {
     }
 }
 
-/** 八相月相（名称, 图案）。moonPhase 为日月黄经差 / 360：0 新月、0.25 上弦、0.5 满月、0.75 下弦，按最近的一相取（与 iOS 一致） */
-private fun moonPhaseOf(day: DayKey): Pair<String, String> {
-    val phases = listOf("新月" to "🌑", "娥眉月" to "🌒", "上弦月" to "🌓", "盈凸月" to "🌔", "满月" to "🌕", "亏凸月" to "🌖", "下弦月" to "🌗", "残月" to "🌘")
-    return phases[(Astronomy.moonPhase(day.noon) * 8).roundHalfAway().toInt() % 8]
-}
-
-/** 分享用的运势摘要，内容与 iOS 的分享卡一致 */
-private fun fortuneShareText(fortune: DailyFortune, name: String?): String = buildString {
-    val day = fortune.day
-    appendLine("星匣 · ${DateText.monthDay(day)}运势")
-    val lunar = LunarDate.of(day)?.let { " · 农历${it.text}" } ?: ""
-    appendLine("${day.year}年$lunar · ${DateText.weekday(day)}")
-    appendLine("${fortune.score} 分 · ${fortune.levelName}")
-    appendLine(fortune.summary)
-    appendLine("宜 ${fortune.funYi.joinToString(" ")}")
-    appendLine("忌 ${fortune.funJi.take(2).joinToString(" ")}")
-    append("幸运色 ${fortune.luckyColor.name} · 幸运数字 ${fortune.luckyNumber}")
-    if (!name.isNullOrBlank() && name != "我") append("\n—— 来自 $name 的分享")
-}
+/** 神煞标签色：吉神用金色，四离、四绝这类凶日沿用黑道日的灰色（与 iOS 一致） */
+private fun shenshaColor(name: String, palette: ThemePalette): Color = if (Shensha.isLucky(name)) palette.gold else hex(0x94A3B8)
 
 /** 相对今天的称呼：0 今日、-1 昨日、1 明日，其余为当日 */
 private fun relativeDayWord(daysFromToday: Int): String = when (daysFromToday) {
@@ -410,13 +456,23 @@ private fun LuckyCell(data: LuckyCellData, modifier: Modifier) {
 @Composable
 fun AlmanacDetailScreen() {
     val palette = LocalPalette.current
-    var day by remember { mutableStateOf(DayKey.today) }
+    val navigator = LocalNavigator.current
+    val today = rememberToday()
+    var day by remember { mutableStateOf(today) }
+    // 跨过零点、隔天回到前台时：原本停在今天的跟着换到新的一天，翻到别的日期的不动
+    var shownToday by remember { mutableStateOf(today) }
+    LaunchedEffect(today) {
+        if (today != shownToday) {
+            if (day == shownToday) day = today
+            shownToday = today
+        }
+    }
     var showPicker by remember { mutableStateOf(false) }
     val almanac = remember(day) { AlmanacDay(day) }
     val birth = Store.birth
     val fortune = remember(day, birth) { FortuneEngine.daily(birth, day) }
     // 翻到别的日期时，「今日」改成「昨日 / 明日 / 当日」
-    val dayWord = relativeDayWord(DayKey.today.daysTo(day))
+    val dayWord = relativeDayWord(today.daysTo(day))
 
     fun move(delta: Int) {
         Haptics.selection()
@@ -425,7 +481,7 @@ fun AlmanacDetailScreen() {
 
     Screen(
         title = "黄历",
-        actions = { if (day != DayKey.today) TextAction("今天") { day = DayKey.today } },
+        actions = { if (day != today) TextAction("今天") { day = today } },
     ) {
         Row(
             Modifier
@@ -457,10 +513,26 @@ fun AlmanacDetailScreen() {
             Text(almanac.ganzhiText, style = Fonts.subheadline.weight(FontWeight.Medium))
             val year = almanac.lunar.yearGanZhi
             SecondaryText("${year.branch.animalEmoji} ${year.name}${year.branch.animal}年 · 纳音${almanac.day.nayin}", style = Fonts.footnote)
-            Flow(spacing = 8.dp) {
+            Flow(spacing = 8.dp, horizontalAlignment = Alignment.CenterHorizontally) {
                 TagChip(almanac.jianChu.name, if (almanac.jianChu.isLucky) hex(0x34D399) else hex(0xFBBF24))
                 TagChip("${almanac.deity.name} · ${almanac.deity.pathName}", if (almanac.deity.isYellowPath) hex(0xFBBF24) else hex(0x94A3B8))
-                for (f in almanac.festivals) TagChip(f, hex(0xFB7185))
+            }
+            if (almanac.shensha.isNotEmpty()) {
+                // 神煞多时（大字号下）放不下就换行；读屏合成一句
+                Flow(
+                    spacing = 8.dp,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clearAndSetSemantics { contentDescription = "神煞：" + almanac.shensha.joinToString("、") },
+                ) {
+                    for (name in almanac.shensha) {
+                        TagChip(name, shenshaColor(name, palette), if (Shensha.isLucky(name)) Icons.Rounded.AutoAwesome else Icons.Rounded.WarningAmber)
+                    }
+                }
+            }
+            if (almanac.festivals.isNotEmpty()) {
+                Flow(spacing = 8.dp, horizontalAlignment = Alignment.CenterHorizontally) {
+                    for (f in almanac.festivals) TagChip(f, hex(0xFB7185))
+                }
             }
         }
 
@@ -469,6 +541,17 @@ fun AlmanacDetailScreen() {
             SecondaryText(almanac.jianChu.summary, style = Fonts.caption)
             YiJiRow(true, almanac.yi)
             YiJiRow(false, almanac.ji)
+            if (almanac.shensha.isNotEmpty()) {
+                HorizontalDivider(color = palette.subtle(0.12f))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (name in almanac.shensha) {
+                        Row(Modifier.semantics(mergeDescendants = true) { }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(name, style = Fonts.subheadline.weight(FontWeight.SemiBold), color = palette.ink(shenshaColor(name, palette)))
+                            SecondaryText(Shensha.NOTES[name] ?: "")
+                        }
+                    }
+                }
+            }
         }
 
         val infos = listOf(
@@ -523,8 +606,12 @@ fun AlmanacDetailScreen() {
             YiJiRow(false, fortune.funJi)
         }
 
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            GlassButton("择吉日：挑个办事的好日子", Icons.Rounded.EventAvailable) { navigator.open(Routes.AUSPICIOUS) }
+        }
+
         SecondaryText(
-            "黄历宜忌按「建除十二神」与「黄黑道值神」推算，仅作传统文化参考。",
+            "黄历宜忌按「建除十二神」「黄黑道值神」推算，并参考天德、月德、天赦、四离四绝等神煞，仅作传统文化参考。",
             style = Fonts.caption2,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
@@ -570,7 +657,9 @@ fun HoroscopeScreen() {
     }
     var sign by remember { mutableStateOf(initial) }
     var period by remember { mutableStateOf(HoroscopePeriod.TODAY) }
-    val horoscope = remember(sign, period) { HoroscopeEngine.horoscope(sign, period) }
+    // 过零点、隔天回到前台时按新的一天重算
+    val today = rememberToday()
+    val horoscope = remember(sign, period, today) { HoroscopeEngine.horoscope(sign, period, today) }
     val scroll = rememberScrollState()
 
     Screen(title = "星座运势") {
@@ -614,7 +703,8 @@ fun HoroscopeScreen() {
                     Text(sign.label, style = Fonts.title)
                     SecondaryText("${sign.englishName} · ${sign.dateRange}", style = Fonts.caption)
                     StarRatingView(horoscope.stars, size = 15.dp)
-                    SecondaryText("${period.label}运势 · ${horoscope.rangeText}", style = Fonts.caption)
+                    // 窄列放不下一行时分两行，避免日期范围最后两个字单独掉到下一行
+                    OneLineOrSplit("${period.label}运势", horoscope.rangeText, Fonts.caption)
                 }
                 ScoreRing(horoscope.score, size = 70.dp, lineWidth = 7.dp)
             }
@@ -678,6 +768,27 @@ fun HoroscopeScreen() {
 
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             GlassButton("查看星座配对", Icons.Rounded.Favorite) { navigator.open(Routes.COMPATIBILITY) }
+        }
+    }
+}
+
+/** 「first · second」放得下就一行，放不下拆成 first 和 second 两行（对应 iOS 的 ViewThatFits） */
+@Composable
+private fun OneLineOrSplit(first: String, second: String, style: TextStyle) {
+    val measurer = rememberTextMeasurer()
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val joined = "$first · $second"
+        val maxPx = constraints.maxWidth
+        val fits = remember(joined, style, maxPx, measurer) {
+            measurer.measure(joined, style, maxLines = 1, softWrap = false).size.width <= maxPx
+        }
+        if (fits) {
+            SecondaryText(joined, style = style, maxLines = 1)
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                SecondaryText(first, style = style)
+                SecondaryText(second, style = style)
+            }
         }
     }
 }

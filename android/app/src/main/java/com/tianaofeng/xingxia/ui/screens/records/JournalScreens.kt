@@ -27,6 +27,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.BarChart
@@ -42,6 +43,8 @@ import androidx.compose.material.icons.rounded.GridOn
 import androidx.compose.material.icons.rounded.HourglassEmpty
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.MenuBook
+import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.People
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.SentimentSatisfied
 import androidx.compose.material.icons.rounded.ShowChart
@@ -93,6 +96,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -105,7 +109,9 @@ import com.tianaofeng.xingxia.core.DayKey
 import com.tianaofeng.xingxia.core.FortuneEngine
 import com.tianaofeng.xingxia.core.LunarDate
 import com.tianaofeng.xingxia.core.pearson
+import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.data.Countdown
+import com.tianaofeng.xingxia.data.CountdownItem
 import com.tianaofeng.xingxia.data.MoodEntry
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.BigActionButton
@@ -131,6 +137,8 @@ import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.rememberToday
 import com.tianaofeng.xingxia.ui.components.weight
+import com.tianaofeng.xingxia.ui.nav.LocalNavigator
+import com.tianaofeng.xingxia.ui.nav.Routes
 import com.tianaofeng.xingxia.ui.screens.common.stickLevelColor
 import com.tianaofeng.xingxia.ui.screens.divination.GlassTextField
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
@@ -599,19 +607,13 @@ private val CountdownKind.icon: ImageVector
         CountdownKind.BIRTHDAY -> Icons.Rounded.Cake
     }
 
-/** 列表排序：置顶在前；其余按剩余天数，纪念日和已过的排后面 */
-fun sortedCountdowns(list: List<Countdown>): List<Countdown> = list.sortedWith(
-    compareBy<Countdown> { !it.pinned }.thenBy {
-        val s = it.status()
-        if (it.kindValue == CountdownKind.ANNIVERSARY || s.isPast) 10_000 + s.days else s.days
-    },
-)
-
 @Composable
 fun CountdownListScreen() {
-    val palette = LocalPalette.current
+    val today = rememberToday()
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+    var viewingProfileId by rememberSaveable { mutableStateOf<String?>(null) }
     var creating by rememberSaveable { mutableStateOf(false) }
+    var showOptions by remember { mutableStateOf(false) }
 
     if (creating || editingId != null) {
         CountdownEditor(Store.countdowns.items.firstOrNull { it.id == editingId }) {
@@ -621,48 +623,87 @@ fun CountdownListScreen() {
         return
     }
 
-    val sorted = sortedCountdowns(Store.countdowns.items)
-    Screen(title = "倒数日", spacing = 14.dp, actions = { CircleIconButton(Icons.Rounded.Add, "添加") { creating = true } }) {
-        sorted.firstOrNull()?.let { hero ->
-            val status = hero.status()
-            val color = palette.color(hero.colorIndex)
-            val ink = palette.inkColor(hero.colorIndex)
-            GlassCard(padding = 22.dp, tint = color.copy(alpha = 0.1f), horizontalAlignment = Alignment.CenterHorizontally, spacing = 10.dp, onClick = { editingId = hero.id }) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(hero.emoji, style = Fonts.title)
-                    Text(hero.title, style = Fonts.title3.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
-                    if (hero.pinned) Icon(Icons.Rounded.PushPin, "置顶", Modifier.size(14.dp), tint = palette.secondaryText)
-                    TagChip(hero.kindValue.label, color, hero.kindValue.icon)
+    val items = CountdownItem.sorted(CountdownItem.current(), today)
+    // 档案生日只能查看；档案删了或开关关了就回到列表
+    val viewing = viewingProfileId?.let { id -> items.firstOrNull { it.profileId == id } }
+    if (viewing != null) {
+        ProfileBirthdayDetail(viewing, today) { viewingProfileId = null }
+        return
+    }
+    if (viewingProfileId != null) LaunchedEffect(Unit) { viewingProfileId = null }
+
+    /** 数据库里的倒数日打开编辑；档案生日只能查看 */
+    fun open(item: CountdownItem) {
+        if (item.isFromProfile) viewingProfileId = item.profileId else editingId = item.id
+    }
+
+    Screen(
+        title = "倒数日",
+        spacing = 14.dp,
+        actions = {
+            Box {
+                CircleIconButton(Icons.Rounded.MoreHoriz, "显示选项") { showOptions = true }
+                DropdownMenu(expanded = showOptions, onDismissRequest = { showOptions = false }) {
+                    val on = AppSettings.profileBirthdaysInCountdowns
+                    DropdownMenuItem(
+                        text = { Text("显示档案里的生日") },
+                        leadingIcon = { Icon(Icons.Rounded.AccountCircle, null) },
+                        trailingIcon = { if (on) Icon(Icons.Rounded.Check, "已打开") },
+                        onClick = {
+                            AppSettings.profileBirthdaysInCountdowns = !on
+                            showOptions = false
+                        },
+                    )
                 }
-                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SecondaryText(status.prefix, style = Fonts.title3, modifier = Modifier.padding(bottom = 14.dp))
-                    if (status.isToday && hero.kindValue != CountdownKind.ANNIVERSARY) {
-                        Text(status.suffix, style = Fonts.display(64, FontWeight.Black), color = ink)
-                    } else {
-                        Text(
-                            "${status.days}",
-                            style = Fonts.display(84, FontWeight.Black).copy(brush = Brush.verticalGradient(listOf(ink, ink.copy(alpha = 0.7f)))),
-                        )
-                        SecondaryText(status.suffix, style = Fonts.title3, modifier = Modifier.padding(bottom = 14.dp))
-                    }
-                }
-                SecondaryText(status.caption)
             }
-        }
-        for (countdown in sorted.drop(1)) CountdownRow(countdown) { editingId = countdown.id }
+            CircleIconButton(Icons.Rounded.Add, "添加") { creating = true }
+        },
+    ) {
+        items.firstOrNull()?.let { hero -> CountdownHero(hero, today) { open(hero) } }
+        for (item in items.drop(1)) CountdownRow(item, today) { open(item) }
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             GlassButton("添加倒数日", Icons.Rounded.Add) { creating = true }
         }
-        if (sorted.isEmpty()) EmptyHint(Icons.Rounded.HourglassEmpty, "还没有倒数日", "生日、纪念日、假期、考试……重要的日子都可以记在这里")
+        if (items.isEmpty()) EmptyHint(Icons.Rounded.HourglassEmpty, "还没有倒数日", "生日、纪念日、假期、考试……重要的日子都可以记在这里")
     }
 }
 
 @Composable
-private fun CountdownRow(countdown: Countdown, onClick: () -> Unit) {
+private fun CountdownHero(item: CountdownItem, today: DayKey, onClick: (() -> Unit)? = null) {
     val palette = LocalPalette.current
-    val status = countdown.status()
-    val color = palette.color(countdown.colorIndex)
-    val ink = palette.inkColor(countdown.colorIndex)
+    val status = item.status(today)
+    // 色块装饰用原色，文字和数字用调过明暗的版本，浅色模式下粉彩色也读得清
+    val color = palette.color(item.colorIndex)
+    val ink = palette.inkColor(item.colorIndex)
+    GlassCard(padding = 22.dp, tint = color.copy(alpha = 0.1f), horizontalAlignment = Alignment.CenterHorizontally, spacing = 10.dp, onClick = onClick) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(item.emoji, style = Fonts.title)
+            Text(item.title, style = Fonts.title3.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
+            if (item.pinned) Icon(Icons.Rounded.PushPin, "已置顶", Modifier.size(14.dp), tint = palette.secondaryText)
+            CountdownSourceChip(item, color)
+        }
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            SecondaryText(status.prefix, style = Fonts.title3, modifier = Modifier.padding(bottom = 14.dp))
+            if (status.isToday && item.kind != CountdownKind.ANNIVERSARY) {
+                Text(status.suffix, style = Fonts.display(64, FontWeight.Black), color = ink)
+            } else {
+                Text(
+                    "${status.days}",
+                    style = Fonts.display(84, FontWeight.Black).copy(brush = Brush.verticalGradient(listOf(ink, ink.copy(alpha = 0.7f)))),
+                )
+                SecondaryText(status.suffix, style = Fonts.title3, modifier = Modifier.padding(bottom = 14.dp))
+            }
+        }
+        SecondaryText(status.caption)
+    }
+}
+
+@Composable
+private fun CountdownRow(item: CountdownItem, today: DayKey, onClick: () -> Unit) {
+    val palette = LocalPalette.current
+    val status = item.status(today)
+    val color = palette.color(item.colorIndex)
+    val ink = palette.inkColor(item.colorIndex)
     GlassCard(padding = 14.dp, onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Box(
@@ -671,17 +712,18 @@ private fun CountdownRow(countdown: Countdown, onClick: () -> Unit) {
                     .clip(CircleShape)
                     .background(color.copy(alpha = 0.18f)),
                 contentAlignment = Alignment.Center,
-            ) { Text(countdown.emoji, style = Fonts.title2) }
+            ) { Text(item.emoji, style = Fonts.title2) }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(countdown.title, style = Fonts.headline, maxLines = 1)
-                    if (countdown.pinned) Icon(Icons.Rounded.PushPin, "置顶", Modifier.size(12.dp), tint = palette.secondaryText)
+                    Text(item.title, style = Fonts.headline, maxLines = 1)
+                    if (item.pinned) Icon(Icons.Rounded.PushPin, "已置顶", Modifier.size(12.dp), tint = palette.secondaryText)
                 }
                 SecondaryText(status.caption, style = Fonts.caption, maxLines = 1)
+                if (item.isFromProfile) CountdownSourceChip(item, color)
             }
             Column(horizontalAlignment = Alignment.End) {
                 SecondaryText(status.prefix, style = Fonts.caption2)
-                if (status.isToday && countdown.kindValue != CountdownKind.ANNIVERSARY) {
+                if (status.isToday && item.kind != CountdownKind.ANNIVERSARY) {
                     Text(status.suffix, style = Fonts.title3.copy(fontWeight = FontWeight.Bold), color = ink)
                 } else {
                     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -694,13 +736,61 @@ private fun CountdownRow(countdown: Countdown, onClick: () -> Unit) {
     }
 }
 
+/** 类型标签；档案生日标「来自档案」 */
+@Composable
+private fun CountdownSourceChip(item: CountdownItem, color: Color) {
+    if (item.isFromProfile) TagChip("来自档案", color, Icons.Rounded.AccountCircle)
+    else TagChip(item.kind.label, color, item.kind.icon)
+}
+
+/** 档案生日的详情：不能编辑删除，生日要在档案里改 */
+@Composable
+private fun ProfileBirthdayDetail(item: CountdownItem, today: DayKey, onDone: () -> Unit) {
+    val navigator = LocalNavigator.current
+    val status = item.status(today)
+    val profile = Store.profiles.items.firstOrNull { it.id == item.profileId }
+    val birth = item.spec.origin
+    Screen(title = item.title, onBack = onDone) {
+        CountdownHero(item, today)
+        GlassCard {
+            if (profile != null) BirthdayInfoRow("档案", "${profile.avatar} ${profile.name}")
+            BirthdayInfoRow("公历生日", DateText.full(birth))
+            if (item.spec.isLunar) LunarDate.of(birth)?.let { BirthdayInfoRow("农历生日", it.monthName + it.dayName) }
+            BirthdayInfoRow("下一次", "${DateText.full(status.targetDay)} ${DateText.weekday(status.targetDay)}")
+            BirthdayInfoRow("生肖", profile?.animal?.let { "${it.animalEmoji} 属${it.animal}" } ?: "—")
+        }
+        GlassCard {
+            Text(
+                if (item.spec.isLunar) "这一天按档案里的农历生日每年自动换算。" else "这一天由档案里的生日自动生成，每年重复。",
+                style = Fonts.footnote,
+            )
+            SecondaryText("想修改生日请到「我的 › 档案」；不想在倒数日里看到档案生日，可以在「设置」或倒数日页右上角关掉。", style = Fonts.footnote)
+        }
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            GlassButton("管理档案", Icons.Rounded.People) {
+                onDone()
+                navigator.open(Routes.PROFILES)
+            }
+        }
+    }
+}
+
+@Composable
+private fun BirthdayInfoRow(title: String, value: String) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(title, style = Fonts.subheadline, modifier = Modifier.weight(1f))
+        SecondaryText(value, style = Fonts.subheadline)
+    }
+}
+
 /** 首页的倒数日横条 */
 @Composable
 fun CountdownStrip(today: DayKey = DayKey.today, onOpen: () -> Unit) {
     val palette = LocalPalette.current
-    val countdowns = Store.countdowns.items.sortedBy { it.createdAt }
-    val pinned = countdowns.filter { it.pinned }
-    val shown = pinned.ifEmpty { countdowns.take(3) }
+    val items = CountdownItem.sorted(CountdownItem.current(), today)
+    val pinned = items.filter { it.pinned }
+    // 有置顶时只放置顶的，外加一周内要到的档案生日；没有置顶时放最近的三个
+    val shown = if (pinned.isEmpty()) items.take(3) else pinned + items.filter { it.isFromProfile && it.status(today).days <= 7 }
     GlassCard {
         Row(Modifier.pressable(onClick = onOpen), verticalAlignment = Alignment.CenterVertically) {
             SectionHeader("倒数日", icon = Icons.Rounded.HourglassEmpty, modifier = Modifier.weight(1f))
@@ -712,13 +802,14 @@ fun CountdownStrip(today: DayKey = DayKey.today, onOpen: () -> Unit) {
             }
         } else {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                for (countdown in shown) {
-                    val status = countdown.status(today)
-                    val color = palette.color(countdown.colorIndex)
-                    val ink = palette.inkColor(countdown.colorIndex)
+                for (item in shown) {
+                    val status = item.status(today)
+                    // 底色、描边用原色；文字用 ink 版本，浅色模式下粉彩色才看得清
+                    val color = palette.color(item.colorIndex)
+                    val ink = palette.inkColor(item.colorIndex)
                     Column(
                         Modifier
-                            .width(140.dp)
+                            .widthIn(min = 130.dp, max = 220.dp)
                             .clip(RoundedCornerShape(20.dp))
                             .background(color.copy(alpha = 0.12f))
                             .border(1.dp, color.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
@@ -726,13 +817,14 @@ fun CountdownStrip(today: DayKey = DayKey.today, onOpen: () -> Unit) {
                             .padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(countdown.emoji)
-                            Text(countdown.title, style = Fonts.subheadline.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(item.emoji)
+                            Text(item.title, style = Fonts.subheadline.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                            if (item.isFromProfile) Icon(Icons.Rounded.AccountCircle, "来自档案", Modifier.size(12.dp), tint = palette.secondaryText)
                         }
                         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                             SecondaryText(status.prefix, style = Fonts.caption2, modifier = Modifier.padding(bottom = 4.dp))
-                            if (status.isToday && countdown.kindValue != CountdownKind.ANNIVERSARY) {
+                            if (status.isToday && item.kind != CountdownKind.ANNIVERSARY) {
                                 Text(status.suffix, style = Fonts.title2, color = ink)
                             } else {
                                 Text("${status.days}", style = Fonts.display(30), color = ink)

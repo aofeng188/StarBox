@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.People
 import androidx.compose.material.icons.rounded.PersonAddAlt1
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.SettingsBackupRestore
 import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.DropdownMenu
@@ -79,6 +80,7 @@ import com.tianaofeng.xingxia.core.LunarDate
 import com.tianaofeng.xingxia.core.WuXing
 import com.tianaofeng.xingxia.core.ZodiacSign
 import com.tianaofeng.xingxia.core.lunar
+import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.data.Profile
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.BigActionButton
@@ -107,7 +109,9 @@ import com.tianaofeng.xingxia.ui.components.weight
 import com.tianaofeng.xingxia.ui.nav.LocalNavigator
 import com.tianaofeng.xingxia.ui.nav.Routes
 import com.tianaofeng.xingxia.ui.screens.common.ZodiacBadge
+import com.tianaofeng.xingxia.ui.screens.divination.CompatibilityShareButton
 import com.tianaofeng.xingxia.ui.screens.divination.GlassTextField
+import com.tianaofeng.xingxia.ui.screens.divination.ShareSide
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.ThemeManager
 import com.tianaofeng.xingxia.ui.theme.color
@@ -175,6 +179,8 @@ fun MeScreen() {
             MeRow(Icons.Rounded.Palette, palette.spectrum.take(2), "主题与外观", ThemeManager.resolve(java.time.LocalDateTime.now(), Store.birth, false).first.name) { navigator.open(Routes.THEMES) }
             RowDivider()
             MeRow(Icons.Rounded.Settings, listOf(hex(0x94A3B8), hex(0x475569)), "设置", "震动 · 摇一摇 · 动画") { navigator.open(Routes.SETTINGS) }
+            RowDivider()
+            MeRow(Icons.Rounded.SettingsBackupRestore, listOf(hex(0x2DD4BF), hex(0x0EA5E9)), "数据备份", backupValue()) { navigator.open(Routes.BACKUP) }
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -189,6 +195,17 @@ fun MeScreen() {
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
+    }
+}
+
+/** 「我的」里数据备份一行的说明：上次导出是哪天 */
+private fun backupValue(): String {
+    val last = AppSettings.backupLastExportAt
+    if (last <= 0) return "导出 · 恢复"
+    return when (val days = DayKey.of(Instant.ofEpochMilli(last)).daysTo(DayKey.today)) {
+        in Int.MIN_VALUE..0 -> "今天已备份"
+        1 -> "昨天已备份"
+        else -> "$days 天前备份"
     }
 }
 
@@ -769,7 +786,13 @@ fun CompatibilityScreen() {
     val animals = a.animal?.let { x -> b.animal?.let { y -> x to y } }
     val result = Compatibility.between(a.sign, b.sign, animals)
 
-    Screen(title = "缘分配对", spacing = 18.dp) {
+    Screen(
+        title = "缘分配对",
+        spacing = 18.dp,
+        actions = {
+            CompatibilityShareButton(ShareSide(a.sign, a.animal, a.title, a.avatar), ShareSide(b.sign, b.animal, b.title, b.avatar), result)
+        },
+    ) {
         GlassCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SidePicker(a, profiles, Modifier.weight(1f)) { left = it }

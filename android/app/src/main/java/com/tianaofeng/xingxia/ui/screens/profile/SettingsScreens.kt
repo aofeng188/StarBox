@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.tianaofeng.xingxia.system.ReminderScheduler
+import com.tianaofeng.xingxia.system.SkyReminders
 import com.tianaofeng.xingxia.ui.components.SoundEffect
 import com.tianaofeng.xingxia.ui.components.SoundEngine
 import com.tianaofeng.xingxia.ui.components.TextAction
@@ -42,6 +43,8 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.SettingsBackupRestore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -75,6 +78,11 @@ import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.ThemeManager
 import com.tianaofeng.xingxia.ui.theme.ThemeRuleMode
 import com.tianaofeng.xingxia.ui.theme.TimeSlot
+import com.tianaofeng.xingxia.ui.nav.LocalNavigator
+import com.tianaofeng.xingxia.ui.nav.Routes
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 
 @Composable
 fun ThemeSettingsScreen() {
@@ -239,6 +247,7 @@ private fun ThemeSwatch(theme: AppTheme, modifier: Modifier) {
 fun SettingsScreen() {
     val context = LocalContext.current
     val palette = LocalPalette.current
+    val navigator = LocalNavigator.current
     var showTime by remember { mutableStateOf(false) }
     var permissionDenied by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -248,6 +257,11 @@ fun SettingsScreen() {
         } else {
             permissionDenied = true
         }
+    }
+    // 天象日历页也有同一个开关；授权结果只作用于这里拨动的那一次
+    val skyPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) AppSettings.skyReminders = true else permissionDenied = true
+        SkyReminders.reschedule(context)
     }
 
     Screen(title = "设置") {
@@ -275,7 +289,7 @@ fun SettingsScreen() {
             ToggleRow("摇一摇", AppSettings.shakeEnabled, "在求签、骰子、抛硬币等页面摇动手机触发") { AppSettings.shakeEnabled = it }
         }
         GlassCard {
-            SectionHeader("每日提醒")
+            SectionHeader("提醒")
             ToggleRow("每天推送今日运势", AppSettings.dailyReminderEnabled, "按当前档案计算，点通知直接打开运势详解") { on ->
                 if (on && !ReminderScheduler.hasPermission(context) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -297,9 +311,39 @@ fun SettingsScreen() {
                 }
                 TextAction("现在发一条试试") { ReminderScheduler.showToday(context) }
             }
+            ToggleRow("天象提醒", AppSettings.skyReminders, "满月、新月和流星雨极大的前一天晚上 8 点提醒") { on ->
+                if (on && !ReminderScheduler.hasPermission(context) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    skyPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    AppSettings.skyReminders = on
+                    SkyReminders.reschedule(context)
+                }
+            }
             if (permissionDenied) {
                 SecondaryText("没有通知权限。可以在系统设置 ▸ 应用 ▸ 星匣 ▸ 通知 里打开。", style = Fonts.caption)
             }
+        }
+        GlassCard {
+            SectionHeader("倒数日")
+            ToggleRow("档案生日自动倒数", AppSettings.profileBirthdaysInCountdowns) { AppSettings.profileBirthdaysInCountdowns = it }
+            SecondaryText("档案里的生日会自动出现在倒数日列表、首页和小组件里，农历录入的按农历每年重复。关掉后只显示你自己添加的倒数日。", style = Fonts.caption)
+        }
+        GlassCard {
+            SectionHeader("数据")
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { navigator.open(Routes.BACKUP) }
+                    .semantics { role = Role.Button }
+                    .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(Icons.Rounded.SettingsBackupRestore, null, tint = palette.accent)
+                Text("数据备份", style = Fonts.body, modifier = Modifier.weight(1f))
+                Icon(Icons.Rounded.ChevronRight, null, tint = palette.tertiaryText)
+            }
+            SecondaryText("数据只保存在本机。换手机、重装前，可以在「数据备份」导出一份，iPhone 和 Android 版可以互相导入。", style = Fonts.caption)
         }
         GlassCard {
             SectionHeader("显示")

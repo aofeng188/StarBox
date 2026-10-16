@@ -42,13 +42,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import com.tianaofeng.xingxia.core.ZodiacSign
+import com.tianaofeng.xingxia.data.CountdownItem
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.Fonts
 import com.tianaofeng.xingxia.ui.components.ReadableWidth
 import com.tianaofeng.xingxia.ui.components.SecondaryText
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
-import com.tianaofeng.xingxia.ui.screens.records.sortedCountdowns
 import com.tianaofeng.xingxia.ui.theme.AppearanceMode
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.ThemeManager
@@ -177,7 +177,8 @@ class CountdownWidgetConfigActivity : WidgetConfigActivity() {
     @Composable
     override fun Content() {
         val current = WidgetConfig.countdownId(this, appWidgetId)
-        val countdowns = sortedCountdowns(Store.countdowns.items)
+        // 含档案生日（开关打开时），和倒数日列表的顺序一致；档案生日的 id 是档案 id
+        val countdowns = CountdownItem.sorted(CountdownItem.current())
         WidgetConfigScreen("倒数日小组件", "选择要显示的日子，之后长按小组件可以重新设置") {
             item {
                 ConfigOption("自动", "优先显示置顶的，否则显示最近要到的", current == null || countdowns.none { it.id == current }) {
@@ -188,7 +189,8 @@ class CountdownWidgetConfigActivity : WidgetConfigActivity() {
             items(countdowns, key = { it.id }) { countdown ->
                 val status = countdown.status()
                 val detail = if (status.isToday) "${status.prefix}${status.suffix}" else "${status.prefix} ${status.days} ${status.suffix}"
-                ConfigOption("${countdown.emoji} ${countdown.title}", "${countdown.kindValue.label} · $detail", current == countdown.id) {
+                val source = if (countdown.isFromProfile) "来自档案" else countdown.kind.label
+                ConfigOption("${countdown.emoji} ${countdown.title}", "$source · $detail", current == countdown.id) {
                     WidgetConfig.setCountdownId(this@CountdownWidgetConfigActivity, appWidgetId, countdown.id)
                     done()
                 }

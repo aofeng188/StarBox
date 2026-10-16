@@ -51,11 +51,14 @@ import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.weight
 import com.tianaofeng.xingxia.ui.screens.divination.AlmanacDetailScreen
 import com.tianaofeng.xingxia.ui.screens.divination.AnswerBookScreen
+import com.tianaofeng.xingxia.ui.screens.divination.AuspiciousDaysScreen
 import com.tianaofeng.xingxia.ui.screens.divination.DivinationHubScreen
 import com.tianaofeng.xingxia.ui.screens.divination.FortuneDetailScreen
 import com.tianaofeng.xingxia.ui.screens.divination.HoroscopeScreen
 import com.tianaofeng.xingxia.ui.screens.divination.StickScreen
+import com.tianaofeng.xingxia.ui.screens.divination.TarotJournalScreen
 import com.tianaofeng.xingxia.ui.screens.divination.TarotScreen
+import com.tianaofeng.xingxia.ui.screens.profile.BackupScreen
 import com.tianaofeng.xingxia.ui.screens.profile.BirthChartScreen
 import com.tianaofeng.xingxia.ui.screens.profile.CompatibilityScreen
 import com.tianaofeng.xingxia.ui.screens.profile.MeScreen
@@ -70,6 +73,7 @@ import com.tianaofeng.xingxia.ui.screens.records.MoodScreen
 import com.tianaofeng.xingxia.ui.screens.records.HistoryScreen
 import com.tianaofeng.xingxia.ui.screens.records.RecordsHubScreen
 import com.tianaofeng.xingxia.ui.screens.today.HomeEditorScreen
+import com.tianaofeng.xingxia.ui.screens.today.SkyCalendarScreen
 import com.tianaofeng.xingxia.ui.screens.today.TodayScreen
 import com.tianaofeng.xingxia.ui.screens.tools.FavoriteToolsScreen
 import com.tianaofeng.xingxia.ui.screens.tools.ToolKind
@@ -103,6 +107,14 @@ object Routes {
     const val CALENDAR = "calendar"
     /** 管理首页「快捷工具」收藏：排序、移除、添加 */
     const val FAVORITES = "favorites"
+    /** 择吉日（占卜） */
+    const val AUSPICIOUS = "auspicious"
+    /** 天象日历（今日头部的月相胶囊进入） */
+    const val SKY_CALENDAR = "skyCalendar"
+    /** 塔罗手记（占卜） */
+    const val TAROT_JOURNAL = "tarotJournal"
+    /** 数据备份（我的 / 设置） */
+    const val BACKUP = "backup"
 
     fun tool(kind: ToolKind) = "tool/${kind.id}"
     fun profileEditor(id: String? = null, onboarding: Boolean = false) = "profileEditor?id=${id ?: ""}&onboarding=$onboarding"
@@ -124,6 +136,10 @@ object Routes {
             "mood" -> MOOD
             "countdowns" -> COUNTDOWNS
             "calendar" -> CALENDAR
+            "auspicious" -> AUSPICIOUS
+            "sky" -> SKY_CALENDAR
+            "tarot-journal" -> TAROT_JOURNAL
+            "backup" -> BACKUP
             else -> null
         }
     }
@@ -206,6 +222,10 @@ fun AppNavigation(pendingLink: MutableState<String?>) {
                 composable(Routes.COUNTDOWNS) { CountdownListScreen() }
                 composable(Routes.CALENDAR) { FortuneCalendarScreen() }
                 composable(Routes.FAVORITES) { FavoriteToolsScreen() }
+                composable(Routes.AUSPICIOUS) { AuspiciousDaysScreen() }
+                composable(Routes.SKY_CALENDAR) { SkyCalendarScreen() }
+                composable(Routes.TAROT_JOURNAL) { TarotJournalScreen() }
+                composable(Routes.BACKUP) { BackupScreen() }
                 composable("tool/{id}") { entry ->
                     val kind = ToolKind.of(entry.arguments?.getString("id"))
                     if (kind != null) {

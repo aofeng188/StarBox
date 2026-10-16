@@ -28,6 +28,7 @@ import com.tianaofeng.xingxia.ui.components.SensitiveClipboard
 import com.tianaofeng.xingxia.ui.components.SoundEngine
 import com.tianaofeng.xingxia.ui.components.rememberPowerSaveMode
 import com.tianaofeng.xingxia.system.ReminderScheduler
+import com.tianaofeng.xingxia.system.SkyReminders
 import com.tianaofeng.xingxia.system.Widgets
 import com.tianaofeng.xingxia.ui.nav.AppNavigation
 import com.tianaofeng.xingxia.ui.nav.Routes
@@ -49,6 +50,7 @@ class XingXiaApplication : Application() {
             ReminderScheduler.reschedule(app)
         }
         ReminderScheduler.reschedule(this)
+        SkyReminders.reschedule(this)
         ReminderScheduler.scheduleDayChange(this)
     }
 }

@@ -43,10 +43,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.tianaofeng.xingxia.core.CountdownKind
 import com.tianaofeng.xingxia.core.DateText
 import com.tianaofeng.xingxia.core.DayKey
 import com.tianaofeng.xingxia.data.DecisionRecord
+import com.tianaofeng.xingxia.data.CountdownItem
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.ChipRow
 import com.tianaofeng.xingxia.ui.components.CircleIconButton
@@ -85,15 +85,13 @@ fun RecordsHubScreen() {
                 Icons.Rounded.CalendarMonth, listOf(palette.accent, palette.accentSecondary), "运势日历",
                 "${today.month}月", "每日运势一览", Modifier.weight(1f),
             ) { navigator.open(Routes.CALENDAR) }
-            val upcoming = Store.countdowns.items
-                .filter { it.kindValue != CountdownKind.ANNIVERSARY }
-                .map { it to it.status(today) }
-                .filter { !it.second.isPast }
-                .minByOrNull { it.second.days }
+            // 倒数日含档案生日（开关打开时），和倒数日列表一致
+            val countdownItems = CountdownItem.current()
+            val upcoming = CountdownItem.nearest(countdownItems, today)
             val caption = upcoming?.let { (c, s) -> if (s.isToday) "${c.title} 就是今天" else "${c.title} 还有${s.days}天" } ?: "添加重要日子"
             RecordTile(
                 Icons.Rounded.HourglassEmpty, listOf(hex(0x22D3EE), hex(0x6366F1)), "倒数日",
-                "${Store.countdowns.items.size}", caption, Modifier.weight(1f),
+                "${countdownItems.size}", caption, Modifier.weight(1f),
             ) { navigator.open(Routes.COUNTDOWNS) }
         }
         GlassCard(onClick = { navigator.open(Routes.HISTORY) }, spacing = 10.dp) {

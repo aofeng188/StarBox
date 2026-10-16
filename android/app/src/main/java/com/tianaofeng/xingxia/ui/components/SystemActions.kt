@@ -8,6 +8,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -24,12 +25,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.tianaofeng.xingxia.core.DayKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
+import java.io.File
+import java.io.FileOutputStream
 import java.time.Duration
 import java.time.LocalDateTime
 
@@ -46,6 +50,37 @@ fun shareText(context: Context, text: String, subject: String? = null) {
         }
     }
     val chooser = Intent.createChooser(send, subject ?: "分享")
+    if (context !is Activity) chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(chooser) }
+}
+
+/**
+ * 调起系统分享面板分享一张图片（分享卡等）。
+ * 图片以 PNG 写到缓存目录的 share/ 下，经 FileProvider（authority 为「包名.fileprovider」）临时授权给接收方读取。
+ * 顺带清掉 10 分钟前留下的分享图片，缓存不会越积越多。
+ */
+fun shareImage(context: Context, bitmap: Bitmap, fileName: String) {
+    val dir = File(context.cacheDir, "share")
+    if (!dir.exists() && !dir.mkdirs()) return
+    val expired = System.currentTimeMillis() - 10 * 60 * 1000L
+    dir.listFiles()?.forEach { if (it.lastModified() < expired) it.delete() }
+    // 文件名里不能有路径分隔符等字符；没有扩展名时补上 .png
+    var name = fileName.replace(Regex("[\\\\/:*?\"<>|\\s]"), "_").ifBlank { "xingxia" }
+    if (!name.endsWith(".png", ignoreCase = true)) name += ".png"
+    val file = File(dir, name)
+    val written = runCatching {
+        FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }.getOrDefault(false)
+    if (!written) return
+    val uri = runCatching { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file) }.getOrNull() ?: return
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "image/png"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        // 带上 ClipData，分享面板的预览和接收方才拿得到读权限
+        clipData = ClipData.newRawUri(null, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    val chooser = Intent.createChooser(send, "分享图片")
     if (context !is Activity) chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     runCatching { context.startActivity(chooser) }
 }

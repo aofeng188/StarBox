@@ -72,6 +72,16 @@ data class DecisionRecord(
 @Serializable
 data class StickDraw(val dayKey: Int, val profileId: String?, val stickNumber: Int, val date: Long = System.currentTimeMillis())
 
+/** 塔罗手记：一次塔罗解读。cards 与 iOS 相同，如 "0u,13r,5u"（牌 id + u 正位 / r 逆位） */
+@Serializable
+data class TarotReading(
+    val id: String = newId(),
+    val date: Long = System.currentTimeMillis(),
+    val spread: String,
+    val cards: String,
+    val question: String = "",
+)
+
 @Serializable
 data class WheelOption(val id: String = newId(), val title: String, val weight: Double = 1.0)
 
@@ -230,6 +240,9 @@ object Prefs {
     fun int(key: String, default: Int): MutableState<Int> =
         cached(key) { PrefState(sp.getInt(key, default)) { sp.edit().putInt(key, it).apply() } }
 
+    fun long(key: String, default: Long): MutableState<Long> =
+        cached(key) { PrefState(sp.getLong(key, default)) { sp.edit().putLong(key, it).apply() } }
+
     fun string(key: String, default: String): MutableState<String> =
         cached(key) { PrefState(sp.getString(key, default) ?: default) { sp.edit().putString(key, it).apply() } }
 
@@ -268,6 +281,7 @@ object Store {
     val profiles = PersistedList("profiles", Profile.serializer())
     val records = PersistedList("decisionRecords", DecisionRecord.serializer())
     val stickDraws = PersistedList("stickDraws", StickDraw.serializer())
+    val tarotReadings = PersistedList("tarotReadings", TarotReading.serializer())
     val wheels = PersistedList("wheelTemplates", WheelTemplate.serializer())
     val foodLogs = PersistedList("foodLogs", FoodLog.serializer())
     val blockedFoods = PersistedList("blockedFoods", BlockedFood.serializer())
@@ -280,7 +294,7 @@ object Store {
     val scratchPresets = PersistedList("scratchPresets", ScratchPreset.serializer())
 
     private val all get() = listOf(
-        profiles, records, stickDraws, wheels, foodLogs, blockedFoods, rosters,
+        profiles, records, stickDraws, tarotReadings, wheels, foodLogs, blockedFoods, rosters,
         moods, countdowns, lotteryPools, foodMenus, customPrompts, scratchPresets,
     )
 

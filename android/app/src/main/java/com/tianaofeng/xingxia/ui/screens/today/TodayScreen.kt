@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.horizontalScroll
@@ -16,8 +17,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Celebration
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.MenuBook
@@ -26,15 +29,18 @@ import androidx.compose.material.icons.rounded.People
 import androidx.compose.material.icons.rounded.PersonAddAlt1
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import com.tianaofeng.xingxia.ui.components.CircleIconButton
 import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,6 +50,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -63,9 +77,12 @@ import com.tianaofeng.xingxia.core.FortuneCategory
 import com.tianaofeng.xingxia.core.FortuneEngine
 import com.tianaofeng.xingxia.core.HoroscopeEngine
 import com.tianaofeng.xingxia.core.HoroscopePeriod
+import com.tianaofeng.xingxia.core.MoonInfo
+import com.tianaofeng.xingxia.core.Shensha
 import com.tianaofeng.xingxia.core.ZodiacSign
 import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.data.HomeCard
+import com.tianaofeng.xingxia.data.Profile
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.rememberMinuteClock
 import com.tianaofeng.xingxia.ui.components.ColorDot
@@ -97,7 +114,7 @@ import com.tianaofeng.xingxia.ui.screens.common.YiJiRow
 import com.tianaofeng.xingxia.ui.screens.common.ZodiacBadge
 import com.tianaofeng.xingxia.ui.screens.common.stickLevelColor
 import com.tianaofeng.xingxia.ui.screens.common.stickLevelInk
-import com.tianaofeng.xingxia.ui.screens.tools.ToolKind
+import com.tianaofeng.xingxia.ui.screens.tools.FavoriteTool
 import com.tianaofeng.xingxia.ui.screens.records.CountdownStrip
 import com.tianaofeng.xingxia.ui.screens.records.MoodCheckInCard
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
@@ -145,6 +162,7 @@ fun TodayScreen() {
         for (card in AppSettings.homeCards.filter { it !in hidden }) {
             when (card) {
                 HomeCard.FORTUNE -> FortuneHeroCard(fortune)
+                HomeCard.FAMILY -> FamilyFortuneCard(today)
                 HomeCard.ALMANAC -> AlmanacCard(fortune, almanac)
                 HomeCard.HOROSCOPE -> HoroscopeMiniCard(today)
                 HomeCard.STICK -> StickMiniCard(today)
@@ -177,6 +195,33 @@ private fun TodayHeader(day: DayKey, almanac: AlmanacDay, greeting: String) {
         if (almanac.festivals.isNotEmpty()) {
             Flow(spacing = 6.dp) { for (f in almanac.festivals) TagChip(f, icon = Icons.Rounded.Celebration) }
         }
+        MoonPhaseCapsule(day)
+    }
+}
+
+/** 头部的月相小胶囊：今晚的月相和亮面比例，点开看天象日历 */
+@Composable
+private fun MoonPhaseCapsule(day: DayKey) {
+    val navigator = LocalNavigator.current
+    val palette = LocalPalette.current
+    val moon = remember(day) { MoonInfo.on(day) }
+    Row(
+        Modifier
+            .padding(top = 4.dp)
+            .pressable { navigator.open(Routes.SKY_CALENDAR) }
+            .clearAndSetSemantics {
+                contentDescription = "今晚${moon.name.label}，亮面 ${moon.percent}%"
+                role = Role.Button
+            }
+            .glass(CircleShape)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        MoonDisc(moon.phase, 18.dp)
+        Text(moon.name.label, style = Fonts.footnote.weight(FontWeight.SemiBold))
+        Text("亮 ${moon.percent}%", style = Fonts.footnote, color = palette.secondaryText)
+        Icon(Icons.Rounded.ChevronRight, null, Modifier.size(14.dp), tint = palette.tertiaryText)
     }
 }
 
@@ -254,6 +299,109 @@ fun FortuneHeroCard(fortune: DailyFortune) {
     }
 }
 
+/** 家人今日：多个档案时并排看各自的今日运势，点别人的可以切换当前档案 */
+@Composable
+private fun FamilyFortuneCard(today: DayKey) {
+    val profiles = Store.sortedProfiles
+    if (profiles.size <= 1) return
+    val navigator = LocalNavigator.current
+    val view = LocalView.current
+    val clash = remember(today) { AlmanacDay(today).clashAnimal }
+    var switching by remember { mutableStateOf<Profile?>(null) }
+    GlassCard {
+        SectionHeader("家人今日", subtitle = "今日冲${clash.animal}", icon = Icons.Rounded.People)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            for (profile in profiles) {
+                val isCurrent = profile.id == Store.primary?.id
+                FamilyMemberTile(profile, today, clashes = profile.animal == clash, isCurrent = isCurrent) {
+                    // 当前档案直接看运势详情，别人的先确认再切换
+                    if (isCurrent) navigator.open(Routes.FORTUNE) else switching = profile
+                }
+            }
+        }
+    }
+    switching?.let { profile ->
+        AlertDialog(
+            onDismissRequest = { switching = null },
+            confirmButton = {
+                TextButton(onClick = {
+                    switching = null
+                    Store.setPrimary(profile)
+                    Haptics.selection()
+                    view.announceForAccessibility("已切换到${profile.name}")
+                }) { Text("切换到「${profile.name}」") }
+            },
+            dismissButton = { TextButton(onClick = { switching = null }) { Text("取消") } },
+            title = { Text("切换当前档案？") },
+            text = { Text("首页、每日提醒和小组件会改为显示「${profile.name}」的运势。") },
+        )
+    }
+}
+
+@Composable
+private fun FamilyMemberTile(profile: Profile, today: DayKey, clashes: Boolean, isCurrent: Boolean, onClick: () -> Unit) {
+    val palette = LocalPalette.current
+    val birth = profile.birth
+    val fortune = remember(birth, today) { FortuneEngine.daily(birth, today) }
+    val color = palette.color(profile.colorIndex)
+    val animal = profile.animal.animal
+    val spoken = buildList {
+        add(profile.name)
+        add("今日运势 ${fortune.score} 分")
+        add(fortune.levelName)
+        if (clashes) add("今日冲$animal")
+        if (isCurrent) add("当前查看")
+    }.joinToString("，")
+    Column(
+        Modifier
+            .widthIn(min = 84.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(color.copy(alpha = 0.1f))
+            .pressable(onClick = onClick)
+            .clearAndSetSemantics {
+                contentDescription = spoken
+                role = Role.Button
+            }
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(Modifier.size(46.dp)) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(color.copy(alpha = 0.2f))
+                    .then(if (isCurrent) Modifier.border(2.dp, palette.accent, CircleShape) else Modifier),
+                contentAlignment = Alignment.Center,
+            ) { Text(profile.avatar, style = Fonts.title2) }
+            if (isCurrent) {
+                Icon(
+                    Icons.Rounded.CheckCircle, null,
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .offset(3.dp, 3.dp)
+                        .size(16.dp)
+                        .background(palette.onAccent, CircleShape),
+                    tint = palette.accent,
+                )
+            }
+        }
+        Text(profile.name, style = Fonts.caption.weight(FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text("${fortune.score}", style = Fonts.title3.weight(FontWeight.Bold), color = palette.inkColor(profile.colorIndex))
+            SecondaryText(fortune.levelName, style = Fonts.caption2, modifier = Modifier.padding(bottom = 2.dp))
+        }
+        if (clashes) TagChip("今日冲$animal", color = palette.caution)
+    }
+}
+
 @Composable
 private fun AlmanacCard(fortune: DailyFortune, almanac: AlmanacDay) {
     val navigator = LocalNavigator.current
@@ -279,6 +427,22 @@ private fun AlmanacCard(fortune: DailyFortune, almanac: AlmanacDay) {
             YiJiRow(true, if (traditional) almanac.yi else fortune.funYi)
             YiJiRow(false, if (traditional) almanac.ji else fortune.funJi)
             if (traditional) {
+                if (almanac.shensha.isNotEmpty()) {
+                    // 和黄历页一致：吉神金色，四绝、四离灰色
+                    val gold = LocalPalette.current.gold
+                    Box(Modifier.clearAndSetSemantics { contentDescription = "神煞：" + almanac.shensha.joinToString("、") }) {
+                        Flow(spacing = 6.dp) {
+                            for (name in almanac.shensha) {
+                                val lucky = Shensha.isLucky(name)
+                                TagChip(
+                                    name,
+                                    color = if (lucky) gold else hex(0x94A3B8),
+                                    icon = if (lucky) Icons.Rounded.AutoAwesome else Icons.Rounded.Warning,
+                                )
+                            }
+                        }
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.SwapHoriz, null, Modifier.size(14.dp), tint = LocalPalette.current.secondaryText)
                     SecondaryText(almanac.clash, style = Fonts.caption)
@@ -362,24 +526,16 @@ private fun QuickToolsRow() {
     val navigator = LocalNavigator.current
     val palette = LocalPalette.current
     GlassCard {
-        // 「添加」先带去百宝箱长按收藏；工具页星标和收藏管理页做好后，文案和去向跟 iOS 对齐
-        SectionHeader("快捷工具", subtitle = "在百宝箱长按工具可收藏", icon = Icons.Rounded.Bolt)
+        SectionHeader("快捷工具", subtitle = "工具页右上角点星标收藏", icon = Icons.Rounded.Bolt)
         Row(
             Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            // 按收藏顺序显示；答案之书不在百宝箱里，收藏 id 是 "answers"，单独映射
-            for (id in AppSettings.favoriteTools) {
-                if (id == "answers") {
-                    QuickTool("答案之书", { ToolIcon(Icons.Rounded.MenuBook, listOf(hex(0xF5B83D), hex(0xB45309)), 54.dp) }) {
-                        navigator.open(Routes.ANSWERS)
-                    }
-                } else {
-                    val tool = ToolKind.of(id)?.takeIf { it.available } ?: continue
-                    QuickTool(tool.label, { ToolIcon(tool.icon, tool.colors, 54.dp) }) { navigator.open(Routes.tool(tool)) }
-                }
+            // 按收藏顺序显示；认不出的 id（已下线的工具）跳过
+            for (tool in AppSettings.favoriteTools.mapNotNull { FavoriteTool.of(it) }) {
+                QuickTool(tool.label, { ToolIcon(tool.icon, tool.colors, 54.dp) }) { navigator.open(tool.route) }
             }
             QuickTool("添加", {
                 val accent = palette.accent
@@ -397,23 +553,36 @@ private fun QuickToolsRow() {
                             )
                         },
                     contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Rounded.Add, "管理快捷工具", Modifier.size(26.dp), tint = palette.ink(accent)) }
-            }) { navigator.switchTab(Routes.TOOLS) }
+                ) { Icon(Icons.Rounded.Add, null, Modifier.size(26.dp), tint = palette.ink(accent)) }
+            }, description = "管理快捷工具", subtle = true) { navigator.open(Routes.FAVORITES) }
         }
     }
 }
 
 @Composable
-private fun QuickTool(title: String, icon: @Composable () -> Unit, onClick: () -> Unit) {
+private fun QuickTool(
+    title: String,
+    icon: @Composable () -> Unit,
+    description: String? = null,
+    subtle: Boolean = false,
+    onClick: () -> Unit,
+) {
     Column(
         Modifier
             .width(66.dp)
-            .pressable(onClick = onClick),
+            .pressable(onClick = onClick)
+            .clearAndSetSemantics {
+                contentDescription = description ?: title
+                role = Role.Button
+            },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         icon()
-        Text(title, style = Fonts.caption2, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            title, style = Fonts.caption2, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            color = if (subtle) LocalPalette.current.secondaryText else LocalPalette.current.text,
+        )
     }
 }
 
@@ -433,7 +602,10 @@ fun HomeEditorScreen() {
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(card.label, style = Fonts.body, modifier = Modifier.weight(1f), color = if (shown) palette.text else palette.tertiaryText)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(card.label, style = Fonts.body, color = if (shown) palette.text else palette.tertiaryText)
+                        if (card == HomeCard.FAMILY) SecondaryText("有两个及以上档案时显示", style = Fonts.caption)
+                    }
                     CircleIconButton(
                         Icons.Rounded.KeyboardArrowUp, "上移", size = 34.dp, enabled = index > 0,
                     ) {

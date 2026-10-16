@@ -49,6 +49,7 @@ import com.tianaofeng.xingxia.core.HoroscopeEngine
 import com.tianaofeng.xingxia.core.HoroscopePeriod
 import com.tianaofeng.xingxia.core.ZodiacSign
 import com.tianaofeng.xingxia.data.AppSettings
+import com.tianaofeng.xingxia.data.CountdownItem
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.theme.ThemeManager
 import com.tianaofeng.xingxia.ui.theme.ThemePalette
@@ -298,16 +299,19 @@ class CountdownWidgetReceiver : GlanceAppWidgetReceiver() {
     }
 }
 
-/** configuredId 为小组件里选定的倒数日；没选或已删除时显示置顶的，再退回最近要到的 */
+/**
+ * configuredId 为小组件里选定的倒数日（档案生日用档案 id）；没选或已删除时显示置顶的，再退回最近要到的。
+ * 含档案生日（App 里关掉了就不含）。
+ */
 @Composable
 private fun CountdownContent(context: Context, configuredId: String?) {
     val palette = widgetPalette()
-    val countdowns = Store.countdowns.items
+    val items = CountdownItem.current()
     // 纪念日的天数是「已经过了几天」，不参与「最近」的比较（与记录页一致）
-    val chosen = countdowns.firstOrNull { it.id == configuredId }
-        ?: countdowns.firstOrNull { it.pinned }
-        ?: countdowns.filter { it.kindValue != CountdownKind.ANNIVERSARY && !it.status().isPast }.minByOrNull { it.status().days }
-        ?: countdowns.firstOrNull()
+    val chosen = items.firstOrNull { it.id == configuredId }
+        ?: items.firstOrNull { it.pinned }
+        ?: CountdownItem.nearest(items)?.first
+        ?: items.firstOrNull()
     WidgetFrame(context, "xingxia://countdowns") {
         if (chosen == null) {
             Column(GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -325,7 +329,7 @@ private fun CountdownContent(context: Context, configuredId: String?) {
                 }
                 Spacer(GlanceModifier.defaultWeight())
                 Text(status.prefix, style = TextStyle(color = dim, fontSize = 12.sp))
-                if (status.isToday && chosen.kindValue.key != "anniversary") {
+                if (status.isToday && chosen.kind != CountdownKind.ANNIVERSARY) {
                     Text(status.suffix, style = TextStyle(color = color, fontSize = 30.sp, fontWeight = FontWeight.Bold))
                 } else {
                     Row(verticalAlignment = Alignment.Bottom) {
