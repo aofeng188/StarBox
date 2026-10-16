@@ -144,6 +144,13 @@ struct AlmanacDetailView: View {
                 }
                 .glassCard()
 
+                NavigationLink(value: AppRoute.auspicious) {
+                    Label("择吉日：挑个办事的好日子", systemImage: "calendar.badge.checkmark")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
+
                 Text("黄历宜忌按「建除十二神」「黄黑道值神」推算，并参考天德、月德、天赦、四离四绝等神煞，仅作传统文化参考。")
                     .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
