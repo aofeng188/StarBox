@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import WidgetKit
 
 extension View {
     /// 表单行使用半透明磨砂底，透出背后的星空
@@ -253,6 +254,8 @@ struct ProfileEditorView: View {
         if isOnboarding || app.primary == nil || app.primary?.id == target.id {
             app.setPrimary(target)
         }
+        // 档案生日会出现在倒数日小组件里
+        WidgetCenter.shared.reloadAllTimelines()
         Haptics.success()
         dismiss()
     }
@@ -262,6 +265,7 @@ struct ProfileEditorView: View {
         context.delete(profile)
         try? context.save()
         if wasPrimary { app.setPrimary(profiles.first { $0.id != profile.id }) }
+        WidgetCenter.shared.reloadAllTimelines()
         dismiss()
     }
 }
