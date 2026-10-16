@@ -122,6 +122,7 @@ struct SkyCalendarView: View {
                 let dayEvents = events[day] ?? []
                 let lunar = LunarDate(day)
                 let label = dayEvents.first.map(Self.shortTitle) ?? (lunar.day == 1 ? lunar.monthName : lunar.dayName)
+                let spoken: [String] = ["\(day.month)月\(day.day)日", moon.name.name, "亮面 \(moon.percent)%"] + dayEvents.map(\.title)
                 Button {
                     selected = day
                     Haptics.selection()
@@ -130,8 +131,7 @@ struct SkyCalendarView: View {
                                isSelected: day == selected, isToday: day == today, height: min(cellHeight, 96))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(day.month)月\(day.day)日，\(moon.name.name)，亮面 \(moon.percent)%"
-                                    + dayEvents.map { "，\($0.title)" }.joined())
+                .accessibilityLabel(spoken.joined(separator: "，"))
                 .accessibilityAddTraits(day == selected ? .isSelected : [])
             }
         }
@@ -205,26 +205,29 @@ struct SkyCalendarView: View {
 
     private var reminderCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Toggle(isOn: Binding(get: { settings.skyReminders }, set: { settings.skyReminders = $0 })) {
+            // 只响应这里的开关操作（不用 onChange）：设置页也有同一个开关，两个页面同时在导航栈里时不会各请求一次授权、各弹一次提示
+            Toggle(isOn: Binding(get: { settings.skyReminders }, set: { setSkyReminders($0) })) {
                 Label("天象提醒", systemImage: "bell.badge.fill")
-            }
-            .onChange(of: settings.skyReminders) { _, on in
-                Task {
-                    if on {
-                        let granted = await NotificationScheduler.requestAuthorization()
-                        if !granted {
-                            settings.skyReminders = false
-                            notificationDenied = true
-                        }
-                    }
-                    NotificationScheduler.reschedule()
-                }
             }
             Text("满月、新月和流星雨极大的前一天晚上 8 点提醒你，和每日运势提醒互不影响。")
                 .font(.caption)
                 .subtleForeground()
         }
         .glassCard()
+    }
+
+    private func setSkyReminders(_ on: Bool) {
+        settings.skyReminders = on
+        Task {
+            if on {
+                let granted = await NotificationScheduler.requestAuthorization()
+                if !granted {
+                    settings.skyReminders = false
+                    notificationDenied = true
+                }
+            }
+            NotificationScheduler.reschedule()
+        }
     }
 
     // MARK: - 未来 60 天
@@ -264,6 +267,8 @@ private struct SkyDayCell: View {
         VStack(spacing: 3) {
             Text("\(day.day)")
                 .font(.caption.weight(isToday ? .bold : .regular))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 .foregroundStyle(isSelected ? palette.onAccent : .primary)
             MoonDisc(phase: moon.phase, size: 20)
             Text(label)

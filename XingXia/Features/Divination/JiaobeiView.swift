@@ -244,6 +244,8 @@ struct JiaobeiView: View {
             }
         }
         .frame(width: 320, height: 300)
+        // 舞台是固定尺寸的画布，字号过大时结果文字会压到筊杯上；结果另有读屏播报和下方提示
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .opacity(stageOpacity)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(stageLabel)

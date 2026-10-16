@@ -23,18 +23,19 @@ struct TarotCard: Decodable, Identifiable, Hashable {
 
     /// 完整牌组：22 张大阿卡纳在前，之后是 56 张小阿卡纳
     static let deck: [TarotCard] = ContentLibrary.load("tarot")
-    static let majorArcana: [TarotCard] = deck.filter { $0.suit == nil }
+    static let majorArcana: [TarotCard] = deck.filter(\.isMajor)
 
     /// 洗牌用的牌组：完整 78 张，或只用 22 张大阿卡纳
     static func drawingDeck(fullDeck: Bool) -> [TarotCard] {
         fullDeck || majorArcana.isEmpty ? deck : majorArcana
     }
 
+    var isMajor: Bool { suit == nil }
     var suitKind: TarotSuit? { suit.flatMap(TarotSuit.init(rawValue:)) }
 
     /// 牌号位置显示的字：大阿卡纳是罗马数字，小阿卡纳是 A、2…10、侍从、骑士、王后、国王
     var rankText: String {
-        guard suit != nil else { return roman }
+        guard !isMajor else { return roman }
         switch roman {
         case "Page": return "侍从"
         case "Knight": return "骑士"
@@ -237,9 +238,7 @@ struct TarotView: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink {
-                    TarotJournalView()
-                } label: {
+                NavigationLink(value: AppRoute.tarotJournal) {
                     Label("塔罗手记", systemImage: "book.closed")
                 }
             }

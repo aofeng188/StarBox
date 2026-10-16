@@ -65,19 +65,10 @@ struct SettingsView: View {
                         }
                     ), displayedComponents: .hourAndMinute)
                 }
-                Toggle(isOn: $settings.skyReminders) { Label("天象提醒", systemImage: "moon.stars.fill") }
-                    .onChange(of: settings.skyReminders) { _, on in
-                        Task {
-                            if on {
-                                let granted = await NotificationScheduler.requestAuthorization()
-                                if !granted {
-                                    settings.skyReminders = false
-                                    notificationDenied = true
-                                }
-                            }
-                            NotificationScheduler.reschedule()
-                        }
-                    }
+                // 天象日历页也有同一个开关，两个页面会同时存活，所以只在自己被拨动时申请授权，不用 onChange
+                Toggle(isOn: Binding(get: { settings.skyReminders }, set: { setSkyReminders($0) })) {
+                    Label("天象提醒", systemImage: "moon.stars.fill")
+                }
             } header: {
                 Text("提醒")
             } footer: {
@@ -138,6 +129,20 @@ struct SettingsView: View {
             Button("好", role: .cancel) {}
         } message: {
             Text("请在系统设置中允许「星匣」发送通知。")
+        }
+    }
+
+    private func setSkyReminders(_ on: Bool) {
+        settings.skyReminders = on
+        Task {
+            if on {
+                let granted = await NotificationScheduler.requestAuthorization()
+                if !granted {
+                    settings.skyReminders = false
+                    notificationDenied = true
+                }
+            }
+            NotificationScheduler.reschedule()
         }
     }
 }

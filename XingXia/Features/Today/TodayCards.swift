@@ -230,8 +230,14 @@ private struct FamilyMemberTile: View {
         .background(color.opacity(0.1), in: .rect(cornerRadius: 18))
         .contentShape(.rect(cornerRadius: 18))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(profile.name)，今日运势 \(fortune.score) 分，\(fortune.levelName)"
-                            + (clashes ? "，今日冲\(animal)" : "") + (isCurrent ? "，当前查看" : ""))
+        .accessibilityLabel(spokenLabel)
+    }
+
+    private var spokenLabel: String {
+        var parts = [profile.name, "今日运势 \(fortune.score) 分", fortune.levelName]
+        if clashes { parts.append("今日冲\(profile.animal.animal)") }
+        if isCurrent { parts.append("当前查看") }
+        return parts.joined(separator: "，")
     }
 }
 

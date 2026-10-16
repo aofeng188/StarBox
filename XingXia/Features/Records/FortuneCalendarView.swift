@@ -122,9 +122,8 @@ struct FortuneCalendarView: View {
                 ScoreRing(score: fortune.score, size: 70, lineWidth: 7).id(day)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(DateText.monthDay(day)) \(DateText.weekday(day)) · 农历\(almanac.lunar.text)").font(.subheadline.weight(.semibold))
-                    // 运势文案按「今天」写的，看别的日子时换成「这天」
-                    let summary = day == .today ? fortune.summary : fortune.summary.replacingOccurrences(of: "今天", with: "这天")
-                    Text("\(fortune.levelName) · \(summary)").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                    // 运势文案不含「今天」等相对日期，任何一天都可以直接显示
+                    Text("\(fortune.levelName) · \(fortune.summary)").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
                 }
             }
             FlowLayout(spacing: 8) {

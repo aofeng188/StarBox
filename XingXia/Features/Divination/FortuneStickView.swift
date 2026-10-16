@@ -291,6 +291,11 @@ struct FortuneStickView: View {
     }
 
     private func drop() {
+        // 重新求签只在当天有效：页面一直开着跨过零点时，这一支按新一天的今日一签算
+        if let extraDay, extraDay != DayKey.today.rawValue {
+            self.extraDay = nil
+            deniedNumber = nil
+        }
         stick = StickLibrary.random(excluding: extraDay != nil ? deniedNumber : nil)
         isHolding = false
         stickOut = false

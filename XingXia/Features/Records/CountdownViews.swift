@@ -201,6 +201,7 @@ private struct ProfileBirthdayDetail: View {
         let status = item.status(today: today)
         let profile = profiles.first { $0.id == item.profileID }
         let birth = item.spec.origin
+        let zodiac: String = profile.map { "\($0.animal.animalEmoji) 属\($0.animal.animal)" } ?? "—"
         ScrollView {
             VStack(spacing: 16) {
                 CountdownHero(item: item, today: today)
@@ -217,7 +218,7 @@ private struct ProfileBirthdayDetail: View {
                     LabeledContent("下一次") {
                         Text("\(DateText.full(status.targetDay)) \(DateText.weekday(status.targetDay))")
                     }
-                    LabeledContent("生肖") { Text(profile.map { "\($0.animal.animalEmoji) 属\($0.animal.animal)" } ?? "—") }
+                    LabeledContent("生肖") { Text(zodiac) }
                 }
                 .font(.subheadline)
                 .glassCard()
