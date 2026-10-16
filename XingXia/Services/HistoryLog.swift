@@ -14,6 +14,7 @@ enum HistoryLog {
         if let kind = ToolKind(rawValue: tool) { return (kind.name, kind.symbol, kind.colors) }
         switch tool {
         case "stick": return ("求签", "flame.fill", [Color(hex: 0xFF8A3D), Color(hex: 0xE11D48)])
+        case "jiaobei": return ("掷筊", "moon.fill", [Color(hex: 0xEF4444), Color(hex: 0x9F1239)])
         case "tarot": return ("塔罗牌", "suit.diamond.fill", [Color(hex: 0x8B5CF6), Color(hex: 0x3B82F6)])
         case "answers": return ("答案之书", "book.fill", [Color(hex: 0xF5B83D), Color(hex: 0xB45309)])
         case "nearby": return ("附近餐厅", "mappin.and.ellipse", [Color(hex: 0xFF9F43), Color(hex: 0xFF4D6D)])

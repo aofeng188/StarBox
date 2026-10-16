@@ -18,14 +18,41 @@ struct TarotCard: Decodable, Identifiable, Hashable {
     let loveReversed: String?
     let careerReversed: String?
     let adviceReversed: String?
+    /// 小阿卡纳的花色（wands / cups / swords / pentacles）；大阿卡纳没有
+    let suit: String?
 
+    /// 完整牌组：22 张大阿卡纳在前，之后是 56 张小阿卡纳
     static let deck: [TarotCard] = ContentLibrary.load("tarot")
+    static let majorArcana: [TarotCard] = deck.filter { $0.suit == nil }
 
-    /// 每张牌的主色调：限定在深蓝 → 紫 → 品红的「宝石色」区间，与星空主题协调
+    /// 洗牌用的牌组：完整 78 张，或只用 22 张大阿卡纳
+    static func drawingDeck(fullDeck: Bool) -> [TarotCard] {
+        fullDeck || majorArcana.isEmpty ? deck : majorArcana
+    }
+
+    var suitKind: TarotSuit? { suit.flatMap(TarotSuit.init(rawValue:)) }
+
+    /// 牌号位置显示的字：大阿卡纳是罗马数字，小阿卡纳是 A、2…10、侍从、骑士、王后、国王
+    var rankText: String {
+        guard suit != nil else { return roman }
+        switch roman {
+        case "Page": return "侍从"
+        case "Knight": return "骑士"
+        case "Queen": return "王后"
+        case "King": return "国王"
+        default: return roman
+        }
+    }
+
+    /// 每张牌的主色调：大阿卡纳限定在深蓝 → 紫 → 品红的「宝石色」区间，与星空主题协调；小阿卡纳用花色主色
     var hue: Double { 0.55 + Double((id * 7) % 22) / 22.0 * 0.4 }
     var colors: [Color] {
-        [Color(hue: hue, saturation: 0.7, brightness: 0.5), Color(hue: (hue + 0.06).truncatingRemainder(dividingBy: 1), saturation: 0.8, brightness: 0.2)]
+        if let suit = suitKind { return suit.colors }
+        return [Color(hue: hue, saturation: 0.7, brightness: 0.5), Color(hue: (hue + 0.06).truncatingRemainder(dividingBy: 1), saturation: 0.8, brightness: 0.2)]
     }
+
+    /// 牌面描边、牌号等点缀色
+    var accent: Color { suitKind?.accent ?? Color(hex: 0xF5D78E) }
 
     /// 按正逆位取关键词；逆位缺字段时为 nil
     func shownKeywords(isReversed: Bool) -> [String]? {
@@ -38,6 +65,50 @@ struct TarotCard: Decodable, Identifiable, Hashable {
         case .love: return isReversed ? loveReversed : love
         case .career: return isReversed ? careerReversed : career
         case .advice: return isReversed ? adviceReversed : advice
+        }
+    }
+}
+
+/// 小阿卡纳的四个花色
+enum TarotSuit: String, CaseIterable {
+    case wands, cups, swords, pentacles
+
+    var name: String {
+        switch self {
+        case .wands: "权杖"
+        case .cups: "圣杯"
+        case .swords: "宝剑"
+        case .pentacles: "星币"
+        }
+    }
+
+    /// 花色图标：权杖属火、圣杯是酒杯、宝剑属风、星币是带星的圆币
+    var symbol: String {
+        switch self {
+        case .wands: "flame.fill"
+        case .cups: "wineglass.fill"
+        case .swords: "wind"
+        case .pentacles: "star.circle.fill"
+        }
+    }
+
+    /// 牌面渐变：权杖火红、圣杯水蓝、宝剑银灰、星币金黄
+    var colors: [Color] {
+        switch self {
+        case .wands: [Color(hex: 0xB83A1B), Color(hex: 0x3A0D05)]
+        case .cups: [Color(hex: 0x1E6FB8), Color(hex: 0x0A1E45)]
+        case .swords: [Color(hex: 0x6B7686), Color(hex: 0x1C222C)]
+        case .pentacles: [Color(hex: 0xA97A12), Color(hex: 0x3A2806)]
+        }
+    }
+
+    /// 压在牌面深色渐变上的点缀色
+    var accent: Color {
+        switch self {
+        case .wands: Color(hex: 0xFFB48A)
+        case .cups: Color(hex: 0xA5DBFF)
+        case .swords: Color(hex: 0xE5E9F0)
+        case .pentacles: Color(hex: 0xFFE08A)
         }
     }
 }
@@ -132,6 +203,7 @@ struct TarotView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.palette) private var palette
+    @Environment(AppSettings.self) private var settings
     @Namespace private var namespace
 
     @State private var phase: Phase = .setup
@@ -171,6 +243,15 @@ struct TarotView: View {
                     Label("塔罗手记", systemImage: "book.closed")
                 }
             }
+            if phase == .reading, !picked.isEmpty, flipped.count == picked.count {
+                ToolbarItem(placement: .topBarTrailing) {
+                    ShareCardButton(title: "分享解读", previewTitle: "塔罗 · \(spread.name)") { style in
+                        ShareCardFrame(style: style, title: "星匣 · 塔罗占卜") {
+                            TarotShareContent(spread: spread, question: question, entries: picked, style: style)
+                        }
+                    }
+                }
+            }
             if phase != .setup {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("重新开始", systemImage: "arrow.counterclockwise") { reset() }
@@ -191,6 +272,23 @@ struct TarotView: View {
                     .lineLimit(1...3)
                     .padding(14)
                     .glassEffect(.regular, in: .rect(cornerRadius: 18))
+
+                // 内容里有小阿卡纳时才给选牌组
+                if TarotCard.deck.count > TarotCard.majorArcana.count {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("牌组").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                        Picker("牌组", selection: Binding(get: { settings.tarotFullDeck }, set: { settings.tarotFullDeck = $0 })) {
+                            Text("大阿卡纳 \(TarotCard.majorArcana.count) 张").tag(false)
+                            Text("完整 \(TarotCard.deck.count) 张").tag(true)
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: settings.tarotFullDeck) { Haptics.selection() }
+                        Text(settings.tarotFullDeck ? "含 \(TarotCard.deck.count - TarotCard.majorArcana.count) 张小阿卡纳，日常小事也能看得更细" : "只用大阿卡纳，聚焦人生的大方向")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
 
                 VStack(spacing: 10) {
                     ForEach(TarotSpread.allCases) { item in
@@ -340,7 +438,8 @@ struct TarotView: View {
         flow?.cancel()
         generation += 1
         let current = generation
-        deck = TarotCard.deck.shuffled().enumerated().map { DrawnCard(deckIndex: $0.offset, card: $0.element, reversed: Bool.random()) }
+        deck = TarotCard.drawingDeck(fullDeck: settings.tarotFullDeck).shuffled().enumerated()
+            .map { DrawnCard(deckIndex: $0.offset, card: $0.element, reversed: Bool.random()) }
         picked = []
         flipped = []
         scheduled = []
@@ -461,7 +560,15 @@ struct TarotInterpretationCard: View {
                 Text(spread.position(slot)).font(.caption.weight(.bold))
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(palette.accent.opacity(0.2), in: .capsule)
-                Text("\(card.roman) · \(card.name)").font(.headline)
+                if let suit = card.suitKind {
+                    Image(systemName: suit.symbol)
+                        .font(.subheadline)
+                        .foregroundStyle(palette.ink(suit.colors[0]))
+                        .accessibilityHidden(true)
+                    Text(card.name).font(.headline)
+                } else {
+                    Text("\(card.roman) · \(card.name)").font(.headline)
+                }
                 Text(entry.reversed ? "逆位" : "正位")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(entry.reversed ? Color.negative(scheme) : Color.positive(scheme))
@@ -484,7 +591,8 @@ struct TarotInterpretationCard: View {
 struct TarotSummaryCard: View {
     let entries: [TarotView.DrawnCard]
 
-    private var text: String {
+    /// 按正逆位的比例给一句综合解读（分享卡也用）
+    static func summary(for entries: [TarotView.DrawnCard]) -> String {
         let uprightCount = entries.filter { !$0.reversed }.count
         if entries.count == 1 {
             return entries[0].reversed ? "逆位提醒你放慢脚步，先处理内心的阻碍。" : "正位的能量清晰明亮，跟着这张牌的指引行动吧。"
@@ -502,7 +610,7 @@ struct TarotSummaryCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeader(title: "综合解读", symbol: "sparkles")
-            Text(text).font(.body).lineSpacing(4)
+            Text(Self.summary(for: entries)).font(.body).lineSpacing(4)
             Text("塔罗是一面映照内心的镜子，答案最终在你自己手中。")
                 .font(.caption).foregroundStyle(.secondary)
         }
@@ -591,50 +699,86 @@ struct TarotCardFace: View {
                 // 减弱动态效果时不读陀螺仪、不做视差，只留静态的镭射光泽
                 let tilt: CGSize = reduceMotion ? .zero : CGSize(width: MotionManager.shared.roll + sin(t * 0.7) * 0.35,
                                                                  height: MotionManager.shared.pitch + cos(t * 0.5) * 0.25)
-                ZStack {
-                    RoundedRectangle(cornerRadius: w * 0.09)
-                        .fill(LinearGradient(colors: card.colors, startPoint: .top, endPoint: .bottom))
-                    // 星点
-                    Canvas { ctx, size in
-                        var rng = SeededGenerator("tarot-face", card.id)
-                        for _ in 0..<30 {
-                            let r = rng.double(0.4...1.4)
-                            ctx.fill(Path(ellipseIn: CGRect(x: rng.unit() * size.width, y: rng.unit() * size.height, width: r * 2, height: r * 2)),
-                                     with: .color(.white.opacity(rng.double(0.3...0.9))))
-                        }
-                    }
-                    RoundedRectangle(cornerRadius: w * 0.07)
-                        .strokeBorder(Color(hex: 0xF5D78E), lineWidth: max(1, w * 0.012))
-                        .padding(w * 0.05)
-                    VStack(spacing: w * 0.05) {
-                        Text(card.roman)
-                            .font(.system(size: w * 0.11, weight: .semibold, design: .serif))
-                            .foregroundStyle(Color(hex: 0xF5D78E))
-                        Spacer()
-                        Image(systemName: card.symbol)
-                            .font(.system(size: w * 0.36, weight: .light))
-                            .foregroundStyle(LinearGradient(colors: [.white, Color(hex: 0xF5D78E)], startPoint: .top, endPoint: .bottom))
-                            .shadow(color: .white.opacity(0.6), radius: w * 0.06)
-                        Spacer()
-                        Text(card.name)
-                            .font(AppFont.serif(w * 0.13, weight: .bold))
-                            .foregroundStyle(.white)
-                        Text(card.en.uppercased())
-                            .font(.system(size: w * 0.055, weight: .medium, design: .serif))
-                            .tracking(1)
-                            .foregroundStyle(Color(hex: 0xF5D78E).opacity(0.9))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.5)
-                    }
-                    .padding(.vertical, w * 0.12)
-                    .padding(.horizontal, w * 0.08)
-                }
-                .holoFoil(tilt: tilt, strength: 0.9)
-                .rotation3DEffect(.degrees(tilt.width * 6), axis: (0, 1, 0))
-                .rotation3DEffect(.degrees(-tilt.height * 6), axis: (1, 0, 0))
+                TarotCardArt(card: card, width: w)
+                    .holoFoil(tilt: tilt, strength: 0.9)
+                    .rotation3DEffect(.degrees(tilt.width * 6), axis: (0, 1, 0))
+                    .rotation3DEffect(.degrees(-tilt.height * 6), axis: (1, 0, 0))
             }
         }
         .shadow(color: card.colors[0].opacity(0.6), radius: 14)
+    }
+}
+
+/// 静态的牌面图案。塔罗页在外面加镭射光泽和视差，分享卡直接用它（导出图片时不跑动画和着色器）。
+/// 小阿卡纳用花色主色和花色图标，牌号位置写 A、2…10、侍从、骑士、王后、国王
+struct TarotCardArt: View {
+    let card: TarotCard
+    /// 牌宽，字号、描边按它缩放
+    let width: CGFloat
+
+    var body: some View {
+        let w = width
+        let accent = card.accent
+        ZStack {
+            RoundedRectangle(cornerRadius: w * 0.09)
+                .fill(LinearGradient(colors: card.colors, startPoint: .top, endPoint: .bottom))
+            // 星点
+            Canvas { ctx, size in
+                var rng = SeededGenerator("tarot-face", card.id)
+                for _ in 0..<30 {
+                    let r = rng.double(0.4...1.4)
+                    ctx.fill(Path(ellipseIn: CGRect(x: rng.unit() * size.width, y: rng.unit() * size.height, width: r * 2, height: r * 2)),
+                             with: .color(.white.opacity(rng.double(0.3...0.9))))
+                }
+            }
+            if let suit = card.suitKind {
+                // 花色图标衬底
+                Image(systemName: suit.symbol)
+                    .font(.system(size: w * 0.62))
+                    .foregroundStyle(accent.opacity(0.1))
+            }
+            RoundedRectangle(cornerRadius: w * 0.07)
+                .strokeBorder(accent, lineWidth: max(1, w * 0.012))
+                .padding(w * 0.05)
+            VStack(spacing: w * 0.05) {
+                if let suit = card.suitKind {
+                    HStack(spacing: w * 0.03) {
+                        Image(systemName: suit.symbol)
+                        Spacer(minLength: 0)
+                        Text(card.rankText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                        Spacer(minLength: 0)
+                        Image(systemName: suit.symbol)
+                    }
+                    .font(.system(size: w * 0.09, weight: .semibold, design: .serif))
+                    .foregroundStyle(accent)
+                } else {
+                    Text(card.roman)
+                        .font(.system(size: w * 0.11, weight: .semibold, design: .serif))
+                        .foregroundStyle(accent)
+                }
+                Spacer()
+                Image(systemName: card.symbol)
+                    .font(.system(size: w * 0.36, weight: .light))
+                    .foregroundStyle(LinearGradient(colors: [.white, accent], startPoint: .top, endPoint: .bottom))
+                    .shadow(color: .white.opacity(0.6), radius: w * 0.06)
+                Spacer()
+                Text(card.name)
+                    .font(AppFont.serif(w * 0.13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Text(card.en.uppercased())
+                    .font(.system(size: w * 0.055, weight: .medium, design: .serif))
+                    .tracking(1)
+                    .foregroundStyle(accent.opacity(0.9))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+            }
+            .padding(.vertical, w * 0.12)
+            .padding(.horizontal, w * 0.08)
+        }
     }
 }
 
@@ -676,5 +820,126 @@ struct TarotCardBack: View {
             }
             .shadow(color: Color(hex: 0x6D28D9).opacity(0.5), radius: 6)
         }
+    }
+}
+
+// MARK: - 分享卡
+
+/// 塔罗解读分享卡的内容，放在 ShareCardFrame 里：牌阵名、问题、每张牌的牌名和正逆、综合解读一句话
+struct TarotShareContent: View {
+    let spread: TarotSpread
+    let question: String
+    let entries: [TarotView.DrawnCard]
+    let style: ShareCardStyle
+
+    var body: some View {
+        let tall = style.isTall
+        let asked = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        VStack(spacing: tall ? 18 : 12) {
+            VStack(spacing: 6) {
+                Text("\(spread.name) · \(entries.count) 张")
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(2)
+                    .foregroundStyle(style.palette.accentGradient)
+                if !asked.isEmpty {
+                    Text("「\(asked)」")
+                        .font(AppFont.serif(tall ? 18 : 15))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                }
+            }
+
+            if entries.count == 1 && !tall, let entry = entries.first {
+                singleRow(entry)
+            } else {
+                cardsRow(tall: tall)
+            }
+
+            Text(TarotSummaryCard.summary(for: entries))
+                .font(.system(size: tall ? 15 : 13))
+                .lineSpacing(3)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.white.opacity(0.92))
+                .lineLimit(3)
+                .minimumScaleFactor(0.85)
+            if tall {
+                Text("塔罗是一面映照内心的镜子，答案最终在你自己手中。")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .multilineTextAlignment(.center)
+            }
+        }
+    }
+
+    /// 单张牌、3:4：牌在左，牌名、正逆、关键词和释义在右
+    private func singleRow(_ entry: TarotView.DrawnCard) -> some View {
+        let card = entry.card
+        return HStack(alignment: .center, spacing: 16) {
+            cardArt(entry, width: 108)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(spread.position(0))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.6))
+                Text(card.name)
+                    .font(AppFont.serif(20, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                orientation(entry)
+                if let keywords = card.shownKeywords(isReversed: entry.reversed), !keywords.isEmpty {
+                    Text(keywords.prefix(3).joined(separator: " · "))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(card.accent)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                Text(entry.reversed ? card.reversed : card.upright)
+                    .font(.system(size: 12))
+                    .lineSpacing(2)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .lineLimit(4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func cardsRow(tall: Bool) -> some View {
+        let single = entries.count == 1
+        let width: CGFloat = single ? 136 : (tall ? 92 : 78)
+        return HStack(alignment: .top, spacing: 10) {
+            ForEach(Array(entries.enumerated()), id: \.offset) { slot, entry in
+                VStack(spacing: 5) {
+                    cardArt(entry, width: width)
+                        .padding(.bottom, 3)
+                    Text(spread.position(slot))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .lineLimit(1)
+                    Text(entry.card.name)
+                        .font(AppFont.serif(14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    orientation(entry)
+                }
+                .frame(width: max(width, 90))
+            }
+        }
+    }
+
+    private func cardArt(_ entry: TarotView.DrawnCard, width: CGFloat) -> some View {
+        TarotCardArt(card: entry.card, width: width)
+            .frame(width: width, height: width * 1.62)
+            .rotationEffect(.degrees(entry.reversed ? 180 : 0))
+            .shadow(color: entry.card.colors[0].opacity(0.6), radius: 10)
+            .accessibilityHidden(true)
+    }
+
+    private func orientation(_ entry: TarotView.DrawnCard) -> some View {
+        Text(entry.reversed ? "逆位" : "正位")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(entry.reversed ? Color.negative(.dark) : Color.positive(.dark))
     }
 }

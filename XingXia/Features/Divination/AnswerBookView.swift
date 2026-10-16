@@ -13,6 +13,8 @@ struct AnswerBookView: View {
     @State private var question = ""
     @State private var rippleTrigger = 0
     @State private var recent: [String] = []
+    /// 分享卡预览弹出时不响应摇一摇
+    @State private var sharing = false
 
     private static let answers: [String] = ContentLibrary.load("answers")
 
@@ -75,7 +77,18 @@ struct AnswerBookView: View {
         .navigationTitle("答案之书")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .onShake { if !isOpen { open() } }
+        .toolbar {
+            if isOpen {
+                ToolbarItem(placement: .topBarTrailing) {
+                    ShareCardButton(title: "分享答案", previewTitle: "答案之书：\(answer)", isPresented: $sharing) { style in
+                        ShareCardFrame(style: style, title: "星匣 · 答案之书") {
+                            AnswerShareContent(question: question, answer: answer, style: style)
+                        }
+                    }
+                }
+            }
+        }
+        .onShake(isEnabled: !sharing) { if !isOpen { open() } }
     }
 
     private var book: some View {
@@ -165,5 +178,76 @@ struct AnswerBookView: View {
         }
         question = ""
         SoundEngine.shared.play(.cardFlip)
+    }
+}
+
+// MARK: - 分享卡
+
+/// 答案之书分享卡的内容，放在 ShareCardFrame 里：问题（有的话）和答案，金色书页
+struct AnswerShareContent: View {
+    let question: String
+    let answer: String
+    let style: ShareCardStyle
+
+    private static let brown = Color(hex: 0x4A2C0A)
+    private static let ochre = Color(hex: 0xC08A2E)
+
+    var body: some View {
+        let tall = style.isTall
+        let asked = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        VStack(spacing: tall ? 22 : 14) {
+            if !asked.isEmpty {
+                VStack(spacing: 4) {
+                    Text("我的问题")
+                        .font(.system(size: 11, weight: .semibold))
+                        .tracking(2)
+                        .foregroundStyle(.white.opacity(0.6))
+                    Text("「\(asked)」")
+                        .font(AppFont.serif(tall ? 18 : 15))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.8)
+                }
+            }
+            page(width: tall ? 270 : 240, height: tall ? (asked.isEmpty ? 380 : 330) : (asked.isEmpty ? 300 : 250))
+        }
+    }
+
+    /// 金色书页：米黄纸面、金边、上下各一颗星芒
+    private func page(width: CGFloat, height: CGFloat) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14)
+                .fill(LinearGradient(colors: [Color(hex: 0xFFF8E7), Color(hex: 0xF3E3C3)], startPoint: .top, endPoint: .bottom))
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(LinearGradient(colors: [Color(hex: 0xF5D78E), Self.ochre], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 3)
+            RoundedRectangle(cornerRadius: 9)
+                .strokeBorder(Self.ochre.opacity(0.45), lineWidth: 1)
+                .padding(12)
+            VStack(spacing: 18) {
+                Image(systemName: "sparkle").foregroundStyle(Self.ochre)
+                Text(answer)
+                    .font(AppFont.serif(answer.count > 9 ? 22 : 26, weight: .bold))
+                    .foregroundStyle(Self.brown)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.7)
+                Image(systemName: "sparkle").foregroundStyle(Self.ochre)
+            }
+            .padding(.horizontal, 30)
+            VStack {
+                Spacer()
+                Text("THE BOOK OF ANSWERS")
+                    .font(.system(size: 9, weight: .semibold, design: .serif))
+                    .tracking(2)
+                    .foregroundStyle(Self.ochre.opacity(0.8))
+            }
+            .padding(.bottom, 22)
+            .accessibilityHidden(true)
+        }
+        .frame(width: width, height: height)
+        .shadow(color: Color(hex: 0xFFD166).opacity(0.55), radius: 24)
+        .accessibilityElement(children: .combine)
     }
 }

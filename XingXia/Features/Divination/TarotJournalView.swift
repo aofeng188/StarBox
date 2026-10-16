@@ -134,6 +134,17 @@ private struct TarotReadingDetailView: View {
         .navigationTitle(spread.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .toolbar {
+            if !entries.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    ShareCardButton(title: "分享解读", previewTitle: "塔罗 · \(spread.name)") { style in
+                        ShareCardFrame(style: style, day: day, title: "星匣 · 塔罗占卜") {
+                            TarotShareContent(spread: spread, question: reading.question, entries: entries, style: style)
+                        }
+                    }
+                }
+            }
+        }
         .tarotParallax()
     }
 }
