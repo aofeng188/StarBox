@@ -555,7 +555,8 @@ private class BackupRestorer(private val mode: BackupMode) {
     private fun newId(): String = UUID.randomUUID().toString()
 
     /** 权重：必须是正数，否则按 1 */
-    private fun weight(value: Double?): Double = if (value != null && value > 0) value else 1.0
+    // 权重 0 是合法设置（停用该项），原样保留；缺失或负数按 1；上限 1000，与 iOS 一致
+    private fun weight(value: Double?): Double = if (value != null && value >= 0) minOf(value, 1000.0) else 1.0
 
     // 各类数据
 
@@ -935,7 +936,7 @@ private class BackupRestorer(private val mode: BackupMode) {
             }
             ids += id
             contents += content
-            added += CustomPrompt(id = id, kind = kind, text = text, level = f.int("level") ?: 0, createdAt = f.date("createdAt") ?: now)
+            added += CustomPrompt(id = id, kind = kind, text = text, level = (f.int("level") ?: 0).coerceIn(0, 2), createdAt = f.date("createdAt") ?: now)
             added(BackupCategory.CUSTOM_PROMPTS)
         }
         customPrompts = old + added
@@ -957,8 +958,7 @@ private class BackupRestorer(private val mode: BackupMode) {
             }
             ids += id
             contents += content
-            val blank = f.number("blankWeight") ?: 1.0
-            added += ScratchPreset(id = id, name = name, prizes = prizes, blankWeight = if (blank >= 0) blank else 1.0, createdAt = f.date("createdAt") ?: now)
+            added += ScratchPreset(id = id, name = name, prizes = prizes, blankWeight = weight(f.number("blankWeight")), createdAt = f.date("createdAt") ?: now)
             added(BackupCategory.SCRATCH_PRESETS)
         }
         scratchPresets = old + added

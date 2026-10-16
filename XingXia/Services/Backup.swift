@@ -376,7 +376,7 @@ fileprivate struct BackupFields {
     func bool(_ key: String) -> Bool? {
         if let number = raw[key] as? NSNumber { return number.boolValue }
         guard let text = raw[key] as? String else { return nil }
-        switch text.lowercased() {
+        switch text.trimmingCharacters(in: .whitespaces).lowercased() {
         case "true", "1": return true
         case "false", "0": return false
         default: return nil
@@ -469,10 +469,10 @@ private final class BackupRestorer {
 
     private func clamp(_ value: Int, _ range: ClosedRange<Int>) -> Int { min(max(value, range.lowerBound), range.upperBound) }
 
-    /// 权重：必须是正数，否则按 1
+    /// 权重：0 是用户设的「不参与」，原样保留；缺失或负数按 1；过大的截到 1000（界面上用 Int(weight) 显示，太大会崩）
     private func weight(_ value: Double?) -> Double {
-        guard let value, value > 0 else { return 1 }
-        return value
+        guard let value, value >= 0 else { return 1 }
+        return min(value, 1000)
     }
 
     // MARK: 各类数据
@@ -774,7 +774,8 @@ private final class BackupRestorer {
             guard !ids.contains(id), !contents.contains(content) else { skipped(); continue }
             ids.insert(id)
             contents.insert(content)
-            let prompt = CustomPrompt(kind: kind, text: text, level: f.int("level") ?? 0)
+            // 尺度只有 0 轻松、1 进阶、2 刺激，题目列表按下标取名称
+            let prompt = CustomPrompt(kind: kind, text: text, level: clamp(f.int("level") ?? 0, 0...2))
             prompt.id = id
             prompt.createdAt = f.date("createdAt") ?? Date()
             context.insert(prompt)
@@ -795,8 +796,7 @@ private final class BackupRestorer {
             guard !ids.contains(id), !contents.contains(content) else { skipped(); continue }
             ids.insert(id)
             contents.insert(content)
-            let blank = f.number("blankWeight") ?? 1
-            let preset = ScratchPreset(name: name, prizes: prizes, blankWeight: blank >= 0 ? blank : 1)
+            let preset = ScratchPreset(name: name, prizes: prizes, blankWeight: weight(f.number("blankWeight")))
             preset.id = id
             preset.createdAt = f.date("createdAt") ?? Date()
             context.insert(preset)

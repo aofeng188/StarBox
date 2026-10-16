@@ -1,17 +1,21 @@
 import SwiftUI
+import Combine
 
 struct DivinationHubView: View {
     @Environment(AppState.self) private var app
     @Environment(AppSettings.self) private var settings
     @Environment(\.palette) private var palette
+    @Environment(\.scenePhase) private var scenePhase
     @State private var isWide = false
     @State private var fold: ClosedRange<CGFloat>?
     /// 择吉日页上次选的事项，入口卡片按它推荐最近的好日子
     @AppStorage("auspiciousEvent") private var auspiciousEventID = AuspiciousEvent.moving.rawValue
     @State private var teaser: AuspiciousTeaser?
+    /// 占卜首页常驻不销毁，隔天回来要换成新的「今天」，否则推荐的可能是已经过去的日子
+    @State private var today = DayKey.today
 
     var body: some View {
-        let teaserKey = AuspiciousTeaserKey(event: AuspiciousEvent(rawValue: auspiciousEventID) ?? .moving, today: .today,
+        let teaserKey = AuspiciousTeaserKey(event: AuspiciousEvent(rawValue: auspiciousEventID) ?? .moving, today: today,
                                             animal: app.primary.map { BaZi($0.birth).zodiacAnimal })
         ScrollView {
             // 宽屏（Duo 展开横持）左右两栏，其余上下排
@@ -91,6 +95,17 @@ struct DivinationHubView: View {
         .cosmicBackground()
         .navigationTitle("占卜")
         .task(id: teaserKey) { await loadTeaser(teaserKey) }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: DispatchQueue.main)) { _ in
+            refreshToday()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { refreshToday() }
+        }
+    }
+
+    private func refreshToday() {
+        let now = DayKey.today
+        if now != today { today = now }
     }
 
     /// 择吉日入口：附上最近 30 天里办上次所选事项的首选日子

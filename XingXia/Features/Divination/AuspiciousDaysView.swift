@@ -230,12 +230,17 @@ private struct AuspiciousDayRow: View {
 
     @Environment(\.palette) private var palette
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let day = item.day
         let lunar = LunarDate(day)
+        // 辅助功能大字号时日期块放到上面，理由标签才有整行的宽度
+        let isLarge = typeSize.isAccessibilitySize
+        let layout = isLarge ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
+        let footer = isLarge ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 10))
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 14) {
+            layout {
                 dateBadge(day)
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -250,13 +255,15 @@ private struct AuspiciousDayRow: View {
                                     symbol: reason.kind == .clash ? "exclamationmark.triangle.fill" : nil)
                         }
                     }
+                    // TagChip 不换行，字号再大最长的「宜…」标签会超出卡片
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilityText(day: day, lunar: lunar))
 
-            HStack(spacing: 10) {
+            footer {
                 Text(relativeText(day))
                     .font(.footnote)
                     .subtleForeground()
