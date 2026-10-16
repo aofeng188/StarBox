@@ -1,15 +1,19 @@
 import SwiftUI
+import Combine
 
 struct HoroscopeView: View {
     @Environment(AppState.self) private var app
     @Environment(\.palette) private var palette
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage("lastViewedSign", store: AppGroup.defaults) private var lastViewedSign = -1
     @State private var sign: ZodiacSign = .aries
     @State private var period: HoroscopePeriod = .today
     @State private var initialized = false
+    @State private var today = DayKey.today
 
     var body: some View {
-        let horoscope = HoroscopeEngine.horoscope(sign, period: period)
+        let horoscope = HoroscopeEngine.horoscope(sign, period: period, reference: today)
         ScrollView {
             VStack(spacing: 16) {
                 // 星座选择
@@ -32,6 +36,9 @@ struct HoroscopeView: View {
                                     .frame(width: 60, height: 80)
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(item.name)
+                                .accessibilityAddTraits(sign == item ? [.isButton, .isSelected] : .isButton)
                                 .id(item)
                             }
                         }
@@ -50,12 +57,21 @@ struct HoroscopeView: View {
                 // 总览
                 VStack(spacing: 14) {
                     HStack(spacing: 16) {
-                        ZodiacBadge(sign: sign, size: 84)
+                        // 旁边已有星座名，徽章不再重复朗读
+                        ZodiacBadge(sign: sign, size: 84).accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 4) {
                             Text(sign.name).font(.title.bold())
                             Text("\(sign.englishName) · \(sign.dateRange)").font(.caption).foregroundStyle(.secondary)
                             StarRatingView(stars: horoscope.stars, size: 15)
-                            Text("\(period.name)运势 · \(horoscope.rangeText)").font(.caption).foregroundStyle(.secondary)
+                            // 窄列放不下一行时分两行，避免「周四」单独掉到下一行
+                            ViewThatFits(in: .horizontal) {
+                                Text("\(period.name)运势 · \(horoscope.rangeText)").lineLimit(1)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\(period.name)运势")
+                                    Text(horoscope.rangeText)
+                                }
+                            }
+                            .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
                         ScoreRing(score: horoscope.score, size: 70, lineWidth: 7)
@@ -87,9 +103,10 @@ struct HoroscopeView: View {
                 }
                 .glassCard()
 
-                // 幸运
-                HStack(spacing: 12) {
-                    LuckyBubble(title: "幸运色") {
+                // 幸运。辅助功能大字号下一行放不下四个，改成两行两列
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: dynamicTypeSize.isAccessibilitySize ? 2 : 4), spacing: 12) {
+                    // 和运势卡按五行算的「幸运色」区分开
+                    LuckyBubble(title: "星座幸运色") {
                         HStack(spacing: 5) {
                             Circle().fill(Color(horoscope.luckyColor)).frame(width: 12, height: 12)
                             Text(horoscope.luckyColor.name)
@@ -139,6 +156,7 @@ struct HoroscopeView: View {
         .cosmicBackground()
         .navigationTitle("星座运势")
         .onAppear {
+            refreshToday()
             guard !initialized else { return }
             initialized = true
             if let birth = app.birth, lastViewedSign < 0 {
@@ -149,6 +167,18 @@ struct HoroscopeView: View {
                 sign = ZodiacSign.sunSign(of: birth)
             }
         }
+        // 跨过零点、或者隔天从后台回来时刷新「今天」
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: DispatchQueue.main)) { _ in
+            refreshToday()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { refreshToday() }
+        }
+    }
+
+    private func refreshToday() {
+        let now = DayKey.today
+        if now != today { today = now }
     }
 }
 
@@ -158,7 +188,7 @@ private struct LuckyBubble<Content: View>: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            Text(title).font(.caption2).foregroundStyle(.secondary)
+            Text(title).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
             content.font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity)

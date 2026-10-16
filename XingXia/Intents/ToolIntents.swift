@@ -32,16 +32,8 @@ struct WhatToEatIntent: AppIntent {
     }
 }
 
-struct FlipCoinIntent: AppIntent {
-    static let title: LocalizedStringResource = "抛硬币"
-    static let description = IntentDescription("抛一枚硬币，看看是正面还是反面。")
-
-    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
-        let heads = Bool.random()
-        return .result(dialog: heads ? "是正面！" : "是反面！",
-                       view: IntentSnippet(emoji: heads ? "🌞" : "🌙", title: heads ? "正面" : "反面", subtitle: "星匣 · 抛硬币"))
-    }
-}
+// 抛硬币的 FlipCoinIntent 定义在 Shared/Intents/WidgetIntents.swift：交互式小组件和 Siri 共用同一个，
+// App 与小组件两个 target 都会编译 Shared，这里再定义一个会重名。
 
 struct RollDiceIntent: AppIntent {
     static let title: LocalizedStringResource = "掷骰子"
@@ -110,7 +102,10 @@ struct HoroscopeIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
         let resolved = sign?.sign ?? ProfileSnapshot.load().map { ZodiacSign.sunSign(of: $0.birth) } ?? .aries
         let horoscope = HoroscopeEngine.horoscope(resolved, period: .today)
-        return .result(dialog: IntentDialog(stringLiteral: "\(resolved.name)今日\(Int(horoscope.stars.rounded())) 星。\(horoscope.overview)"),
+        // 按半星播报，与 App 里的星级一致：整数不带 .0，如「4 星」「3.5 星」
+        let stars = horoscope.stars
+        let starsText = stars == stars.rounded() ? String(Int(stars)) : String(format: "%.1f", stars)
+        return .result(dialog: IntentDialog(stringLiteral: "\(resolved.name)今日 \(starsText) 星。\(horoscope.overview)"),
                        view: IntentSnippet(emoji: resolved.glyph, title: "\(resolved.name) · \(horoscope.score) 分", subtitle: horoscope.comment))
     }
 }

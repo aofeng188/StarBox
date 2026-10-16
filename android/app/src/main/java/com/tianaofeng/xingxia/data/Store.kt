@@ -72,6 +72,16 @@ data class DecisionRecord(
 @Serializable
 data class StickDraw(val dayKey: Int, val profileId: String?, val stickNumber: Int, val date: Long = System.currentTimeMillis())
 
+/** 塔罗手记：一次塔罗解读。cards 与 iOS 相同，如 "0u,13r,5u"（牌 id + u 正位 / r 逆位） */
+@Serializable
+data class TarotReading(
+    val id: String = newId(),
+    val date: Long = System.currentTimeMillis(),
+    val spread: String,
+    val cards: String,
+    val question: String = "",
+)
+
 @Serializable
 data class WheelOption(val id: String = newId(), val title: String, val weight: Double = 1.0)
 
@@ -123,8 +133,21 @@ data class Countdown(
 ) {
     val kindValue: CountdownKind get() = CountdownKind.of(kind)
 
+    /** 创建当天 */
+    val createdDay: DayKey get() = DayKey.of(java.time.Instant.ofEpochMilli(createdAt))
+
+    /**
+     * 农历生日是否记录了出生年份（与 iOS 一致）。没记录时 date 存的是创建当天
+     * （旧数据里没动过「出生年份参考」的也是这样），不显示年龄。
+     */
+    val knowsBirthYear: Boolean
+        get() = !(isLunar && kindValue == CountdownKind.BIRTHDAY && date == createdDay.rawValue)
+
     val spec: CountdownSpec
-        get() = CountdownSpec(kindValue, DayKey.fromRaw(date) ?: DayKey.today, repeatsYearly, isLunar, lunarMonth, lunarDay)
+        get() = CountdownSpec(
+            kindValue, DayKey.fromRaw(date) ?: DayKey.today, repeatsYearly, isLunar, lunarMonth, lunarDay,
+            showsAge = knowsBirthYear,
+        )
 
     fun status(today: DayKey = DayKey.today): CountdownStatus = spec.status(today)
 }
@@ -217,6 +240,9 @@ object Prefs {
     fun int(key: String, default: Int): MutableState<Int> =
         cached(key) { PrefState(sp.getInt(key, default)) { sp.edit().putInt(key, it).apply() } }
 
+    fun long(key: String, default: Long): MutableState<Long> =
+        cached(key) { PrefState(sp.getLong(key, default)) { sp.edit().putLong(key, it).apply() } }
+
     fun string(key: String, default: String): MutableState<String> =
         cached(key) { PrefState(sp.getString(key, default) ?: default) { sp.edit().putString(key, it).apply() } }
 
@@ -255,6 +281,7 @@ object Store {
     val profiles = PersistedList("profiles", Profile.serializer())
     val records = PersistedList("decisionRecords", DecisionRecord.serializer())
     val stickDraws = PersistedList("stickDraws", StickDraw.serializer())
+    val tarotReadings = PersistedList("tarotReadings", TarotReading.serializer())
     val wheels = PersistedList("wheelTemplates", WheelTemplate.serializer())
     val foodLogs = PersistedList("foodLogs", FoodLog.serializer())
     val blockedFoods = PersistedList("blockedFoods", BlockedFood.serializer())
@@ -267,7 +294,7 @@ object Store {
     val scratchPresets = PersistedList("scratchPresets", ScratchPreset.serializer())
 
     private val all get() = listOf(
-        profiles, records, stickDraws, wheels, foodLogs, blockedFoods, rosters,
+        profiles, records, stickDraws, tarotReadings, wheels, foodLogs, blockedFoods, rosters,
         moods, countdowns, lotteryPools, foodMenus, customPrompts, scratchPresets,
     )
 

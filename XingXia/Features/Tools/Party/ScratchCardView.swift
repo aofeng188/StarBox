@@ -40,19 +40,22 @@ struct ScratchCardView: View {
                         .lineLimit(1...3)
                         .padding(12)
                         .glassEffect(.regular, in: .rect(cornerRadius: 16))
-                        .onSubmit { newCard() }
+                        // 多行输入框按回车只会换行、不会提交，所以边输入边换上新卡面
+                        .onChange(of: customMessage) { _, _ in if useCustom { newCard() } }
                 } else if !presets.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(presets) { item in
+                                let isOn = item.id == preset?.id
                                 Button(item.name) {
                                     presetID = item.id.uuidString
                                     newCard()
                                 }
                                 .font(.subheadline.weight(.medium))
                                 .padding(.horizontal, 12).padding(.vertical, 8)
-                                .foregroundStyle(item.id == preset?.id ? .white : .primary)
-                                .background(Capsule().fill(item.id == preset?.id ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.primary.opacity(0.07))))
+                                .foregroundStyle(isOn ? palette.onAccent : .primary)
+                                .background(Capsule().fill(isOn ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.primary.opacity(0.07))))
+                                .accessibilityAddTraits(isOn ? .isSelected : [])
                                 .contextMenu {
                                     Button("编辑", systemImage: "pencil") { editing = item }
                                     Button("删除", systemImage: "trash", role: .destructive) { context.delete(item); try? context.save() }
@@ -86,9 +89,11 @@ struct ScratchCardView: View {
                     Button("直接揭晓", systemImage: "eye") { reveal() }
                         .buttonStyle(.glass)
                         .disabled(revealed)
-                    Button("再来一张", systemImage: "arrow.counterclockwise") { newCard() }
-                        .buttonStyle(.glassProminent)
-                        .tint(palette.accent)
+                    Button { newCard() } label: {
+                        Label("再来一张", systemImage: "arrow.counterclockwise").foregroundStyle(palette.onAccent)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(palette.accent)
                 }
                 .controlSize(.large)
 
@@ -108,6 +113,7 @@ struct ScratchCardView: View {
         .overlay { ConfettiView(trigger: confetti) }
         .cosmicBackground()
         .navigationTitle("刮刮乐")
+        .toolbar(.hidden, for: .tabBar)
         .sheet(item: $editing) { item in NavigationStack { ScratchPresetEditor(preset: item) } }
         .onAppear { if prize.isEmpty { newCard() } }
     }
@@ -127,7 +133,7 @@ struct ScratchCardView: View {
                             .minimumScaleFactor(0.5)
                             .padding(.horizontal, 20)
                     }
-                    .foregroundStyle(.white)
+                    .foregroundStyle(isBlank ? .white : palette.onAccent)
                 }
 
             // 涂层
@@ -206,6 +212,7 @@ struct ScratchCardView: View {
             Haptics.reveal()
             confetti += 1
         }
+        Announce.post("刮刮卡：\(prize)")
         HistoryLog.add(context, tool: ToolKind.scratch.rawValue, title: useCustom ? "自定义" : (preset?.name ?? ""), result: prize)
     }
 
@@ -215,7 +222,8 @@ struct ScratchCardView: View {
         revealed = false
         cardID += 1
         if useCustom {
-            prize = customMessage.isEmpty ? "今天也要开心！" : customMessage
+            let message = customMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+            prize = message.isEmpty ? "今天也要开心！" : message
             isBlank = false
             return
         }

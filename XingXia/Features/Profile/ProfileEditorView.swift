@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import WidgetKit
 
 extension View {
     /// 表单行使用半透明磨砂底，透出背后的星空
@@ -16,6 +17,7 @@ struct ProfileEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var app
     @Environment(\.palette) private var palette
+    @Environment(\.colorScheme) private var scheme
     @Query(sort: \Profile.sortIndex) private var profiles: [Profile]
 
     @State private var name = ""
@@ -31,6 +33,8 @@ struct ProfileEditorView: View {
     @State private var birthTime = Calendar.current.date(from: DateComponents(hour: 12, minute: 0)) ?? Date()
     @State private var cityID = "beijing"
     @State private var showDeleteConfirm = false
+    /// 从「出生城市」返回时 onAppear 会再触发一次，只在第一次出现时读档案，不能覆盖没保存的修改
+    @State private var loaded = false
 
     static let avatars = ["🌟", "🌙", "☀️", "🪐", "🌸", "🍀", "🔥", "💧", "🦊", "🐱", "🐶", "🐼",
                           "🐰", "🦄", "🐯", "🐲", "🐻", "🐧", "🐳", "🦋", "🍑", "🍓", "🧸", "🎈"]
@@ -69,6 +73,7 @@ struct ProfileEditorView: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("头像 \(emoji)")
+                            .accessibilityAddTraits(avatar == emoji ? .isSelected : [])
                         }
                     }
                     .padding(.vertical, 4)
@@ -103,10 +108,10 @@ struct ProfileEditorView: View {
                         ForEach(1...30, id: \.self) { Text(LunarDate.dayNames[$0 - 1]).tag($0) }
                     }
                     if let converted = convertedLunar {
-                        LabeledContent("对应公历", value: DateText.full(DayKey(converted)))
+                        LabeledContent("对应公历", value: DateText.full(converted))
                     } else {
                         Label("这一天在农历中不存在，请检查日期", systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Color.caution(scheme))
                             .font(.footnote)
                     }
                 } else {
@@ -186,16 +191,17 @@ struct ProfileEditorView: View {
         EarthlyBranch.forHour(Calendar.current.component(.hour, from: birthTime))
     }
 
-    private var convertedLunar: Date? {
-        LunarDate.solarDate(gregorianYear: lunarYear, month: lunarMonth, day: lunarDay, isLeap: lunarLeap && leapMonth(of: lunarYear) == lunarMonth)
+    /// 农历生日对应的公历日期，只按年月日换算，不经过本地时刻
+    private var convertedLunar: DayKey? {
+        LunarDate.solarDay(gregorianYear: lunarYear, month: lunarMonth, day: lunarDay, isLeap: lunarLeap && leapMonth(of: lunarYear) == lunarMonth)
     }
 
     private func leapMonth(of year: Int) -> Int? {
-        (1...12).first { LunarDate.solarDate(gregorianYear: year, month: $0, day: 1, isLeap: true) != nil }
+        (1...12).first { LunarDate.solarDay(gregorianYear: year, month: $0, day: 1, isLeap: true) != nil }
     }
 
     private var resolvedBirthday: Date {
-        if useLunar, let converted = convertedLunar { return DayKey(converted).date }
+        if useLunar, let converted = convertedLunar { return converted.date }
         return DayKey(birthday).date
     }
 
@@ -206,6 +212,8 @@ struct ProfileEditorView: View {
     }
 
     private func load() {
+        guard !loaded else { return }
+        loaded = true
         guard let profile else {
             if isOnboarding || profiles.isEmpty { relation = "自己" } else { relation = "朋友" }
             return
@@ -215,11 +223,12 @@ struct ProfileEditorView: View {
         avatar = profile.avatar
         birthday = profile.birthday
         useLunar = profile.enteredAsLunar
-        let lunar = LunarDate(profile.birthday)
+        let birthDay = DayKey(profile.birthday)
+        let lunar = LunarDate(birthDay)
         lunarMonth = lunar.month
         lunarDay = lunar.day
         lunarLeap = lunar.isLeapMonth
-        lunarYear = DayKey(profile.birthday).year - (DayKey(profile.birthday).month < lunar.month ? 1 : 0)
+        lunarYear = birthDay.year - (birthDay.month < lunar.month ? 1 : 0)
         knowsTime = profile.hasBirthTime
         birthTime = Calendar.current.date(from: DateComponents(hour: profile.birthHour, minute: profile.birthMinute)) ?? birthTime
         cityID = profile.birthCityID ?? "beijing"
@@ -245,6 +254,8 @@ struct ProfileEditorView: View {
         if isOnboarding || app.primary == nil || app.primary?.id == target.id {
             app.setPrimary(target)
         }
+        // 档案生日会出现在倒数日小组件里
+        WidgetCenter.shared.reloadAllTimelines()
         Haptics.success()
         dismiss()
     }
@@ -254,6 +265,7 @@ struct ProfileEditorView: View {
         context.delete(profile)
         try? context.save()
         if wasPrimary { app.setPrimary(profiles.first { $0.id != profile.id }) }
+        WidgetCenter.shared.reloadAllTimelines()
         dismiss()
     }
 }

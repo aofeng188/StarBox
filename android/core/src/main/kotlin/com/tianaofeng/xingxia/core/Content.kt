@@ -22,9 +22,15 @@ data class FortuneContent(
     val funJi: List<String>,
     val quotes: List<String>,
     val items: List<String>,
+    /** 季节性幸运物只在列出的公历月份出现；不在表里的全年可选（键可缺省） */
+    val itemMonths: Map<String, List<Int>> = emptyMap(),
 ) {
     @Serializable
     data class Level(val min: Int, val name: String, val summaries: List<String>)
+
+    /** 某个公历月份可选的幸运物，保持 items 原有顺序；过滤后为空时退回全部（与 iOS items(inMonth:) 一致） */
+    fun itemsFor(month: Int): List<String> =
+        items.filter { itemMonths[it]?.contains(month) ?: true }.ifEmpty { items }
 }
 
 @Serializable
@@ -119,6 +125,19 @@ data class FortuneStick(
 
 fun chineseNumber(n: Int): String {
     val digits = listOf("零", "一", "二", "三", "四", "五", "六", "七", "八", "九")
+    // 与 iOS 的 StickLibrary.chineseNumber 一致：负数和四位数以上直接用阿拉伯数字
+    if (n < 0 || n >= 1000) return n.toString()
+    // 一百、一百零五、一百一十二
+    if (n >= 100) {
+        val rest = n % 100
+        val hundreds = digits[n / 100] + "百"
+        return when {
+            rest == 0 -> hundreds
+            rest < 10 -> hundreds + "零" + digits[rest]
+            rest < 20 -> hundreds + "一" + chineseNumber(rest)
+            else -> hundreds + chineseNumber(rest)
+        }
+    }
     if (n < 10) return digits[n]
     if (n == 10) return "十"
     if (n < 20) return "十" + digits[n % 10]
@@ -139,9 +158,47 @@ data class TarotCard(
     val love: String,
     val career: String,
     val advice: String,
+    // 逆位释义（可缺省）
+    val keywordsReversed: List<String>? = null,
+    val loveReversed: String? = null,
+    val careerReversed: String? = null,
+    val adviceReversed: String? = null,
+    /** 小阿卡纳的花色："wands" | "cups" | "swords" | "pentacles"；大阿卡纳没有 */
+    val suit: String? = null,
 ) {
     /** 每张牌的主色调：限定在深蓝 → 紫 → 品红的「宝石色」区间 */
     val hue: Double get() = 0.55 + ((id * 7) % 22) / 22.0 * 0.4
+
+    val tarotSuit: TarotSuit? get() = TarotSuit.of(suit)
+
+    val isMajor: Boolean get() = suit == null
+
+    /** 牌面角标：大阿卡纳是罗马数字，小阿卡纳是 A、2…10、侍从、骑士、王后、国王 */
+    val rankText: String get() = if (isMajor) roman else COURT_NAMES[roman] ?: roman
+
+    // 逆位只取逆位字段，缺失时返回 null，界面隐藏对应内容，绝不拿正位释义顶替
+    fun keywordsFor(reversed: Boolean): List<String>? =
+        if (reversed) keywordsReversed?.takeIf { it.isNotEmpty() } else keywords
+
+    fun loveFor(reversed: Boolean): String? = if (reversed) loveReversed?.takeIf { it.isNotBlank() } else love
+    fun careerFor(reversed: Boolean): String? = if (reversed) careerReversed?.takeIf { it.isNotBlank() } else career
+    fun adviceFor(reversed: Boolean): String? = if (reversed) adviceReversed?.takeIf { it.isNotBlank() } else advice
+
+    companion object {
+        private val COURT_NAMES = mapOf("Page" to "侍从", "Knight" to "骑士", "Queen" to "王后", "King" to "国王")
+    }
+}
+
+/** 小阿卡纳的四个花色 */
+enum class TarotSuit(val key: String, val label: String, val element: String, val emoji: String) {
+    WANDS("wands", "权杖", "火", "🔥"),
+    CUPS("cups", "圣杯", "水", "💧"),
+    SWORDS("swords", "宝剑", "风", "⚔️"),
+    PENTACLES("pentacles", "星币", "土", "⭐");
+
+    companion object {
+        fun of(key: String?): TarotSuit? = entries.firstOrNull { it.key == key }
+    }
 }
 
 /** 内置菜品 */
@@ -192,4 +249,9 @@ object ContentLibrary {
     }
 
     fun stick(number: Int): FortuneStick = sticks.firstOrNull { it.n == number } ?: sticks[0]
+
+    /** 塔罗牌组：完整 78 张，或只用 22 张大阿卡纳 */
+    fun tarotDeck(fullDeck: Boolean): List<TarotCard> = if (fullDeck) tarot else tarot.filter { it.isMajor }
+
+    fun tarotCard(id: Int): TarotCard? = tarot.firstOrNull { it.id == id }
 }

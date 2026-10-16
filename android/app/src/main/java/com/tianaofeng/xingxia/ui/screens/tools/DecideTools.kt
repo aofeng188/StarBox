@@ -23,11 +23,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.PanTool
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.ThumbDown
 import androidx.compose.material.icons.rounded.Casino
@@ -64,7 +67,9 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
@@ -116,10 +121,14 @@ import com.tianaofeng.xingxia.ui.components.StepperRow
 import com.tianaofeng.xingxia.ui.components.TextAction
 import com.tianaofeng.xingxia.ui.components.ToggleRow
 import com.tianaofeng.xingxia.ui.components.pressable
+import com.tianaofeng.xingxia.ui.components.copyText
+import com.tianaofeng.xingxia.ui.components.shareText
 import com.tianaofeng.xingxia.ui.components.weight
 import com.tianaofeng.xingxia.ui.screens.divination.GlassTextField
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.hex
+import com.tianaofeng.xingxia.ui.theme.readableForeground
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -219,6 +228,8 @@ fun FoodScreen() {
     var rolling by remember { mutableStateOf(false) }
     var revealCount by remember { mutableIntStateOf(0) }
     var confetti by remember { mutableIntStateOf(0) }
+    // 当前结果是否已点过「就吃这个」，防止连点重复记录
+    var accepted by remember { mutableStateOf(false) }
     var showBlocked by remember { mutableStateOf(false) }
     var editingMenuId by remember { mutableStateOf<String?>(null) }
 
@@ -248,6 +259,7 @@ fun FoodScreen() {
         val final = pool[index.coerceIn(0, pool.size - 1)]
         rolling = true
         result = null
+        accepted = false
         SoundEngine.play(SoundEffect.WHOOSH, 0.6f)
         scope.launch {
             roll(pool, final) { display = it }
@@ -276,8 +288,9 @@ fun FoodScreen() {
     }
 
     Box(Modifier.fillMaxSize()) {
+        // 顶栏右侧还有收藏星标，黑名单用图标按钮（与 iOS 工具栏一致），数量放进读屏描述
         Screen(title = "今天吃什么", actions = {
-            TextAction("黑名单（${Store.blockedFoods.items.size}）") { showBlocked = true }
+            CircleIconButton(Icons.Rounded.PanTool, "黑名单（${Store.blockedFoods.items.size}）") { showBlocked = true }
         }) {
             SegmentedPicker(FoodSource.entries, source, { it.label }) {
                 source = it
@@ -324,11 +337,17 @@ fun FoodScreen() {
                 val r = result
                 if (r != null && !rolling) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        GlassButton("就吃这个", Icons.Rounded.CheckCircle) {
-                            Store.foodLogs.update { (it + FoodLog(r.title, r.source)).takeLast(500) }
-                            confetti++
-                            SoundEngine.play(SoundEffect.SPARKLE)
-                            Haptics.success()
+                        if (accepted) {
+                            GlassButton("已记录", Icons.Rounded.Check, enabled = false) {}
+                        } else {
+                            GlassButton("就吃这个", Icons.Rounded.CheckCircle) {
+                                if (accepted) return@GlassButton
+                                accepted = true
+                                Store.foodLogs.update { (it + FoodLog(r.title, r.source)).takeLast(500) }
+                                confetti++
+                                SoundEngine.play(SoundEffect.SPARKLE)
+                                Haptics.success()
+                            }
                         }
                         if (r.source == "library") {
                             GlassButton("不想吃", Icons.Rounded.ThumbDown) {
@@ -502,8 +521,14 @@ fun WheelScreen() {
     var lastTemplateId by Prefs.string("wheel.lastTemplate", "")
     val templates = Store.wheels.items.sortedBy { it.createdAt }
     val template = templates.firstOrNull { it.id == lastTemplateId } ?: templates.firstOrNull()
+    val view = LocalView.current
     val eliminated = remember { mutableStateListOf<String>() }
+    // 淘汰模式下刚转到、还在 1.2 秒展示期内的选项
+    var pendingElimination by remember { mutableStateOf<String?>(null) }
     val segments = template?.options.orEmpty().filter { it.weight > 0 && it.id !in eliminated }
+    // 去掉待淘汰项后还能转的个数；「恢复全部」只算当前转盘里已淘汰或待淘汰的（与 iOS 一致）
+    val spinnableCount = segments.count { it.id != pendingElimination }
+    val eliminatedCount = template?.options.orEmpty().count { it.id in eliminated || it.id == pendingElimination }
     val angle = remember { Animatable(0f) }
     var spinning by remember { mutableStateOf(false) }
     var resultTitle by remember { mutableStateOf<String?>(null) }
@@ -525,9 +550,35 @@ fun WheelScreen() {
         }
     }
 
+    fun eliminate(id: String) {
+        if (id !in eliminated) eliminated.add(id)
+    }
+
+    fun restoreAll() {
+        eliminated.clear()
+        pendingElimination = null
+    }
+
+    // 关掉淘汰模式后「恢复全部」不再显示，已移出的选项要放回盘面
+    LaunchedEffect(template?.removeAfterSpin) {
+        if (template?.removeAfterSpin != true) restoreAll()
+    }
+    // 换转盘（含在编辑器里删掉当前转盘）时，上一个转盘的结果和淘汰状态一并清掉
+    LaunchedEffect(template?.id) {
+        restoreAll()
+        resultTitle = null
+    }
+
     fun spin() {
-        val options = segments
-        if (options.size < 2 || spinning) return
+        if (spinning) return
+        val spun = template
+        // 先确认去掉待淘汰项后还能转，再让它立刻出局（免得被重复抽中），落点按移出后的扇区计算
+        val options = spun?.options.orEmpty().filter { it.weight > 0 && it.id !in eliminated && it.id != pendingElimination }
+        if (options.size < 2) return
+        pendingElimination?.let {
+            eliminate(it)
+            pendingElimination = null
+        }
         val index = TrueRandom.weightedIndex(options.map { it.weight }) ?: return
         val range = wheelRanges(options)[index]
         val width = range.endInclusive - range.start
@@ -550,10 +601,15 @@ fun WheelScreen() {
             SoundEngine.play(SoundEffect.SUCCESS)
             Haptics.success()
             confetti++
-            Store.log(ToolKind.WHEEL.id, template?.name ?: "", picked.title)
-            if (template?.removeAfterSpin == true) {
+            view.announceForAccessibility("转到了：${picked.title}")
+            Store.log(ToolKind.WHEEL.id, spun?.name ?: "", picked.title)
+            if (spun?.removeAfterSpin == true) {
+                pendingElimination = picked.id
                 delay(1200)
-                eliminated.add(picked.id)
+                if (pendingElimination == picked.id) {
+                    eliminate(picked.id)
+                    pendingElimination = null
+                }
             }
         }
     }
@@ -576,7 +632,7 @@ fun WheelScreen() {
     Box(Modifier.fillMaxSize()) {
         Screen(title = "幸运大转盘", horizontalAlignment = Alignment.CenterHorizontally, actions = {
             Box {
-                CircleIconButton(Icons.Rounded.Edit, "编辑") { menuOpen = true }
+                CircleIconButton(Icons.Rounded.Edit, "编辑", enabled = !spinning) { menuOpen = true }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     if (template != null) {
                         DropdownMenuItem(text = { Text("编辑当前转盘") }, leadingIcon = { Icon(Icons.Rounded.Edit, null) }, onClick = {
@@ -598,8 +654,10 @@ fun WheelScreen() {
             ChipRow {
                 for (item in templates) {
                     SelectChip(item.name, item.id == template.id) {
+                        // 转动中不能换转盘，否则结果和停下的位置对不上
+                        if (spinning) return@SelectChip
                         lastTemplateId = item.id
-                        eliminated.clear()
+                        restoreAll()
                         resultTitle = null
                     }
                 }
@@ -626,12 +684,12 @@ fun WheelScreen() {
                 Box(
                     Modifier
                         .size(84.dp)
-                        .pressable(!spinning && segments.size >= 2) { spin() }
+                        .pressable(!spinning && spinnableCount >= 2) { spin() }
                         .clip(CircleShape)
                         .background(palette.accentBrush),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("GO", style = Fonts.display(26, FontWeight.Black), color = Color.White)
+                    Text("GO", style = Fonts.display(26, FontWeight.Black), color = palette.onAccent)
                 }
             }
             Box(Modifier.heightIn(min = 70.dp), contentAlignment = Alignment.Center) {
@@ -649,7 +707,9 @@ fun WheelScreen() {
                 GlassCard(padding = 14.dp) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         SecondaryText("淘汰模式：转到的选项会暂时移出", style = Fonts.caption, modifier = Modifier.weight(1f))
-                        if (eliminated.isNotEmpty()) TextAction("恢复全部（${eliminated.size}）") { eliminated.clear() }
+                        if (eliminatedCount > 0) {
+                            TextAction("恢复全部（$eliminatedCount）", enabled = !spinning) { restoreAll() }
+                        }
                     }
                 }
             }
@@ -704,7 +764,9 @@ private fun WheelCanvas(segments: List<WheelOption>, rotation: Float, colors: Li
                 val band = r * 0.57f
                 val fontSize = min(18f, max(9f, (band * sweep * Math.PI.toFloat() / 180 * 0.6f) / density))
                 val title = if (segment.title.length > 10) segment.title.take(9) + "…" else segment.title
-                val layout = measurer.measure(AnnotatedString(title), TextStyle(fontSize = fontSize.sp, fontWeight = FontWeight.Bold, color = Color.White))
+                // 扇区外缘半透明、压在深色底盘上还有暗角，换深字的亮度分界取 0.3（与 iOS 的 labelColor(on:) 一致）
+                val label = if (color.luminance() > 0.3f) hex(0x14101F) else Color.White
+                val layout = measurer.measure(AnnotatedString(title), TextStyle(fontSize = fontSize.sp, fontWeight = FontWeight.Bold, color = label))
                 val textScale = min(1f, (r * 0.56f) / max(1f, layout.size.width.toFloat()))
                 rotate(mid, center) {
                     translate(center.x + band, center.y) {
@@ -792,7 +854,7 @@ private enum class GroupMode(val label: String) { GROUPS("随机分组"), ORDER(
 @Composable
 fun GroupsScreen() {
     val palette = LocalPalette.current
-    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var text by Prefs.string("groups.text", "小明\n小红\n小刚\n小美\n阿杰\n小雨\n大壮\n朵朵")
     var mode by remember { mutableStateOf(GroupMode.GROUPS) }
@@ -803,19 +865,21 @@ fun GroupsScreen() {
     var output by remember { mutableStateOf<List<List<String>>>(emptyList()) }
     var revealed by remember { mutableIntStateOf(0) }
     var rosterMenu by remember { mutableStateOf(false) }
+    var revealJob by remember { mutableStateOf<Job?>(null) }
 
     val names = text.split('\n', ',', '，', '、', ' ', ';', '；').map { it.trim() }.filter { it.isNotEmpty() }
 
-    val shareText = when (mode) {
+    fun describe(mode: GroupMode, output: List<List<String>>): String = when (mode) {
         GroupMode.GROUPS -> output.mapIndexed { i, g -> "第${i + 1}组：${g.joinToString("、")}" }.joinToString("\n")
         GroupMode.ORDER -> output.firstOrNull().orEmpty().mapIndexed { i, n -> "${i + 1}. $n" }.joinToString("\n")
         GroupMode.PICK -> "抽中：" + output.firstOrNull().orEmpty().joinToString("、")
     }
+    val resultText = describe(mode, output)
 
     fun run() {
         if (names.size < 2) return
         val shuffled = TrueRandom.shuffled(names)
-        output = when (mode) {
+        val result = when (mode) {
             GroupMode.GROUPS -> {
                 val count = if (bySize) (shuffled.size + groupSize - 1) / maxOf(1, groupSize) else minOf(groupCount, shuffled.size)
                 val groups = List(maxOf(1, count)) { mutableListOf<String>() }
@@ -825,9 +889,13 @@ fun GroupsScreen() {
             GroupMode.ORDER -> listOf(shuffled)
             GroupMode.PICK -> listOf(shuffled.take(pickCount))
         }
+        output = result
+        // 在这里记录：和上次结果完全相同时也算一次
+        Store.log(ToolKind.GROUPS.id, mode.label, describe(mode, result).replace("\n", "；"))
         revealed = 0
-        val total = if (mode == GroupMode.GROUPS) output.size else output.firstOrNull()?.size ?: 0
-        scope.launch {
+        val total = if (mode == GroupMode.GROUPS) result.size else result.firstOrNull()?.size ?: 0
+        revealJob?.cancel()
+        revealJob = scope.launch {
             for (i in 1..maxOf(1, total)) {
                 delay(if (mode == GroupMode.ORDER) 90 else 220)
                 revealed = i
@@ -838,15 +906,12 @@ fun GroupsScreen() {
         }
     }
 
-    LaunchedEffect(output) {
-        if (output.isNotEmpty()) Store.log(ToolKind.GROUPS.id, mode.label, shareText.replace("\n", "；"))
-    }
-
     OnShake { run() }
 
     Screen(title = "随机分组") {
         SegmentedPicker(GroupMode.entries, mode, { it.label }) {
             mode = it
+            revealJob?.cancel()
             output = emptyList()
         }
         GlassCard(spacing = 10.dp) {
@@ -910,9 +975,11 @@ fun GroupsScreen() {
         if (output.isNotEmpty()) {
             GlassCard {
                 SectionHeader("结果", icon = Icons.Rounded.Verified) {
-                    CircleIconButton(Icons.Rounded.ContentCopy, "拷贝结果", size = 34.dp) {
-                        clipboard.setText(AnnotatedString(shareText))
-                        Haptics.success()
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        CircleIconButton(Icons.Rounded.ContentCopy, "拷贝结果", size = 34.dp) { copyText(context, resultText) }
+                        CircleIconButton(Icons.Rounded.Share, "分享结果", size = 34.dp) {
+                            shareText(context, "星匣 · ${mode.label}\n$resultText", mode.label + "结果")
+                        }
                     }
                 }
                 when (mode) {
@@ -927,7 +994,7 @@ fun GroupsScreen() {
                                     .padding(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                Text("第 ${index + 1} 组 · ${group.size} 人", style = Fonts.subheadline.weight(FontWeight.Bold), color = color)
+                                Text("第 ${index + 1} 组 · ${group.size} 人", style = Fonts.subheadline.weight(FontWeight.Bold), color = palette.inkColor(index))
                                 Flow(spacing = 6.dp) {
                                     for (name in group) {
                                         Text(
@@ -952,7 +1019,7 @@ fun GroupsScreen() {
                                         .clip(CircleShape)
                                         .background(palette.color(index)),
                                     contentAlignment = Alignment.Center,
-                                ) { Text("${index + 1}", style = Fonts.headline, color = Color.White) }
+                                ) { Text("${index + 1}", style = Fonts.headline, color = palette.color(index).readableForeground) }
                                 Text(name, style = if (mode == GroupMode.PICK) Fonts.title3 else Fonts.body)
                             }
                         }

@@ -1,17 +1,26 @@
 import SwiftUI
 import SwiftData
+import Combine
 
 struct RecordsHubView: View {
     @Environment(AppState.self) private var app
+    @Environment(AppSettings.self) private var settings
     @Environment(\.palette) private var palette
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \DecisionRecord.date, order: .reverse) private var records: [DecisionRecord]
     @Query(sort: \MoodEntry.dayKey, order: .reverse) private var moods: [MoodEntry]
     @Query(sort: \Countdown.createdAt) private var countdowns: [Countdown]
+    @Query(sort: \Profile.sortIndex) private var profiles: [Profile]
+
+    /// 零点和回到前台时刷新，App 跨天常驻时心情卡和一周条不会停在昨天
+    @State private var today = DayKey.today
 
     var body: some View {
+        // 倒数日含档案生日（开关打开时），和倒数日列表一致
+        let countdownItems = CountdownItem.all(countdowns, profiles: profiles, includeProfiles: settings.profileBirthdaysInCountdowns)
         ScrollView {
             VStack(spacing: 16) {
-                MoodCheckInCard()
+                MoodCheckInCard(today: today)
 
                 // 最近 7 天心情
                 NavigationLink(value: AppRoute.mood) {
@@ -22,18 +31,29 @@ struct RecordsHubView: View {
                         }
                         HStack(spacing: 0) {
                             ForEach((0..<7).reversed(), id: \.self) { offset in
-                                let day = DayKey.today.adding(days: -offset)
+                                let day = today.adding(days: -offset)
                                 let mood = moods.first { $0.dayKey == day.rawValue }.flatMap { MoodLevel(rawValue: $0.mood) }
                                 let score = FortuneEngine.daily(for: app.birth, on: day).score
+                                let dayName = offset == 0 ? "今天" : DateText.weekday(day)
                                 VStack(spacing: 6) {
-                                    Text(mood?.emoji ?? "·").font(.title3).frame(height: 28)
+                                    Group {
+                                        if let mood {
+                                            Text(mood.emoji).font(.title3)
+                                        } else {
+                                            // 没记心情：浅色空心圆
+                                            Circle().strokeBorder(.primary.opacity(0.25), lineWidth: 1.5).frame(width: 16, height: 16)
+                                        }
+                                    }
+                                    .frame(height: 28)
                                     Capsule()
                                         .fill(palette.accentGradient)
                                         .frame(width: 8, height: CGFloat(score - 30) * 0.7)
                                         .frame(height: 50, alignment: .bottom)
-                                    Text(offset == 0 ? "今天" : DateText.weekday(day)).font(.caption2).foregroundStyle(.secondary)
+                                    Text(dayName).font(.caption2).foregroundStyle(.primary.opacity(0.7))
                                 }
                                 .frame(maxWidth: .infinity)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel("\(dayName)，\(mood.map { "心情\($0.name)" } ?? "未记录心情")，运势 \(score) 分")
                             }
                         }
                     }
@@ -44,12 +64,12 @@ struct RecordsHubView: View {
                 HStack(spacing: 14) {
                     NavigationLink(value: AppRoute.fortuneCalendar) {
                         RecordTile(symbol: "calendar", colors: [palette.accent, palette.accentSecondary], title: "运势日历",
-                                   value: "\(DayKey.today.month)月", caption: "每日运势一览")
+                                   value: "\(today.month)月", caption: "每日运势一览")
                     }
                     .buttonStyle(.pressableCard)
                     NavigationLink(value: AppRoute.countdowns) {
                         RecordTile(symbol: "hourglass", colors: [Color(hex: 0x22D3EE), Color(hex: 0x6366F1)], title: "倒数日",
-                                   value: "\(countdowns.count)", caption: nextCountdownText)
+                                   value: "\(countdownItems.count)", caption: nextCountdownText(countdownItems))
                     }
                     .buttonStyle(.pressableCard)
                 }
@@ -61,7 +81,7 @@ struct RecordsHubView: View {
                             Image(systemName: "chevron.right").foregroundStyle(.tertiary)
                         }
                         if records.isEmpty {
-                            Text("用过的随机工具结果都会自动记在这里").font(.subheadline).foregroundStyle(.secondary)
+                            Text("用过的随机工具结果都会自动记在这里").font(.subheadline).foregroundStyle(.primary.opacity(0.7))
                         } else {
                             ForEach(records.prefix(4)) { record in
                                 HistoryRow(record: record)
@@ -77,16 +97,24 @@ struct RecordsHubView: View {
         }
         .cosmicBackground()
         .navigationTitle("记录")
+        .onAppear(perform: refreshToday)
+        // 这个通知不保证在主线程发出
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: DispatchQueue.main)) { _ in
+            refreshToday()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { refreshToday() }
+        }
     }
 
-    private var nextCountdownText: String {
-        let upcoming = countdowns
-            .filter { $0.kindValue != .anniversary }
-            .map { ($0, $0.status()) }
-            .filter { $0.1.prefix != "已过" }
-            .min { $0.1.days < $1.1.days }
-        guard let (countdown, status) = upcoming else { return "添加重要日子" }
-        return status.isToday ? "\(countdown.title) 就是今天" : "\(countdown.title) 还有\(status.days)天"
+    private func refreshToday() {
+        let now = DayKey.today
+        if now != today { today = now }
+    }
+
+    private func nextCountdownText(_ items: [CountdownItem]) -> String {
+        guard let next = CountdownItem.nearest(items, today: today) else { return "添加重要日子" }
+        return next.status.isToday ? "\(next.item.title) 就是今天" : "\(next.item.title) 还有\(next.status.days)天"
     }
 }
 
@@ -103,7 +131,7 @@ private struct RecordTile: View {
             Text(value).font(.system(size: 26, weight: .bold, design: .rounded)).foregroundStyle(.primary)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.headline).foregroundStyle(.primary)
-                Text(caption).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                Text(caption).font(.caption2).foregroundStyle(.primary.opacity(0.7)).lineLimit(1)
             }
         }
         .glassCard(padding: 16, interactive: true)
@@ -120,10 +148,10 @@ struct HistoryRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(record.result).font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
                 Text(record.title.isEmpty ? info.name : "\(info.name) · \(record.title)")
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    .font(.caption).foregroundStyle(.primary.opacity(0.7)).lineLimit(1)
             }
             Spacer()
-            Text(DateText.relative(record.date)).font(.caption2).foregroundStyle(.secondary)
+            Text(DateText.relative(record.date)).font(.caption2).foregroundStyle(.primary.opacity(0.7))
         }
         .accessibilityElement(children: .combine)
     }

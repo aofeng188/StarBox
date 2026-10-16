@@ -2,17 +2,22 @@ import SwiftUI
 
 /// 动态星空背景：流动的星云网格渐变 + 闪烁星点 + 偶尔划过的流星。
 /// 浅色模式下变成柔和的晨曦光斑。开启「减弱动态效果」时保持静止。
+/// 背景动得很慢，15fps 足够；低电量模式或 App 不在前台时停在当前画面。
 struct CosmicBackground: View {
     var dimmed = false
 
     @Environment(\.palette) private var palette
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(AppSettings.self) private var settings
+    @Environment(ThemeManager.self) private var themes
 
     var body: some View {
-        let animate = !reduceMotion && settings.backgroundAnimation
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !animate)) { context in
-            let t = animate ? context.date.timeIntervalSinceReferenceDate : 0
+        let still = reduceMotion || !settings.backgroundAnimation
+        let paused = still || themes.isLowPowerMode || scenePhase != .active
+        TimelineView(.animation(minimumInterval: 1.0 / 15, paused: paused)) { context in
+            // 暂停时停在当时的画面，不跳回起点
+            let t = still ? 0 : context.date.timeIntervalSinceReferenceDate
             ZStack {
                 palette.backgroundGradient
                 NebulaMesh(time: t, palette: palette)

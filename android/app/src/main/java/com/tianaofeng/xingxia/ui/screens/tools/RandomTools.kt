@@ -62,6 +62,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -111,6 +112,7 @@ import kotlin.math.sin
 @Composable
 fun CoinScreen() {
     val palette = LocalPalette.current
+    val view = LocalView.current
     val scope = rememberCoroutineScope()
     var heads by Prefs.int("coin.heads", 0)
     var tails by Prefs.int("coin.tails", 0)
@@ -147,6 +149,7 @@ fun CoinScreen() {
             if (isHeads) heads++ else tails++
             streak = if (last == isHeads) streak + 1 else 1
             last = isHeads
+            view.announceForAccessibility(if (isHeads) "正面" else "反面")
             Store.log(ToolKind.COIN.id, question, if (isHeads) "正面" else "反面")
         }
     }
@@ -285,6 +288,7 @@ fun StatPill(title: String, value: Int, total: Int, color: Color, modifier: Modi
 @Composable
 fun DiceScreen() {
     val palette = LocalPalette.current
+    val view = LocalView.current
     val scope = rememberCoroutineScope()
     var count by Prefs.int("dice.count", 2)
     val faces = remember { mutableStateListOf<Int>() }
@@ -321,6 +325,9 @@ fun DiceScreen() {
             history.add(final)
             if (history.size > 12) history.removeAt(0)
             val total = final.sum()
+            // 读屏：「点数 3、5，合计 8」，一颗时「点数 3」
+            val points = "点数 ${final.joinToString("、")}"
+            view.announceForAccessibility(if (final.size > 1) "$points，合计 $total" else points)
             Store.log(ToolKind.DICE.id, "${final.size} 颗", if (final.size > 1) "${final.joinToString("+")} = $total" else "$total 点")
         }
     }
@@ -356,7 +363,8 @@ fun DiceScreen() {
                 .pressable { roll() },
             contentAlignment = Alignment.Center,
         ) {
-            Flow(spacing = 22.dp, modifier = Modifier.padding(24.dp)) {
+            // 4、5 颗时第二行不满，也要居中
+            Flow(spacing = 22.dp, modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 faces.forEachIndexed { i, value ->
                     DieFace(
                         value,
@@ -582,7 +590,8 @@ private fun BallView(value: Int, special: Boolean, lottery: Boolean) {
             .padding(horizontal = if (value > 999) 8.dp else 0.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(if (lottery) "%02d".format(value) else "$value", style = Fonts.title3.weight(FontWeight.Bold), color = Color.White)
+        // 彩票球是深红 / 深蓝底；普通模式压在 accent 上，深色主题用深字
+        Text(if (lottery) "%02d".format(value) else "$value", style = Fonts.title3.weight(FontWeight.Bold), color = if (lottery) Color.White else palette.onAccent)
     }
 }
 
@@ -601,9 +610,13 @@ private enum class Hand(val emoji: String, val label: String) {
 
 private enum class Match(val label: String, val target: Int?) { FREE("自由对战", null), BO3("三局两胜", 2), BO5("五局三胜", 3) }
 
+/** 结果文字的语义，颜色按深浅模式在绘制时取 */
+private enum class RpsTone { NEUTRAL, WIN, LOSE, CHAMPION }
+
 @Composable
 fun RpsScreen() {
     val palette = LocalPalette.current
+    val view = LocalView.current
     val scope = rememberCoroutineScope()
     var wins by Prefs.int("rps.wins", 0)
     var losses by Prefs.int("rps.losses", 0)
@@ -618,7 +631,7 @@ fun RpsScreen() {
     var playing by remember { mutableStateOf(false) }
     var chant by remember { mutableStateOf("") }
     var resultText by remember { mutableStateOf("") }
-    var resultColor by remember { mutableStateOf(Color.Unspecified) }
+    var resultTone by remember { mutableStateOf(RpsTone.NEUTRAL) }
     var matchOver by remember { mutableStateOf(false) }
     var confetti by remember { mutableIntStateOf(0) }
     val history = remember { mutableStateListOf<Hand>() }
@@ -647,35 +660,39 @@ fun RpsScreen() {
     fun settle(mine: Hand, ai: Hand) {
         history.lastOrNull()?.let { transitions[it] = (transitions[it] ?: emptyList()) + mine }
         history.add(mine)
-        when (mine.outcome(ai)) {
+        val outcome = mine.outcome(ai)
+        when (outcome) {
             1 -> {
                 myScore++; wins++
-                resultText = "你赢了！"; resultColor = hex(0x34D399)
+                resultText = "你赢了！"; resultTone = RpsTone.WIN
                 SoundEngine.play(SoundEffect.SUCCESS)
                 Haptics.success()
             }
             -1 -> {
                 aiScore++; losses++
-                resultText = "你输了"; resultColor = hex(0xFB7185)
+                resultText = "你输了"; resultTone = RpsTone.LOSE
                 SoundEngine.play(SoundEffect.FAIL)
                 Haptics.error()
             }
             else -> {
                 draws++
-                resultText = "平局"; resultColor = palette.secondaryText
+                resultText = "平局"; resultTone = RpsTone.NEUTRAL
                 SoundEngine.play(SoundEffect.TAP)
                 Haptics.tap()
             }
         }
+        var announcement = "你出${mine.label}，星匣出${ai.label}，" + listOf("你输了", "平局", "你赢了")[outcome + 1]
         val target = match.target
         if (target != null && (myScore >= target || aiScore >= target)) {
             matchOver = true
             val won = myScore > aiScore
             resultText = if (won) "🏆 你赢下了比赛！" else "星匣赢下了比赛"
-            resultColor = if (won) hex(0xFFD166) else hex(0xFB7185)
+            resultTone = if (won) RpsTone.CHAMPION else RpsTone.LOSE
             if (won) confetti++
+            announcement += "。$myScore 比 $aiScore，" + if (won) "你赢下了比赛" else "星匣赢下了比赛"
             Store.log(ToolKind.RPS.id, match.label, "$myScore : $aiScore ${if (won) "胜" else "负"}")
         }
+        view.announceForAccessibility(announcement)
     }
 
     fun play(hand: Hand) {
@@ -723,7 +740,12 @@ fun RpsScreen() {
             Text(
                 if (playing) chant else resultText,
                 style = Fonts.display(30, FontWeight.Black),
-                color = if (playing || resultColor == Color.Unspecified) palette.text else resultColor,
+                color = if (playing) palette.text else when (resultTone) {
+                    RpsTone.NEUTRAL -> palette.secondaryText
+                    RpsTone.WIN -> palette.positive
+                    RpsTone.LOSE -> palette.negative
+                    RpsTone.CHAMPION -> palette.gold
+                },
                 modifier = Modifier.height(44.dp),
             )
             if (matchOver) {
@@ -828,6 +850,8 @@ fun TruthDareScreen() {
             "truth" -> listOf(hex(0x60A5FA), hex(0x8B5CF6))
             else -> listOf(hex(0xF472B6), hex(0xEF4444))
         }
+        // 还没抽题时卡片是 accent 底，深色主题下 accent 偏亮，文字改用 onAccent
+        val ink = if (kind == null) palette.onAccent else Color.White
         Column(
             Modifier
                 .fillMaxWidth()
@@ -842,15 +866,15 @@ fun TruthDareScreen() {
             Text(
                 when (kind) { null -> "准备好了吗？"; "truth" -> "真心话"; else -> "大冒险" },
                 style = Fonts.headline,
-                color = Color.White.copy(alpha = 0.85f),
+                color = ink.copy(alpha = 0.85f),
             )
             Text(
                 if (kind == null) "选择真心话或大冒险，抽一道题" else prompt,
                 style = Fonts.title2,
-                color = Color.White,
+                color = ink,
                 textAlign = TextAlign.Center,
             )
-            if (kind != null) Text("尺度：${levels[level.coerceIn(0, 2)]}", style = Fonts.caption, color = Color.White.copy(alpha = 0.7f))
+            if (kind != null) Text("尺度：${levels[level.coerceIn(0, 2)]}", style = Fonts.caption, color = ink.copy(alpha = 0.7f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             ChoiceButton("真心话", Icons.Rounded.Forum, listOf(hex(0x60A5FA), hex(0x8B5CF6)), Modifier.weight(1f)) { draw("truth") }

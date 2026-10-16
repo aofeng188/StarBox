@@ -4,6 +4,7 @@ import SwiftData
 struct CoinFlipView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.palette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("coin.heads") private var headsCount = 0
     @AppStorage("coin.tails") private var tailsCount = 0
 
@@ -14,10 +15,14 @@ struct CoinFlipView: View {
     @State private var streak = 0
     @State private var lastResult: Bool?
     @State private var question = ""
+    /// 减弱动态效果时，每抛一次换一枚硬币视图，交叉淡入结果面
+    @State private var faceSwap = 0
+    @FocusState private var editingQuestion: Bool
 
     var body: some View {
         StageScaffold {
             TextField("想决定什么？（可选）", text: $question)
+                .focused($editingQuestion)
                 .padding(12)
                 .glassEffect(.regular, in: .capsule)
                 .padding(.top, 8)
@@ -40,32 +45,37 @@ struct CoinFlipView: View {
                                 CubicKeyframe(1.0, duration: 0.15)
                             }
 
-                        CoinView(angle: angle)
-                            .frame(width: 190, height: 190)
-                            .keyframeAnimator(initialValue: CoinToss(), trigger: tossTrigger) { view, toss in
-                                view
-                                    .scaleEffect(toss.scale)
-                                    .offset(y: toss.lift)
-                            } keyframes: { _ in
-                                KeyframeTrack(\.lift) {
-                                    CubicKeyframe(-280, duration: 0.55)
-                                    CubicKeyframe(0, duration: 0.6)
-                                    CubicKeyframe(-24, duration: 0.12)
-                                    CubicKeyframe(0, duration: 0.15)
-                                }
-                                KeyframeTrack(\.scale) {
-                                    CubicKeyframe(1.25, duration: 0.55)
-                                    CubicKeyframe(1.0, duration: 0.6)
-                                }
+                        // 减弱动态效果时只换里层的硬币来交叉淡入结果面；外层的手势和读屏焦点保持同一个视图，不会丢焦点
+                        ZStack {
+                            CoinView(angle: angle)
+                                .id(faceSwap)
+                                .transition(.opacity)
+                        }
+                        .frame(width: 190, height: 190)
+                        .keyframeAnimator(initialValue: CoinToss(), trigger: tossTrigger) { view, toss in
+                            view
+                                .scaleEffect(toss.scale)
+                                .offset(y: toss.lift)
+                        } keyframes: { _ in
+                            KeyframeTrack(\.lift) {
+                                CubicKeyframe(-280, duration: 0.55)
+                                CubicKeyframe(0, duration: 0.6)
+                                CubicKeyframe(-24, duration: 0.12)
+                                CubicKeyframe(0, duration: 0.15)
                             }
-                            .gesture(DragGesture(minimumDistance: 20).onEnded { value in
-                                if value.translation.height < -40 { flip() }
-                            })
-                            .onTapGesture { flip() }
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel(result.map { $0 ? "正面" : "反面" } ?? "硬币")
-                            .accessibilityHint("点按抛硬币")
-                            .accessibilityAddTraits(.isButton)
+                            KeyframeTrack(\.scale) {
+                                CubicKeyframe(1.25, duration: 0.55)
+                                CubicKeyframe(1.0, duration: 0.6)
+                            }
+                        }
+                        .gesture(DragGesture(minimumDistance: 20).onEnded { value in
+                            if value.translation.height < -40 { flip() }
+                        })
+                        .onTapGesture { flip() }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(result.map { $0 ? "正面" : "反面" } ?? "硬币")
+                        .accessibilityHint("点按抛硬币")
+                        .accessibilityAddTraits(.isButton)
                     }
                 }
 
@@ -78,7 +88,7 @@ struct CoinFlipView: View {
                             }
                             if streak > 1 { Text("已经连续 \(streak) 次\(result ? "正面" : "反面")了").font(.caption).foregroundStyle(.tint) }
                         }
-                        .transition(.scale.combined(with: .opacity))
+                        .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                     } else {
                         Text(isFlipping ? "" : "点按、上滑或摇一摇").font(.subheadline).foregroundStyle(.secondary)
                     }
@@ -106,7 +116,8 @@ struct CoinFlipView: View {
         .cosmicBackground()
         .navigationTitle("抛硬币")
         .navigationBarTitleDisplayMode(.inline)
-        .onShake { flip() }
+        .onShake(isEnabled: !editingQuestion) { flip() }
+        .prefillsQuestion($question)
     }
 
     private func flip() {
@@ -114,16 +125,27 @@ struct CoinFlipView: View {
         let heads = Bool.random()
         isFlipping = true
         result = nil
-        let spins = Double(Int.random(in: 5...7)) * 360
-        let current = angle.truncatingRemainder(dividingBy: 360)
-        let target = angle - current + spins + (heads ? 0 : 180)
-        tossTrigger += 1
         SoundEngine.shared.play(.whoosh, volume: 0.6)
         SoundEngine.shared.play(.coinFlip, volume: 0.7)
         Haptics.impact()
-        withAnimation(.timingCurve(0.15, 0.6, 0.35, 1, duration: 1.15)) { angle = target }
+        let flight: Duration
+        if reduceMotion {
+            // 减弱动态效果：不抛起、不连转，0.3 秒交叉淡入结果面
+            flight = .milliseconds(300)
+            withAnimation(.easeInOut(duration: 0.3)) {
+                faceSwap += 1
+                angle = heads ? 0 : 180
+            }
+        } else {
+            flight = .milliseconds(1150)
+            let spins = Double(Int.random(in: 5...7)) * 360
+            let current = angle.truncatingRemainder(dividingBy: 360)
+            let target = angle - current + spins + (heads ? 0 : 180)
+            tossTrigger += 1
+            withAnimation(.timingCurve(0.15, 0.6, 0.35, 1, duration: 1.15)) { angle = target }
+        }
         Task {
-            try? await Task.sleep(for: .milliseconds(1150))
+            try? await Task.sleep(for: flight)
             SoundEngine.shared.play(.coinLand)
             Haptics.land()
             try? await Task.sleep(for: .milliseconds(250))
@@ -134,6 +156,7 @@ struct CoinFlipView: View {
             if heads { headsCount += 1 } else { tailsCount += 1 }
             streak = lastResult == heads ? streak + 1 : 1
             lastResult = heads
+            Announce.post(heads ? "正面" : "反面")
             HistoryLog.add(context, tool: ToolKind.coin.rawValue, title: question, result: heads ? "正面" : "反面")
         }
     }

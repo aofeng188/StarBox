@@ -1,11 +1,15 @@
 import UserNotifications
 import UIKit
 
-/// 每日运势本地通知。
+/// 每日运势和天象的本地通知。
 /// 因为每天的运势内容不同，不能用一个重复通知，所以一次性排好未来 30 天，每次回到前台时刷新。
+/// 系统最多保留 64 条待发通知：每日运势最多 30 条，天象只排未来 30 天（每月约 2～4 条），两者加起来不会超。
 @MainActor
 enum NotificationScheduler {
     private static let prefix = "daily-fortune-"
+    private static let skyPrefix = "sky-event-"
+    /// 上一次排天象提醒的任务。连续调用时排队执行，免得先关后开、或先开后关时后发的先做完，留下不该有的提醒
+    private static var skyTask: Task<Void, Never>?
 
     static func requestAuthorization() async -> Bool {
         let center = UNUserNotificationCenter.current()
@@ -19,11 +23,17 @@ enum NotificationScheduler {
     }
 
     static func reschedule() {
+        rescheduleDaily()
+        rescheduleSky()
+    }
+
+    private static func rescheduleDaily() {
         let enabled = AppSettings.shared.dailyReminderEnabled
         let hour = AppSettings.shared.reminderHour
         let minute = AppSettings.shared.reminderMinute
         let birth = AppState.shared.birth
         let name = AppState.shared.primary?.name
+        let prefix = Self.prefix
 
         Task.detached(priority: .utility) {
             let center = UNUserNotificationCenter.current()
@@ -49,6 +59,47 @@ enum NotificationScheduler {
                 content.userInfo = ["url": "xingxia://fortune"]
                 let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
                 try? await center.add(UNNotificationRequest(identifier: prefix + day.description, content: content, trigger: trigger))
+            }
+        }
+    }
+
+    /// 满月、新月、流星雨极大的前一天晚上 20:00 提醒。标识由事件决定，重复安排会覆盖而不是叠加。
+    private static func rescheduleSky() {
+        let enabled = AppSettings.shared.skyReminders
+        let skyPrefix = Self.skyPrefix
+        let previous = skyTask
+
+        skyTask = Task.detached(priority: .utility) {
+            await previous?.value
+            let center = UNUserNotificationCenter.current()
+            let pending = await center.pendingNotificationRequests()
+            center.removePendingNotificationRequests(withIdentifiers: pending.map(\.identifier).filter { $0.hasPrefix(skyPrefix) })
+            guard enabled else { return }
+
+            let now = Date()
+            let today = DayKey.today
+            let calendar = Calendar.gregorianLocal
+            let events = SkyEvents.upcoming(from: today, days: 31)
+            for event in events where [.newMoon, .fullMoon, .meteorShower].contains(event.kind) {
+                let remindDay = event.day.adding(days: -1)
+                guard today.days(to: remindDay) < 30 else { continue }
+                var components = DateComponents(year: remindDay.year, month: remindDay.month, day: remindDay.day, hour: 20, minute: 0)
+                components.calendar = calendar
+                guard let fireDate = calendar.date(from: components), fireDate > now else { continue }
+
+                let content = UNMutableNotificationContent()
+                content.title = "明天\(event.title)" + (event.kind == .meteorShower ? "极大" : "")
+                var body = event.detail
+                // 同一天有日月食时一并提醒
+                for eclipse in events where eclipse.kind == .eclipse && eclipse.day == event.day {
+                    body += "\n另有\(eclipse.title)：\(eclipse.detail)"
+                }
+                content.body = body
+                content.sound = .default
+                content.threadIdentifier = "sky-events"
+                content.userInfo = ["url": "xingxia://sky"]
+                let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+                try? await center.add(UNNotificationRequest(identifier: skyPrefix + event.id, content: content, trigger: trigger))
             }
         }
     }

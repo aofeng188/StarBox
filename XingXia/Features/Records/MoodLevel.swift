@@ -41,7 +41,7 @@ struct MoodPicker: View {
                             .grayscale(selected == nil || isSelected ? 0 : 0.6)
                         Text(mood.name)
                             .font(.caption2)
-                            .foregroundStyle(isSelected ? .primary : .secondary)
+                            .foregroundStyle(.primary.opacity(isSelected ? 1 : 0.7))
                     }
                     .frame(maxWidth: .infinity)
                 }

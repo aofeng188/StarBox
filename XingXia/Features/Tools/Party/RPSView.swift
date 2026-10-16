@@ -23,8 +23,12 @@ struct RPSView: View {
         var target: Int? { ["free": nil, "bo3": 2, "bo5": 3][rawValue]! }
     }
 
+    /// 结果文字的语义，颜色按深浅模式在 body 里取
+    enum Tone { case neutral, win, lose, champion }
+
     @Environment(\.modelContext) private var context
     @Environment(\.palette) private var palette
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("rps.wins") private var totalWins = 0
     @AppStorage("rps.losses") private var totalLosses = 0
     @AppStorage("rps.draws") private var totalDraws = 0
@@ -39,7 +43,7 @@ struct RPSView: View {
     @State private var isPlaying = false
     @State private var chant = ""
     @State private var resultText = ""
-    @State private var resultColor: Color = .primary
+    @State private var resultTone: Tone = .neutral
     @State private var matchOver = false
     @State private var confetti = 0
     @State private var history: [Hand] = []
@@ -80,17 +84,20 @@ struct RPSView: View {
 
                     Text(isPlaying ? chant : resultText)
                         .font(.system(size: 30, weight: .heavy, design: .rounded))
-                        .foregroundStyle(isPlaying ? AnyShapeStyle(.primary) : AnyShapeStyle(resultColor))
+                        .foregroundStyle(isPlaying ? AnyShapeStyle(.primary) : resultStyle)
                         .contentTransition(.numericText())
                         .frame(height: 44)
                 }
             }
         } bottom: {
             if matchOver {
-                Button("再来一场", systemImage: "arrow.counterclockwise") { resetMatch() }
-                    .buttonStyle(.glassProminent)
-                    .tint(palette.accent)
-                    .controlSize(.large)
+                Button { resetMatch() } label: {
+                    // 文字色写在 label 里（同 BigActionButton），按钮样式不会再盖掉
+                    Label("再来一场", systemImage: "arrow.counterclockwise").foregroundStyle(palette.onAccent)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(palette.accent)
+                .controlSize(.large)
             } else {
                 HStack(spacing: 16) {
                     ForEach(Hand.allCases) { hand in
@@ -129,6 +136,15 @@ struct RPSView: View {
         .cosmicBackground()
         .navigationTitle("石头剪刀布")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var resultStyle: AnyShapeStyle {
+        switch resultTone {
+        case .neutral: AnyShapeStyle(.secondary)
+        case .win: AnyShapeStyle(Color.positive(colorScheme))
+        case .lose: AnyShapeStyle(Color.negative(colorScheme))
+        case .champion: AnyShapeStyle(Color.gold(colorScheme))
+        }
     }
 
     private var winRate: String {
@@ -196,30 +212,33 @@ struct RPSView: View {
                 myScore += 1
                 totalWins += 1
                 resultText = "你赢了！"
-                resultColor = Color(hex: 0x34D399)
+                resultTone = .win
             case -1:
                 aiScore += 1
                 totalLosses += 1
                 resultText = "你输了"
-                resultColor = Color(hex: 0xFB7185)
+                resultTone = .lose
             default:
                 totalDraws += 1
                 resultText = "平局"
-                resultColor = .secondary
+                resultTone = .neutral
             }
         }
         if outcome == 1 { SoundEngine.shared.play(.success); Haptics.success() }
         else if outcome == -1 { SoundEngine.shared.play(.fail); Haptics.error() }
         else { SoundEngine.shared.play(.tap); Haptics.tap() }
 
+        var announcement = "你出\(mine.name)，星匣出\(ai.name)，\(["你输了", "平局", "你赢了"][outcome + 1])"
         if let target = match.target, myScore >= target || aiScore >= target {
             matchOver = true
             let won = myScore > aiScore
             resultText = won ? "🏆 你赢下了比赛！" : "星匣赢下了比赛"
-            resultColor = won ? Color(hex: 0xFFD166) : Color(hex: 0xFB7185)
+            resultTone = won ? .champion : .lose
             if won { confetti += 1 }
+            announcement += "。\(myScore) 比 \(aiScore)，\(won ? "你赢下了比赛" : "星匣赢下了比赛")"
             HistoryLog.add(context, tool: ToolKind.rps.rawValue, title: match.name, result: "\(myScore) : \(aiScore) \(won ? "胜" : "负")")
         }
+        Announce.post(announcement)
     }
 
     private func resetMatch() {

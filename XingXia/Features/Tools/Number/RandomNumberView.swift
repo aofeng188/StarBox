@@ -41,6 +41,7 @@ struct RandomNumberView: View {
                     ForEach(Mode.allCases) { Text($0.name).tag($0) }
                 }
                 .pickerStyle(.segmented)
+                .disabled(isRolling)
                 .onChange(of: mode) { _, _ in balls = [] }
 
                 // 结果
@@ -180,9 +181,21 @@ struct RandomNumberView: View {
             SoundEngine.shared.play(.pop)
             Haptics.success()
             isRolling = false
+            Announce.post(announcement(for: final))
             let text = final.map { String(format: $0.isSpecial ? "[%02d]" : "%d", $0.value) }.joined(separator: " ")
             history.append(text)
             HistoryLog.add(context, tool: ToolKind.number.rawValue, title: mode.name, result: text)
+        }
+    }
+
+    /// 读屏播报用的结果文字；彩票模式分开念红蓝球 / 前后区
+    private func announcement(for values: [Ball]) -> String {
+        let normal = values.filter { !$0.isSpecial }.map { "\($0.value)" }.joined(separator: "、")
+        let special = values.filter(\.isSpecial).map { "\($0.value)" }.joined(separator: "、")
+        switch mode {
+        case .ssq: return "红球 \(normal)，蓝球 \(special)"
+        case .dlt: return "前区 \(normal)，后区 \(special)"
+        default: return "结果：\(normal)"
         }
     }
 }
@@ -218,7 +231,8 @@ struct BallView: View {
             : [palette.accent, palette.accentSecondary]
         Text(String(format: lotteryStyle ? "%02d" : "%d", value))
             .font(.title3.bold().monospacedDigit())
-            .foregroundStyle(.white)
+            // 彩票球是固定的深红、深蓝；普通球用主题强调色，文字跟着 onAccent
+            .foregroundStyle(lotteryStyle ? .white : palette.onAccent)
             .frame(minWidth: 52, minHeight: 52)
             .padding(.horizontal, value > 999 ? 8 : 0)
             .background(Circle().fill(RadialGradient(colors: [colors[0], colors[1]], center: .init(x: 0.35, y: 0.3), startRadius: 2, endRadius: 40)))

@@ -54,21 +54,25 @@ struct ThemeSettingsView: View {
                             HStack(spacing: 12) {
                                 Image(systemName: mode.symbol)
                                     .frame(width: 30, height: 30)
-                                    .foregroundStyle(themes.mode == mode ? .white : palette.accent)
+                                    .foregroundStyle(themes.mode == mode ? palette.onAccent : palette.accent)
                                     .background(Circle().fill(themes.mode == mode ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(palette.accent.opacity(0.12))))
+                                    .accessibilityHidden(true)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(mode.name).foregroundStyle(.primary)
                                     Text(mode.detail).font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
+                                // 选中状态由 isSelected 朗读，对勾不再读出符号名
                                 if themes.mode == mode {
                                     Image(systemName: "checkmark").foregroundStyle(palette.accent).fontWeight(.semibold)
+                                        .accessibilityHidden(true)
                                 }
                             }
                             .padding(.vertical, 8)
                             .contentShape(.rect)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityAddTraits(themes.mode == mode ? .isSelected : [])
                     }
                 }
                 .glassCard()

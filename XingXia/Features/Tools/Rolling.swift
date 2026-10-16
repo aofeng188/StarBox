@@ -93,7 +93,7 @@ struct ChipPicker: View {
                 .fixedSize()
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
-                .foregroundStyle(isOn ? .white : .primary)
+                .foregroundStyle(isOn ? palette.onAccent : .primary)
                 .background(Capsule().fill(isOn ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.primary.opacity(0.07))))
         }
         .buttonStyle(.plain)

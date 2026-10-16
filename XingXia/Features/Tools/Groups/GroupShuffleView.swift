@@ -19,6 +19,8 @@ struct GroupShuffleView: View {
     @State private var pickCount = 1
     @State private var output: [[String]] = []
     @State private var revealed = 0
+    /// 逐个揭晓结果的任务，再次开始时取消上一次，避免进度闪回
+    @State private var revealTask: Task<Void, Never>?
     @State private var showSave = false
     @State private var rosterName = ""
     @FocusState private var editing: Bool
@@ -36,7 +38,10 @@ struct GroupShuffleView: View {
                     ForEach(Mode.allCases) { Text($0.name).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                .onChange(of: mode) { _, _ in output = [] }
+                .onChange(of: mode) { _, _ in
+                    revealTask?.cancel()
+                    output = []
+                }
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
@@ -114,7 +119,7 @@ struct GroupShuffleView: View {
             }
             Button("取消", role: .cancel) {}
         }
-        .onShake { if names.count >= 2 { run() } }
+        .onShake(isEnabled: !showSave) { if names.count >= 2 { run() } }
     }
 
     @ViewBuilder
@@ -132,7 +137,7 @@ struct GroupShuffleView: View {
                 ForEach(Array(output.enumerated()), id: \.offset) { index, group in
                     if index < revealed {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("第 \(index + 1) 组 · \(group.count) 人").font(.subheadline.bold()).foregroundStyle(palette.color(at: index))
+                            Text("第 \(index + 1) 组 · \(group.count) 人").font(.subheadline.bold()).foregroundStyle(palette.inkColor(at: index))
                             FlowLayout(spacing: 6) {
                                 ForEach(group, id: \.self) { name in
                                     Text(name).font(.subheadline)
@@ -153,7 +158,7 @@ struct GroupShuffleView: View {
                         HStack(spacing: 12) {
                             Text("\(index + 1)")
                                 .font(.headline.monospacedDigit())
-                                .foregroundStyle(.white)
+                                .foregroundStyle(palette.color(at: index).readableForeground)
                                 .frame(width: 32, height: 32)
                                 .background(Circle().fill(palette.color(at: index)))
                             Text(name).font(mode == .pick ? .title3.bold() : .body)
@@ -192,15 +197,25 @@ struct GroupShuffleView: View {
         revealed = 0
         SoundEngine.shared.play(.whoosh, volume: 0.6)
         let total = mode == .groups ? output.count : (output.first?.count ?? 0)
-        Task {
+        let interval = mode == .order ? 90 : 220
+        let summary = shareText.replacingOccurrences(of: "\n", with: "；")
+        let announcement: String = switch mode {
+        case .groups: "分好了，\(summary)"
+        case .order: "排好了，\(summary)"
+        case .pick: summary
+        }
+        revealTask?.cancel()
+        revealTask = Task {
             for i in 1...max(1, total) {
-                try? await Task.sleep(for: .milliseconds(mode == .order ? 90 : 220))
+                try? await Task.sleep(for: .milliseconds(interval))
+                guard !Task.isCancelled else { return }
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { revealed = i }
                 SoundEngine.shared.play(.pop, volume: 0.5)
                 Haptics.selection()
             }
             Haptics.success()
+            Announce.post(announcement)
         }
-        HistoryLog.add(context, tool: ToolKind.groups.rawValue, title: mode.name, result: shareText.replacingOccurrences(of: "\n", with: "；"))
+        HistoryLog.add(context, tool: ToolKind.groups.rawValue, title: mode.name, result: summary)
     }
 }

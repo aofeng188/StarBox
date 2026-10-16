@@ -63,6 +63,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -287,7 +289,10 @@ fun MeterBar(value: Int, modifier: Modifier = Modifier, color: Color? = null, he
 
 @Composable
 fun TagChip(text: String, color: Color? = null, icon: ImageVector? = null) {
-    val tint = color ?: LocalPalette.current.accent
+    val palette = LocalPalette.current
+    val tint = color ?: palette.accent
+    // 文字按深浅模式调成读得清的版本，底色仍用原色
+    val ink = palette.ink(tint)
     Row(
         Modifier
             .clip(CircleShape)
@@ -296,8 +301,8 @@ fun TagChip(text: String, color: Color? = null, icon: ImageVector? = null) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        if (icon != null) Icon(icon, null, Modifier.size(12.dp), tint = tint)
-        Text(text, style = Fonts.caption.weight(FontWeight.Medium), color = tint, maxLines = 1)
+        if (icon != null) Icon(icon, null, Modifier.size(12.dp), tint = ink)
+        Text(text, style = Fonts.caption.weight(FontWeight.Medium), color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -331,9 +336,15 @@ fun ColorDot(color: Color, size: Dp, glow: Boolean = false) {
     )
 }
 
+/** 自动换行排列；horizontalAlignment 决定每一行（尤其是不满的最后一行）靠左还是居中 */
 @Composable
-fun Flow(spacing: Dp = 8.dp, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(spacing), verticalArrangement = Arrangement.spacedBy(spacing)) {
+fun Flow(
+    spacing: Dp = 8.dp,
+    modifier: Modifier = Modifier,
+    horizontalAlignment: Alignment.Horizontal = Alignment.Start,
+    content: @Composable () -> Unit,
+) {
+    FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(spacing, horizontalAlignment), verticalArrangement = Arrangement.spacedBy(spacing)) {
         content()
     }
 }
@@ -413,10 +424,10 @@ fun BigActionButton(title: String, icon: ImageVector? = null, enabled: Boolean =
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            Icon(icon, null, Modifier.size(20.dp), tint = Color.White)
+            Icon(icon, null, Modifier.size(20.dp), tint = palette.onAccent)
             Spacer(Modifier.width(8.dp))
         }
-        Text(title, style = Fonts.headline, color = Color.White)
+        Text(title, style = Fonts.headline, color = palette.onAccent)
     }
 }
 
@@ -490,15 +501,16 @@ fun SelectChip(text: String, selected: Boolean, icon: ImageVector? = null, onCli
                 Haptics.selection()
                 onClick()
             }
+            .semantics { this.selected = selected }
             .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        if (icon != null) Icon(icon, null, Modifier.size(14.dp), tint = if (selected) Color.White else palette.text)
+        if (icon != null) Icon(icon, null, Modifier.size(14.dp), tint = if (selected) palette.onAccent else palette.text)
         Text(
             text,
             style = Fonts.subheadline.weight(if (selected) FontWeight.SemiBold else FontWeight.Normal),
-            color = if (selected) Color.White else palette.text,
+            color = if (selected) palette.onAccent else palette.text,
             maxLines = 1,
         )
     }

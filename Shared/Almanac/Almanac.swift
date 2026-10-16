@@ -21,12 +21,27 @@ struct LunarDate: Hashable, Sendable {
         }
     }()
 
-    init(_ date: Date) {
-        let c = Calendar.chineseLocal.dateComponents([.year, .month, .day], from: date)
+    /// 公历某一天对应的农历。只按年月日换算，与设备时区无关。
+    /// 1900–2100 年查官方农历表（与 Android 版同一份数据），表外才用系统农历（取北京时间当天中午）。
+    init(_ key: DayKey) {
+        if let found = LunarTable.lunar(of: key) {
+            cycleYear = ((found.year - 1984) % 60 + 60) % 60 + 1
+            month = found.month
+            day = found.day
+            isLeapMonth = found.isLeap
+            return
+        }
+        let noon = Calendar.gregorianBeijing.date(from: DateComponents(year: key.year, month: key.month, day: key.day, hour: 12)) ?? key.date
+        let c = Calendar.chineseLocal.dateComponents([.year, .month, .day], from: noon)
         cycleYear = c.year ?? 1
         month = c.month ?? 1
         day = c.day ?? 1
         isLeapMonth = c.isLeapMonth ?? false
+    }
+
+    /// 某个时刻在设备本地日历上所在那一天的农历
+    init(_ date: Date) {
+        self.init(DayKey(date))
     }
 
     var yearGanZhi: GanZhi { GanZhi(cycleYear - 1) }
@@ -35,8 +50,11 @@ struct LunarDate: Hashable, Sendable {
     var text: String { monthName + dayName }
     var fullText: String { "\(yearGanZhi.name)\(yearGanZhi.branch.animal)年 \(text)" }
 
-    /// 由农历年月日换算公历（gregorianYear 指农历年开始所在的公历年）
-    static func solarDate(gregorianYear: Int, month: Int, day: Int, isLeap: Bool) -> Date? {
+    /// 由农历年月日换算公历日期（gregorianYear 指农历年开始所在的公历年），不存在的日期返回 nil
+    static func solarDay(gregorianYear: Int, month: Int, day: Int, isLeap: Bool) -> DayKey? {
+        if LunarTable.covers(gregorianYear) {
+            return LunarTable.solarDay(lunarYear: gregorianYear, month: month, day: day, isLeap: isLeap)
+        }
         let offset = gregorianYear - 1984
         let era = 78 + Int(floor(Double(offset) / 60))
         let year = ((offset % 60) + 60) % 60 + 1
@@ -48,10 +66,125 @@ struct LunarDate: Hashable, Sendable {
         components.isLeapMonth = isLeap
         components.hour = 12
         guard let date = Calendar.chineseLocal.date(from: components) else { return nil }
+        // 得到的是北京时间中午，必须按北京时间取公历年月日
+        let key = DayKey(date, calendar: .gregorianBeijing)
         // 校验：防止不存在的日期（如没有三十的小月）被自动顺延
-        let check = LunarDate(date)
+        let check = LunarDate(key)
         guard check.month == month, check.day == day, check.isLeapMonth == isLeap else { return nil }
-        return date
+        return key
+    }
+
+    /// 同 `solarDay`，返回那一天本地时区的中午，`DayKey(_:)` 换回来就是正确的公历日期
+    static func solarDate(gregorianYear: Int, month: Int, day: Int, isLeap: Bool) -> Date? {
+        solarDay(gregorianYear: gregorianYear, month: month, day: day, isLeap: isLeap)?.date
+    }
+}
+
+/// 官方农历表（紫金山天文台 / 香港天文台口径，1900–2100 年），数据与 Android 版 Lunar.kt 逐项相同。
+/// 系统农历（ICU）在少数年份与官方不符，例如把 2027 年春节算成 2 月 7 日（官方 2 月 6 日）、
+/// 2030 年春节算成 2 月 2 日（官方 2 月 3 日）、1987 年闰六月算成闰七月，所以表内日期一律查表。
+///
+/// 每个农历年一个整数：低 13 位依次是各月是否为大月（30 天），第 13–16 位是闰月月份（0 表示无闰月），
+/// 第 17 位起是正月初一距当年公历元旦的天数。
+private enum LunarTable {
+    static let firstYear = 1900
+    static let lastYear = 2100
+
+    private struct Month {
+        let month: Int
+        let isLeap: Bool
+        let length: Int
+    }
+
+    private static let data: [Int] = [
+        0x03D16D2, 0x0620752, 0x04C0EA5, 0x038B64A, 0x05C064B, 0x0440A9B, 0x0309556, 0x056056A,
+        0x0400B59, 0x02A5752, 0x0500752, 0x03ADB25, 0x0600B25, 0x0480A4B, 0x032B4AB, 0x05802AD,
+        0x042056B, 0x02C4B69, 0x0520DA9, 0x03EFD92, 0x0640E92, 0x04C0D25, 0x036BA4D, 0x05C0A56,
+        0x04602B6, 0x02E95B5, 0x05606D4, 0x0400EA9, 0x02C5E92, 0x0500E92, 0x03ACD26, 0x05E052B,
+        0x0480A57, 0x032B2B6, 0x0580B5A, 0x04406D4, 0x02E6EC9, 0x0520749, 0x03CF693, 0x0620A93,
+        0x04C052B, 0x034CA5B, 0x05A0AAD, 0x046056A, 0x0309B55, 0x0560BA4, 0x0400B49, 0x02A5A93,
+        0x0500A95, 0x038F52D, 0x05E0536, 0x0480AAD, 0x034B5AA, 0x05805B2, 0x0420DA5, 0x02E7D4A,
+        0x0540D4A, 0x03D0A95, 0x0600A97, 0x04C0556, 0x036CAB5, 0x05A0AD5, 0x04606D2, 0x0308EA5,
+        0x0560EA5, 0x040064A, 0x0286C97, 0x04E0A9B, 0x03AF55A, 0x05E056A, 0x0480B69, 0x034B752,
+        0x05A0B52, 0x0420B25, 0x02C964B, 0x0520A4B, 0x03D14AB, 0x06002AD, 0x04A056D, 0x036CB69,
+        0x05C0DA9, 0x0460D92, 0x0309D25, 0x0560D25, 0x0415A4D, 0x0640A56, 0x04E02B6, 0x038C5B5,
+        0x05E06D5, 0x0480EA9, 0x034BE92, 0x05A0E92, 0x0440D26, 0x02C6A56, 0x0500A57, 0x03D14D6,
+        0x062035A, 0x04A06D5, 0x036B6C9, 0x05C0749, 0x0460693, 0x02E952B, 0x054052B, 0x03E0A5B,
+        0x02A555A, 0x04E056A, 0x038FB55, 0x0600BA4, 0x04A0B49, 0x032BA93, 0x0580A95, 0x042052D,
+        0x02C8AAD, 0x0500AB5, 0x03D35AA, 0x06205D2, 0x04C0DA5, 0x036DD4A, 0x05C0D4A, 0x0460C95,
+        0x030952E, 0x0540556, 0x03E0AB5, 0x02A55B2, 0x05006D2, 0x038CEA5, 0x05E0725, 0x048064B,
+        0x032AC97, 0x0560CAB, 0x042055A, 0x02C6AD6, 0x0520B69, 0x03D7752, 0x0620B52, 0x04C0B25,
+        0x036DA4B, 0x05A0A4B, 0x04404AB, 0x02EA55B, 0x05405AD, 0x03E0B6A, 0x02A5B52, 0x0500D92,
+        0x03AFD25, 0x05E0D25, 0x0480A55, 0x032B4AD, 0x05804B6, 0x04005B5, 0x02C6DAA, 0x0520EC9,
+        0x03F1E92, 0x0620E92, 0x04C0D26, 0x036CA56, 0x05A0A57, 0x04404D6, 0x02E86D5, 0x0540755,
+        0x0400749, 0x0286E93, 0x04E0693, 0x038F52B, 0x05E052B, 0x0460A5B, 0x032B55A, 0x058056A,
+        0x0420B65, 0x02C974A, 0x0520B4A, 0x03D1A95, 0x0620A95, 0x04A052D, 0x034CAAD, 0x05A0AB5,
+        0x04605AA, 0x02E8BA5, 0x0540DA5, 0x0400D4A, 0x02A7C95, 0x04E0C96, 0x038F94E, 0x05E0556,
+        0x0480AB5, 0x032B5B2, 0x05806D2, 0x0420EA5, 0x02E8E4A, 0x050068B, 0x03B0C97, 0x06004AB,
+        0x04A055B, 0x034CAD6, 0x05A0B6A, 0x0460752, 0x0309725, 0x0540B45, 0x03E0A8B, 0x028549B,
+        0x04E04AB,
+    ]
+
+    static func covers(_ lunarYear: Int) -> Bool { lunarYear >= firstYear && lunarYear <= lastYear }
+
+    private static func newYearJDN(_ year: Int) -> Int {
+        DayKey.julianDayNumber(year: year, month: 1, day: 1) + (data[year - firstYear] >> 17)
+    }
+
+    /// 某个农历年里按顺序排列的月份（闰月紧跟在同名月之后）
+    private static func months(_ year: Int) -> [Month] {
+        let bits = data[year - firstYear]
+        let leap = (bits >> 13) & 0xF
+        var result: [Month] = []
+        var bit = 0
+        for m in 1...12 {
+            result.append(Month(month: m, isLeap: false, length: (bits & (1 << bit)) != 0 ? 30 : 29))
+            bit += 1
+            if m == leap {
+                result.append(Month(month: m, isLeap: true, length: (bits & (1 << bit)) != 0 ? 30 : 29))
+                bit += 1
+            }
+        }
+        return result
+    }
+
+    /// 公历日期 → 农历（year 为农历年开始所在的公历年）；超出表的范围返回 nil
+    static func lunar(of key: DayKey) -> (year: Int, month: Int, day: Int, isLeap: Bool)? {
+        let jdn = DayKey.julianDayNumber(year: key.year, month: key.month, day: key.day)
+        var year = min(key.year, lastYear)
+        guard year >= firstYear else { return nil }
+        if jdn < newYearJDN(year) { year -= 1 }
+        guard year >= firstYear else { return nil }
+        var offset = jdn - newYearJDN(year)
+        for item in months(year) {
+            if offset < item.length { return (year: year, month: item.month, day: offset + 1, isLeap: item.isLeap) }
+            offset -= item.length
+        }
+        return nil
+    }
+
+    /// 农历 → 公历；该年没有这个月或这一天时返回 nil
+    static func solarDay(lunarYear: Int, month: Int, day: Int, isLeap: Bool) -> DayKey? {
+        guard covers(lunarYear), day >= 1 else { return nil }
+        var offset = 0
+        for item in months(lunarYear) {
+            if item.month == month && item.isLeap == isLeap {
+                guard day <= item.length else { return nil }
+                return dayKey(julianDayNumber: newYearJDN(lunarYear) + offset + day - 1)
+            }
+            offset += item.length
+        }
+        return nil
+    }
+
+    private static func dayKey(julianDayNumber jdn: Int) -> DayKey {
+        let a = jdn + 32044
+        let b = (4 * a + 3) / 146097
+        let c = a - 146097 * b / 4
+        let d = (4 * c + 3) / 1461
+        let e = c - 1461 * d / 4
+        let m = (5 * e + 2) / 153
+        return DayKey(year: 100 * b + d - 4800 + m / 10, month: m + 3 - 12 * (m / 10), day: e - (153 * m + 2) / 5 + 1)
     }
 }
 
@@ -122,6 +255,80 @@ struct DayDeity: Sendable {
     var pathName: String { isYellowPath ? "黄道吉日" : "黑道日" }
 }
 
+/// 神煞：吉神（天德、天德合、月德、月德合、天赦日）与凶日（四绝日、四离日）。两端算法一致。
+enum Shensha {
+    /// 吉神；其余（四绝日、四离日）是凶日
+    static let lucky: Set<String> = ["天德", "天德合", "月德", "月德合", "天赦日"]
+
+    static func isLucky(_ name: String) -> Bool { lucky.contains(name) }
+
+    /// 黄历页上的简短解释
+    static let notes: [String: String] = [
+        "天德": "天之福德所临，诸事逢凶化吉。",
+        "天德合": "与天德相合，吉庆同于天德。",
+        "月德": "当月德神所在，宜祈福、修造。",
+        "月德合": "与月德相合，百事顺遂。",
+        "天赦日": "上天赦宥之日，宜祭祀、祈福、解除。",
+        "四绝日": "四立前一天，旧季之气将绝，忌出行、嫁娶。",
+        "四离日": "二分二至前一天，阴阳分离，忌出行、嫁娶。",
+    ]
+
+    // 以下按节气月排列：下标 0 = 寅月（正月，立春起）… 11 = 丑月（十二月）
+    /// 天德：日干或日支与之相同
+    private static let tianDe = ["丁", "申", "壬", "辛", "亥", "甲", "癸", "寅", "丙", "乙", "巳", "庚"]
+    /// 天德合：日干或日支与之相同
+    private static let tianDeHe = ["壬", "巳", "丁", "丙", "寅", "己", "戊", "亥", "辛", "庚", "申", "乙"]
+    /// 月德：寅午戌月丙、亥卯未月甲、申子辰月壬、巳酉丑月庚，比日干
+    private static let yueDe = ["丙", "甲", "壬", "庚", "丙", "甲", "壬", "庚", "丙", "甲", "壬", "庚"]
+    /// 月德合：寅午戌月辛、亥卯未月己、申子辰月丁、巳酉丑月乙，比日干
+    private static let yueDeHe = ["辛", "己", "丁", "乙", "辛", "己", "丁", "乙", "辛", "己", "丁", "乙"]
+    /// 天赦：寅卯辰月戊寅、巳午未月甲午、申酉戌月戊申、亥子丑月甲子，下标 = 月序 / 3
+    private static let tianShe = ["戊寅", "甲午", "戊申", "甲子"]
+
+    /// 某天的神煞，按天德、天德合、月德、月德合、天赦日、四绝日、四离日的顺序。
+    /// monthIndex 为节气月序（与月柱相同，交节当天算新月），day 为日柱，
+    /// tomorrowTerm 为次日（北京时间）交的节气名，没有则为 nil。
+    static func of(monthIndex: Int, day: GanZhi, tomorrowTerm: String?) -> [String] {
+        let m = ((monthIndex % 12) + 12) % 12
+        let stem = day.stem.name
+        let branch = day.branch.name
+        var result: [String] = []
+        if tianDe[m] == stem || tianDe[m] == branch { result.append("天德") }
+        if tianDeHe[m] == stem || tianDeHe[m] == branch { result.append("天德合") }
+        if yueDe[m] == stem { result.append("月德") }
+        if yueDeHe[m] == stem { result.append("月德合") }
+        if tianShe[m / 3] == day.name { result.append("天赦日") }
+        if let tomorrowTerm {
+            if ["立春", "立夏", "立秋", "立冬"].contains(tomorrowTerm) { result.append("四绝日") }
+            if ["春分", "夏至", "秋分", "冬至"].contains(tomorrowTerm) { result.append("四离日") }
+        }
+        return result
+    }
+
+    /// 按神煞调整宜忌（在建除、值神的处理之后）。
+    /// 原列表里没有的新项按规则顺序放在最前，原有项位置不变，整体去重。
+    static func adjust(yi: [String], ji: [String], shensha: [String]) -> (yi: [String], ji: [String]) {
+        var addYi: [String] = []
+        if shensha.contains(where: { ["天德", "天德合", "月德", "月德合"].contains($0) }) {
+            addYi += ["祈福", "求嗣"]
+        }
+        if shensha.contains("天赦日") { addYi += ["祭祀", "祈福", "解除"] }
+        var newYi = prepending(addYi, to: yi)
+        var newJi = ji
+        if shensha.contains("四绝日") || shensha.contains("四离日") {
+            newJi = prepending(["出行", "嫁娶"], to: newJi)
+            newYi.removeAll { $0 == "出行" || $0 == "嫁娶" }
+        }
+        return (yi: newYi, ji: newJi)
+    }
+
+    private static func prepending(_ items: [String], to list: [String]) -> [String] {
+        var seen = Set<String>()
+        let fresh = items.filter { !list.contains($0) }
+        return (fresh + list).filter { seen.insert($0).inserted }
+    }
+}
+
 /// 某一天的完整黄历
 struct AlmanacDay: Sendable {
     let key: DayKey
@@ -135,11 +342,13 @@ struct AlmanacDay: Sendable {
     let deity: DayDeity
     let yi: [String]
     let ji: [String]
+    /// 神煞标签（天德、月德、天赦日、四离日等），顺序见 `Shensha.of`
+    let shensha: [String]
     let festivals: [String]
 
     init(_ key: DayKey) {
         self.key = key
-        lunar = LunarDate(key.date)
+        lunar = LunarDate(key)
         day = GanZhi.ofDay(key)
         let monthIndex = SolarTerms.monthIndex(of: key)
         var ganzhiYear = key.year
@@ -162,8 +371,14 @@ struct AlmanacDay: Sendable {
             if !ji.contains("大事勿用") && jianChu.index == 6 { ji.append("大事勿用") }
         }
         if jianChu.index == 6 { yi = ["求医", "治病", "破旧"] }
-        self.yi = yi
-        self.ji = ji
+
+        // 神煞：节气月 + 日柱；四绝、四离看次日（北京时间）是否交四立、二分二至
+        let tomorrowTerm: String? = nextTerm.day == key.adding(days: 1) ? nextTerm.name : nil
+        let shensha = Shensha.of(monthIndex: monthIndex, day: day, tomorrowTerm: tomorrowTerm)
+        let adjusted = Shensha.adjust(yi: yi, ji: ji, shensha: shensha)
+        self.shensha = shensha
+        self.yi = adjusted.yi
+        self.ji = adjusted.ji
         festivals = Festivals.on(key, lunar: lunar)
     }
 
@@ -220,7 +435,7 @@ enum Festivals {
         if let name = solar[key.month * 100 + key.day] { result.append(name) }
         if !lunar.isLeapMonth, let name = lunarTable[lunar.month * 100 + lunar.day] { result.append(name) }
         // 除夕：明天是正月初一
-        let tomorrow = LunarDate(key.adding(days: 1).date)
+        let tomorrow = LunarDate(key.adding(days: 1))
         if tomorrow.month == 1 && tomorrow.day == 1 && !tomorrow.isLeapMonth { result.append("除夕") }
         // 母亲节：五月第二个周日；父亲节：六月第三个周日
         if key.weekday == 0 {

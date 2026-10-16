@@ -59,7 +59,8 @@ struct ConfettiView: View {
         .accessibilityHidden(true)
         .onChange(of: trigger) { _, _ in
             guard !reduceMotion else { return }
-            burst = Burst(start: Date(), particles: (0..<count).map { _ in
+            let start = Date()
+            burst = Burst(start: start, particles: (0..<count).map { _ in
                 Particle(angle: Double.random(in: (-.pi * 0.95)...(-.pi * 0.05)),
                          speed: Double.random(in: 380...900),
                          spin: Double.random(in: -8...8),
@@ -70,7 +71,8 @@ struct ConfettiView: View {
             })
             Task {
                 try? await Task.sleep(for: .seconds(3.3))
-                burst = nil
+                // 3.3 秒内又撒了一次时，不要把新的那一把清掉
+                if burst?.start == start { burst = nil }
             }
         }
     }

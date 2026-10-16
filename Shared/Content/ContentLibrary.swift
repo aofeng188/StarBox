@@ -26,6 +26,15 @@ struct FortuneContent: Decodable, Sendable {
     let funJi: [String]
     let quotes: [String]
     let items: [String]
+    /// 季节性幸运物可以出现的公历月份；不在表里的条目全年可选
+    let itemMonths: [String: [Int]]?
+
+    /// 某个公历月份可选的幸运物，保持 items 原有顺序
+    func items(inMonth month: Int) -> [String] {
+        guard let itemMonths else { return items }
+        let available = items.filter { itemMonths[$0]?.contains(month) ?? true }
+        return available.isEmpty ? items : available
+    }
 }
 
 struct HoroscopeContent: Decodable, Sendable {

@@ -28,21 +28,34 @@ data class CountdownStatus(
 /** 倒数日的日期规则（与 iOS 版 CountdownLogic 一致） */
 data class CountdownSpec(
     val kind: CountdownKind,
-    /** 公历日期（农历倒数日中仅用于生日的出生年份） */
+    /** 公历日期（农历日子里：生日只取出生年份，不重复的倒数日作为起算日） */
     val origin: DayKey,
     val repeatsYearly: Boolean,
     val isLunar: Boolean = false,
     val lunarMonth: Int = 1,
     val lunarDay: Int = 1,
+    /** 生日是否记录了出生年份；为 false 时副标题不显示年龄 */
+    val showsAge: Boolean = true,
 ) {
+    /** 农历月日在某个农历年对应的公历日期；小月没有三十时按廿九算 */
+    private fun lunarSolarDate(year: Int): DayKey? =
+        LunarDate.solarDate(year, lunarMonth, lunarDay, false)
+            ?: LunarDate.solarDate(year, lunarMonth, lunarDay - 1, false)
+
     fun nextOccurrence(today: DayKey = DayKey.today): DayKey {
         val repeats = repeatsYearly || kind == CountdownKind.BIRTHDAY
-        if (!repeats) return origin
+        if (!repeats) {
+            if (!isLunar) return origin
+            // 不重复的农历日子：取不早于创建日（origin）的第一个对应公历日期
+            for (year in (origin.year - 1)..(origin.year + 2)) {
+                val candidate = lunarSolarDate(year)
+                if (candidate != null && candidate >= origin) return candidate
+            }
+            return origin
+        }
         for (year in (today.year - 1)..(today.year + 2)) {
             val candidate: DayKey? = if (isLunar) {
-                // 小月没有三十时按廿九算
-                LunarDate.solarDate(year, lunarMonth, lunarDay, false)
-                    ?: LunarDate.solarDate(year, lunarMonth, lunarDay - 1, false)
+                lunarSolarDate(year)
             } else {
                 var day = origin.day
                 // 2 月 29 日在平年按 2 月 28 日算
@@ -89,13 +102,37 @@ data class CountdownSpec(
             } else {
                 DateText.monthDay(origin)
             }
-            val caption = if (age > 0) "$calendarName · 即将 $age 岁" else calendarName
+            val caption = when {
+                age <= 0 || !showsAge -> calendarName
+                left == 0 -> "$calendarName · $age 岁生日"
+                else -> "$calendarName · 即将 $age 岁"
+            }
             CountdownStatus(left, if (left == 0) "生日" else "还有", if (left == 0) "快乐" else "天", caption, next, left == 0)
         }
     }
 
     companion object {
         fun isLeapYear(year: Int) = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+    }
+}
+
+/** 由档案生日生成的「虚拟倒数日」（不入库、不可编辑删除），规则与 iOS 的 CountdownItem.profileBirthdays 一致 */
+object ProfileBirthdays {
+    const val EMOJI = "🎂"
+
+    fun title(name: String): String = "${name.trim()}的生日"
+
+    /** 农历录入的档案按农历生日每年重复（闰月出生的按平月过） */
+    fun spec(birthday: DayKey, enteredAsLunar: Boolean): CountdownSpec {
+        if (!enteredAsLunar) return CountdownSpec(CountdownKind.BIRTHDAY, birthday, repeatsYearly = true)
+        val lunar = birthday.lunar()
+        return CountdownSpec(CountdownKind.BIRTHDAY, birthday, repeatsYearly = true, isLunar = true, lunarMonth = lunar.month, lunarDay = lunar.day)
+    }
+
+    /** 名字为空，或已经手动建了同一人的生日倒数（manualBirthdayTitles 为 kind 是生日的倒数日标题，包含名字即算）时不生成 */
+    fun shouldSkip(name: String, manualBirthdayTitles: List<String>): Boolean {
+        val trimmed = name.trim()
+        return trimmed.isEmpty() || manualBirthdayTitles.any { it.contains(trimmed) }
     }
 }
 

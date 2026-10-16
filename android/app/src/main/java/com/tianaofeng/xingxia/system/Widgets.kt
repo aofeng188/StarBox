@@ -14,6 +14,7 @@ import androidx.glance.ImageProvider
 import androidx.glance.LocalSize
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.LinearProgressIndicator
 import androidx.glance.appwidget.SizeMode
@@ -40,6 +41,7 @@ import androidx.glance.unit.ColorProvider
 import com.tianaofeng.xingxia.MainActivity
 import com.tianaofeng.xingxia.R
 import com.tianaofeng.xingxia.core.AlmanacDay
+import com.tianaofeng.xingxia.core.CountdownKind
 import com.tianaofeng.xingxia.core.DayKey
 import com.tianaofeng.xingxia.core.FortuneCategory
 import com.tianaofeng.xingxia.core.FortuneEngine
@@ -47,10 +49,12 @@ import com.tianaofeng.xingxia.core.HoroscopeEngine
 import com.tianaofeng.xingxia.core.HoroscopePeriod
 import com.tianaofeng.xingxia.core.ZodiacSign
 import com.tianaofeng.xingxia.data.AppSettings
+import com.tianaofeng.xingxia.data.CountdownItem
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.theme.ThemeManager
 import com.tianaofeng.xingxia.ui.theme.ThemePalette
 import com.tianaofeng.xingxia.ui.theme.hex
+import com.tianaofeng.xingxia.ui.theme.readableForeground
 import com.tianaofeng.xingxia.ui.theme.toColor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -62,13 +66,18 @@ import java.time.LocalDateTime
 object Widgets {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    fun updateAll(context: Context) {
+    /** onFinished 在刷新结束后调用（BroadcastReceiver 用 goAsync 等待它） */
+    fun updateAll(context: Context, onFinished: () -> Unit = {}) {
         val app = context.applicationContext
         scope.launch {
-            runCatching {
-                FortuneWidget().updateAll(app)
-                HoroscopeWidget().updateAll(app)
-                CountdownWidget().updateAll(app)
+            try {
+                runCatching {
+                    FortuneWidget().updateAll(app)
+                    HoroscopeWidget().updateAll(app)
+                    CountdownWidget().updateAll(app)
+                }
+            } finally {
+                onFinished()
             }
         }
     }
@@ -105,7 +114,8 @@ private fun Chip(label: String, color: Color) {
             .cornerRadius(9.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = TextStyle(color = white, fontSize = 10.sp, fontWeight = FontWeight.Bold))
+        // 亮色底上用深字（与 iOS 小组件的宜忌徽章一致）
+        Text(label, style = TextStyle(color = ColorProvider(color.readableForeground), fontSize = 10.sp, fontWeight = FontWeight.Bold))
     }
 }
 
@@ -165,7 +175,8 @@ private fun FortuneContent(context: Context) {
                     Spacer(GlanceModifier.height(4.dp))
                     Text(
                         "幸运色 ${fortune.luckyColor.name} · 数字${fortune.luckyNumber} · ${fortune.luckyDirection}",
-                        style = TextStyle(color = ColorProvider(fortune.luckyColor.toColor()), fontSize = 11.sp),
+                        // 幸运色可能很深（如墨色），提亮后再当文字色
+                        style = TextStyle(color = ColorProvider(palette.ink(fortune.luckyColor.toColor())), fontSize = 11.sp),
                         maxLines = 1,
                     )
                 }
@@ -200,17 +211,26 @@ class HoroscopeWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Responsive(setOf(DpSize(120.dp, 120.dp), DpSize(260.dp, 120.dp)))
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        provideContent { HoroscopeContent(context) }
+        val appWidgetId = GlanceAppWidgetManager(context).getAppWidgetId(id)
+        provideContent { HoroscopeContent(context, WidgetConfig.horoscopeSign(context, appWidgetId)) }
     }
 }
 
 class HoroscopeWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = HoroscopeWidget()
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        super.onDeleted(context, appWidgetIds)
+        WidgetConfig.remove(context, appWidgetIds)
+    }
 }
 
+/** configured 为小组件里选定的星座；没选时跟随当前档案（没有档案则用最近查看的星座） */
 @Composable
-private fun HoroscopeContent(context: Context) {
-    val sign = Store.birth?.let { ZodiacSign.sunSign(it) } ?: ZodiacSign.entries.getOrElse(AppSettings.lastViewedSign) { ZodiacSign.ARIES }
+private fun HoroscopeContent(context: Context, configured: ZodiacSign?) {
+    val sign = configured
+        ?: Store.birth?.let { ZodiacSign.sunSign(it) }
+        ?: ZodiacSign.entries.getOrElse(AppSettings.lastViewedSign) { ZodiacSign.ARIES }
     val h = HoroscopeEngine.horoscope(sign, HoroscopePeriod.TODAY)
     val palette = widgetPalette()
     val accent = ColorProvider(palette.accent)
@@ -239,7 +259,7 @@ private fun HoroscopeContent(context: Context) {
                         }
                         Spacer(GlanceModifier.height(3.dp))
                     }
-                    Text("速配 ${h.matchSign.label} · 幸运色 ${h.luckyColor.name}", style = TextStyle(color = dim, fontSize = 11.sp), maxLines = 1)
+                    Text("速配 ${h.matchSign.label} · 星座幸运色 ${h.luckyColor.name}", style = TextStyle(color = dim, fontSize = 11.sp), maxLines = 1)
                 }
             }
         } else {
@@ -265,22 +285,33 @@ class CountdownWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Single
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        provideContent { CountdownContent(context) }
+        val appWidgetId = GlanceAppWidgetManager(context).getAppWidgetId(id)
+        provideContent { CountdownContent(context, WidgetConfig.countdownId(context, appWidgetId)) }
     }
 }
 
 class CountdownWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = CountdownWidget()
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        super.onDeleted(context, appWidgetIds)
+        WidgetConfig.remove(context, appWidgetIds)
+    }
 }
 
+/**
+ * configuredId 为小组件里选定的倒数日（档案生日用档案 id）；没选或已删除时显示置顶的，再退回最近要到的。
+ * 含档案生日（App 里关掉了就不含）。
+ */
 @Composable
-private fun CountdownContent(context: Context) {
+private fun CountdownContent(context: Context, configuredId: String?) {
     val palette = widgetPalette()
-    val countdowns = Store.countdowns.items
-    // 优先显示置顶的；否则显示最近要到的
-    val chosen = countdowns.firstOrNull { it.pinned }
-        ?: countdowns.filter { !it.status().isPast }.minByOrNull { it.status().days }
-        ?: countdowns.firstOrNull()
+    val items = CountdownItem.current()
+    // 纪念日的天数是「已经过了几天」，不参与「最近」的比较（与记录页一致）
+    val chosen = items.firstOrNull { it.id == configuredId }
+        ?: items.firstOrNull { it.pinned }
+        ?: CountdownItem.nearest(items)?.first
+        ?: items.firstOrNull()
     WidgetFrame(context, "xingxia://countdowns") {
         if (chosen == null) {
             Column(GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -289,7 +320,7 @@ private fun CountdownContent(context: Context) {
             }
         } else {
             val status = chosen.status()
-            val color = ColorProvider(palette.color(chosen.colorIndex))
+            val color = ColorProvider(palette.inkColor(chosen.colorIndex))
             Column(GlanceModifier.fillMaxSize()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(chosen.emoji, style = TextStyle(fontSize = 18.sp))
@@ -298,7 +329,7 @@ private fun CountdownContent(context: Context) {
                 }
                 Spacer(GlanceModifier.defaultWeight())
                 Text(status.prefix, style = TextStyle(color = dim, fontSize = 12.sp))
-                if (status.isToday && chosen.kindValue.key != "anniversary") {
+                if (status.isToday && chosen.kind != CountdownKind.ANNIVERSARY) {
                     Text(status.suffix, style = TextStyle(color = color, fontSize = 30.sp, fontWeight = FontWeight.Bold))
                 } else {
                     Row(verticalAlignment = Alignment.Bottom) {

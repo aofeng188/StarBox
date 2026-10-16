@@ -34,6 +34,24 @@ extension View {
     }
 }
 
+// MARK: - 次要文字
+
+private struct SubtleForeground: ViewModifier {
+    @Environment(\.palette) private var palette
+
+    func body(content: Content) -> some View {
+        content.foregroundStyle(palette.isDark ? AnyShapeStyle(HierarchicalShapeStyle.secondary)
+                                               : AnyShapeStyle(Color.primary.opacity(0.72)))
+    }
+}
+
+extension View {
+    /// 卡片上的次要文字。浅色模式下玻璃卡片透出彩色光斑，系统 secondary 偏淡，这里提一档。
+    func subtleForeground() -> some View {
+        modifier(SubtleForeground())
+    }
+}
+
 /// 卡片内的横向滚动：内容一直铺到卡片左右边缘，再由卡片圆角裁剪，
 /// 既不会在卡片内被生硬截断，也不会溢出到卡片外面。配合 `glassCard(clipped: true)` 使用。
 struct CardHScroll<Content: View>: View {
@@ -205,8 +223,8 @@ struct TagChip: View {
         .fixedSize()
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .foregroundStyle(color ?? palette.accent)
-        .background((color ?? palette.accent).opacity(0.14), in: .capsule)
+        .foregroundStyle(palette.ink(color ?? palette.accent))
+        .background((color ?? palette.accent).opacity(palette.isDark ? 0.14 : 0.16), in: .capsule)
     }
 }
 
@@ -342,6 +360,7 @@ struct BigActionButton: View {
                 Text(title)
             }
             .font(.headline)
+            .foregroundStyle(palette.onAccent)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
         }

@@ -34,6 +34,7 @@ struct FortuneWidgetView: View {
     let entry: FortuneEntry
     @Environment(\.widgetFamily) private var family
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.widgetRenderingMode) private var renderingMode
 
     var body: some View {
         let palette = WidgetPalette.current(scheme)
@@ -67,11 +68,11 @@ struct FortuneWidgetView: View {
                         .font(.caption2).foregroundStyle(.secondary)
                     Text(f.summary).font(.subheadline.weight(.medium)).lineLimit(2)
                     HStack(spacing: 4) {
-                        Text("宜").font(.caption2.bold()).foregroundStyle(.white).padding(3).background(Circle().fill(Color(hex: 0x34D399)))
+                        badge("宜", fill: .positive(scheme))
                         Text(f.funYi.joined(separator: " ")).font(.caption).lineLimit(1)
                     }
                     HStack(spacing: 4) {
-                        Text("忌").font(.caption2.bold()).foregroundStyle(.white).padding(3).background(Circle().fill(Color(hex: 0xFB7185)))
+                        badge("忌", fill: .negative(scheme))
                         Text(f.funJi.joined(separator: " ")).font(.caption).lineLimit(1)
                     }
                     HStack(spacing: 4) {
@@ -101,6 +102,16 @@ struct FortuneWidgetView: View {
                 Text("忌 " + f.funJi.prefix(2).joined(separator: " ")).font(.caption2).lineLimit(1).foregroundStyle(.secondary)
             }
             .widgetURL(URL(string: "xingxia://fortune"))
+        }
+    }
+
+    /// 「宜」「忌」圆形徽章：底色用语义色，文字按底色亮度选深浅；着色/透明模式下颜色会被统一，改用描边
+    @ViewBuilder
+    private func badge(_ text: String, fill: Color) -> some View {
+        if renderingMode == .fullColor {
+            Text(text).font(.caption2.bold()).foregroundStyle(fill.readableForeground).padding(3).background(Circle().fill(fill))
+        } else {
+            Text(text).font(.caption2.bold()).padding(3).background(Circle().stroke(.primary.opacity(0.6), lineWidth: 1))
         }
     }
 }

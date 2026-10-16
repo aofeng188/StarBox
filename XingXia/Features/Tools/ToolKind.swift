@@ -114,3 +114,67 @@ enum ToolKind: String, CaseIterable, Identifiable, Hashable {
         allCases.filter { $0.category == category }
     }
 }
+
+/// 可以收藏到首页「快捷工具」的入口：百宝箱里的工具，外加答案之书。
+/// 收藏列表（AppSettings.favoriteTools）里存的是 `id`：工具的 rawValue，答案之书是 "answers"。
+enum FavoriteTool: Hashable, Identifiable {
+    case tool(ToolKind)
+    case answers
+
+    static let answersID = "answers"
+
+    /// 收藏编辑页里的全部候选，按百宝箱顺序
+    static var all: [FavoriteTool] { ToolKind.allCases.map { FavoriteTool.tool($0) } + [FavoriteTool.answers] }
+
+    init?(id: String) {
+        if id == Self.answersID {
+            self = .answers
+        } else if let tool = ToolKind(rawValue: id) {
+            self = .tool(tool)
+        } else {
+            return nil
+        }
+    }
+
+    var id: String {
+        switch self {
+        case .tool(let tool): tool.rawValue
+        case .answers: Self.answersID
+        }
+    }
+
+    var name: String {
+        switch self {
+        case .tool(let tool): tool.name
+        case .answers: "答案之书"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .tool(let tool): tool.subtitle
+        case .answers: "默念问题 · 翻开一页"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .tool(let tool): tool.symbol
+        case .answers: "book.fill"
+        }
+    }
+
+    var colors: [Color] {
+        switch self {
+        case .tool(let tool): tool.colors
+        case .answers: [Color(hex: 0xF5B83D), Color(hex: 0xB45309)]
+        }
+    }
+
+    var route: AppRoute {
+        switch self {
+        case .tool(let tool): .tool(tool)
+        case .answers: .answers
+        }
+    }
+}

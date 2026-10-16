@@ -15,6 +15,11 @@ object StarRating {
     }
 }
 
+/** 运势解读的来源：日干与八字日主、生肖与地支、月亮星座 */
+enum class FortuneInsightKind(val key: String) {
+    STEM("stem"), BRANCH("branch"), MOON("moon"),
+}
+
 /** 某人某天的运势 */
 data class DailyFortune(
     val day: DayKey,
@@ -37,6 +42,8 @@ data class DailyFortune(
     val funJi: List<String>,
     val quote: String,
     val insights: List<String>,
+    /** 与 insights 一一对应 */
+    val insightKinds: List<FortuneInsightKind>,
     val moonSign: ZodiacSign,
     val isPersonalized: Boolean,
 ) {
@@ -56,6 +63,11 @@ object FortuneEngine {
         val mods = FortuneCategory.entries.associateWith { 0.0 }.toMutableMap()
         fun bump(category: FortuneCategory, value: Double) { mods[category] = mods.getValue(category) + value }
         val insights = mutableListOf<String>()
+        val insightKinds = mutableListOf<FortuneInsightKind>()
+        fun addInsight(kind: FortuneInsightKind, text: String) {
+            insights.add(text)
+            insightKinds.add(kind)
+        }
         val favorable: WuXing
         var nobleman = ZodiacSign.entries[rng.intBelow(12)]
 
@@ -72,7 +84,8 @@ object FortuneEngine {
                 else -> { relationKey = "officer"; base -= 3; bump(FortuneCategory.CAREER, 3.0); bump(FortuneCategory.HEALTH, -5.0) }
             }
             content.relations[relationKey]?.let { template ->
-                insights.add(
+                addInsight(
+                    FortuneInsightKind.STEM,
                     template
                         .replace("{day}", "${almanac.day.name}日属${today.label}")
                         .replace("{master}", "${bazi.dayMaster.name}${master.label}"),
@@ -81,7 +94,7 @@ object FortuneEngine {
 
             val branchRelation = almanac.day.branch.relation(bazi.year.branch)
             base += branchRelation.score
-            content.branchNotes[branchRelation.key]?.takeIf { it.isNotEmpty() }?.let { insights.add(it) }
+            content.branchNotes[branchRelation.key]?.takeIf { it.isNotEmpty() }?.let { addInsight(FortuneInsightKind.BRANCH, it) }
 
             val sunSign = ZodiacSign.sunSign(birth)
             val aspect = AspectKind.of(sunSign.distance(moonSign))
@@ -96,7 +109,7 @@ object FortuneEngine {
             }
             base += aspectScore
             bump(FortuneCategory.LOVE, aspectScore * 1.2)
-            content.moonNotes[aspect.key]?.takeIf { it.isNotEmpty() }?.let { insights.add(it) }
+            content.moonNotes[aspect.key]?.takeIf { it.isNotEmpty() }?.let { addInsight(FortuneInsightKind.MOON, it) }
 
             favorable = bazi.favorableElement
             nobleman = rng.pick(sunSign.trines + sunSign.sextiles)
@@ -125,7 +138,8 @@ object FortuneEngine {
         // 参数求值顺序与 iOS 版保持一致，保证同一天两端结果相同
         val summary = rng.pick(content.levels[level].summaries)
         val luckyColor = rng.pick(favorable.luckyColors)
-        val luckyItem = rng.pick(content.items)
+        // 季节性幸运物先按当天月份过滤，再用同一个 rng 抽取
+        val luckyItem = rng.pick(content.itemsFor(day.month))
         val funYi = rng.pick(content.funYi, 3)
         val funJi = rng.pick(content.funJi, 3)
         val quote = rng.pick(content.quotes)
@@ -150,6 +164,7 @@ object FortuneEngine {
             funJi = funJi,
             quote = quote,
             insights = insights,
+            insightKinds = insightKinds,
             moonSign = moonSign,
             isPersonalized = birth != null,
         )
@@ -217,7 +232,9 @@ object HoroscopeEngine {
             }
         }
 
-        val rng = SeededGenerator("horoscope", sign.ordinal, period.key, periodKey)
+        // 今日与明日共用「day」，让「明日」和第二天的「今日」结果一致
+        val seedPeriod = if (period == HoroscopePeriod.TODAY || period == HoroscopePeriod.TOMORROW) "day" else period.key
+        val rng = SeededGenerator("horoscope", sign.ordinal, seedPeriod, periodKey)
         if (period == HoroscopePeriod.MONTH || period == HoroscopePeriod.WEEK) skyBoost += rng.double(-2.0, 2.0)
         val score = clampRound(rng.gaussian(68.0, 12.0) + skyBoost, 38, 98)
 

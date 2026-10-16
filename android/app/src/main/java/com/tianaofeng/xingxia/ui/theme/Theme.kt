@@ -8,6 +8,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import com.tianaofeng.xingxia.core.NamedColor
 import com.tianaofeng.xingxia.core.WuXing
 import com.tianaofeng.xingxia.core.ZodiacElement
@@ -42,7 +43,41 @@ data class ThemePalette(
 
     val glassFill: Color get() = if (isDark) Color.White.copy(alpha = 0.075f) else Color.White.copy(alpha = 0.58f)
     val glassStroke: Color get() = if (isDark) Color.White.copy(alpha = 0.13f) else Color.White.copy(alpha = 0.85f)
+
+    /** 压在 accent / accentBrush 上的文字色：深色主题的强调色都偏亮，白字看不清，改用深色字（与 iOS 一致） */
+    val onAccent: Color get() = if (isDark) INK_DARK else Color.White
+
+    /** 把任意颜色调成能直接当文字用的版本：深色模式提亮过暗的颜色，浅色模式压暗过浅的颜色 */
+    fun ink(color: Color): Color {
+        val luminance = color.luminance()
+        return if (isDark) {
+            if (luminance < 0.2f) color.mix(Color.White, 0.45f) else color
+        } else {
+            if (luminance > 0.25f) color.mix(Color.Black, 0.5f) else color
+        }
+    }
+
+    /** spectrum 的文字版本，和 [color] 一一对应 */
+    fun inkColor(index: Int): Color = ink(color(index))
+
+    /** 语义色：深色模式用明亮的 400 级，浅色模式用加深的 700 级，当文字用时也读得清 */
+    val positive: Color get() = if (isDark) hex(0x34D399) else hex(0x047857)
+    val negative: Color get() = if (isDark) hex(0xFB7185) else hex(0xBE123C)
+    val gold: Color get() = if (isDark) hex(0xFFD166) else hex(0xA16207)
+    val caution: Color get() = if (isDark) hex(0xFBBF24) else hex(0xB45309)
 }
+
+private val INK_DARK = Color(0xFF14101F)
+
+private fun Color.mix(other: Color, amount: Float) = Color(
+    red + (other.red - red) * amount,
+    green + (other.green - green) * amount,
+    blue + (other.blue - blue) * amount,
+    alpha,
+)
+
+/** 压在这个颜色上的文字该用的颜色：亮底用深字，暗底用白字 */
+val Color.readableForeground: Color get() = if (luminance() > 0.18f) INK_DARK else Color.White
 
 data class AppTheme(
     val id: String,
@@ -138,6 +173,7 @@ fun XingXiaTheme(palette: ThemePalette, content: @Composable () -> Unit) {
     val scheme = if (palette.isDark) {
         darkColorScheme(
             primary = palette.accent,
+            onPrimary = palette.onAccent,
             secondary = palette.accentSecondary,
             background = palette.backgroundTop,
             surface = palette.backgroundBottom,
@@ -149,6 +185,7 @@ fun XingXiaTheme(palette: ThemePalette, content: @Composable () -> Unit) {
     } else {
         lightColorScheme(
             primary = palette.accent,
+            onPrimary = palette.onAccent,
             secondary = palette.accentSecondary,
             background = palette.backgroundTop,
             surface = palette.backgroundTop,

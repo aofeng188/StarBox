@@ -21,6 +21,9 @@ struct TruthDareView: View {
     @State private var currentPlayer: String?
     @State private var playerIndex = 0
     @State private var showCustom = false
+    /// 一次抽题（翻回背面 → 换题 → 翻开）还没结束时不接受新的抽题，免得跳过玩家、在正面朝上时偷换题目
+    @State private var isDrawing = false
+    @FocusState private var editingPlayers: Bool
 
     private let levels = ["轻松", "进阶", "刺激"]
 
@@ -37,6 +40,7 @@ struct TruthDareView: View {
                 .pickerStyle(.segmented)
 
                 TextField("玩家名字（可选，用逗号分隔）", text: $playersText)
+                    .focused($editingPlayers)
                     .padding(12)
                     .glassEffect(.regular, in: .capsule)
 
@@ -77,8 +81,9 @@ struct TruthDareView: View {
         }
         .cosmicBackground()
         .navigationTitle("真心话大冒险")
+        .toolbar(.hidden, for: .tabBar)
         .sheet(isPresented: $showCustom) { CustomPromptsView() }
-        .onShake { draw(Bool.random() ? "truth" : "dare") }
+        .onShake(isEnabled: !showCustom && !editingPlayers) { draw(Bool.random() ? "truth" : "dare") }
     }
 
     private func choiceButton(title: String, symbol: String, colors: [Color], action: @escaping () -> Void) -> some View {
@@ -97,6 +102,7 @@ struct TruthDareView: View {
     }
 
     private func draw(_ kind: String) {
+        guard !isDrawing else { return }
         let content = TruthDareContent.shared
         let builtIn = kind == "truth" ? content.truth[level] : content.dare[level]
         let custom = customPrompts.filter { $0.kind == kind && $0.level <= level }.map(\.text)
@@ -107,25 +113,29 @@ struct TruthDareView: View {
         }
         guard let next = pool.randomElement() else { return }
         used.insert(next)
+        isDrawing = true
 
         SoundEngine.shared.play(.cardFlip)
         Haptics.impact()
-        if isFaceUp {
+        let wasFaceUp = isFaceUp
+        if wasFaceUp {
             withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { isFaceUp = false }
-            Task {
-                try? await Task.sleep(for: .milliseconds(380))
-                reveal(kind: kind, prompt: next)
-            }
-        } else {
+        }
+        Task {
+            if wasFaceUp { try? await Task.sleep(for: .milliseconds(380)) }
             reveal(kind: kind, prompt: next)
+            // 等翻开的动画大致走完再放行
+            try? await Task.sleep(for: .milliseconds(550))
+            isDrawing = false
         }
     }
 
     private func reveal(kind: String, prompt: String) {
         self.kind = kind
         self.prompt = prompt
-        if !players.isEmpty {
-            withAnimation { currentPlayer = players[playerIndex % players.count] }
+        let player: String? = players.isEmpty ? nil : players[playerIndex % players.count]
+        if let player {
+            withAnimation { currentPlayer = player }
             playerIndex += 1
         } else {
             currentPlayer = nil
@@ -133,6 +143,8 @@ struct TruthDareView: View {
         withAnimation(.spring(response: 0.6, dampingFraction: 0.75)) { isFaceUp = true }
         SoundEngine.shared.play(.sparkle, volume: 0.6)
         Haptics.success()
+        let card = "\(kind == "dare" ? "大冒险" : "真心话")：\(prompt)"
+        Announce.post(player.map { "轮到 \($0)。\(card)" } ?? card)
     }
 }
 
@@ -144,8 +156,8 @@ private struct PromptCardBack: View {
             .fill(LinearGradient(colors: [palette.accent.opacity(0.9), palette.accentSecondary.opacity(0.9)], startPoint: .topLeading, endPoint: .bottomTrailing))
             .overlay {
                 VStack(spacing: 14) {
-                    Text("?").font(.system(size: 90, weight: .black, design: .rounded)).foregroundStyle(.white.opacity(0.9))
-                    Text("真心话 or 大冒险").font(.headline).foregroundStyle(.white.opacity(0.85))
+                    Text("?").font(.system(size: 90, weight: .black, design: .rounded)).foregroundStyle(palette.onAccent.opacity(0.9))
+                    Text("真心话 or 大冒险").font(.headline).foregroundStyle(palette.onAccent.opacity(0.85))
                 }
             }
             .overlay(RoundedRectangle(cornerRadius: 30).strokeBorder(.white.opacity(0.4), lineWidth: 2).padding(10))

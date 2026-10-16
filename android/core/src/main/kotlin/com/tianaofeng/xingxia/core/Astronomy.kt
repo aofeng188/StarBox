@@ -79,10 +79,9 @@ object Astronomy {
     fun moonLongitude(instant: Instant) = moonLongitude(julianDay(instant))
 
     /** 月相：0 = 新月，0.5 = 满月 */
-    fun moonPhase(instant: Instant): Double {
-        val jd = julianDay(instant)
-        return normalize(moonLongitude(jd) - sunLongitude(jd)) / 360
-    }
+    fun moonPhase(instant: Instant): Double = moonPhase(julianDay(instant))
+
+    fun moonPhase(jd: Double): Double = normalize(moonLongitude(jd) - sunLongitude(jd)) / 360
 
     /** 上升点黄经（度）。latitude 北纬为正，longitude 东经为正。 */
     fun ascendant(instant: Instant, latitude: Double, longitude: Double): Double {

@@ -16,12 +16,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Paid
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.FormatQuote
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Spa
 import androidx.compose.material.icons.rounded.Work
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,8 +44,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -51,13 +58,15 @@ import com.tianaofeng.xingxia.ui.components.Flow
 import com.tianaofeng.xingxia.ui.components.Fonts
 import com.tianaofeng.xingxia.ui.components.GlassCard
 import com.tianaofeng.xingxia.ui.components.GradientIcon
-import com.tianaofeng.xingxia.ui.components.Haptics
 import com.tianaofeng.xingxia.ui.components.MeterBar
 import com.tianaofeng.xingxia.ui.components.SecondaryText
+import com.tianaofeng.xingxia.ui.components.copyText
+import com.tianaofeng.xingxia.ui.components.shareText
 import com.tianaofeng.xingxia.ui.components.starPath
 import com.tianaofeng.xingxia.ui.components.weight
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.hex
+import com.tianaofeng.xingxia.ui.theme.readableForeground
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
@@ -114,7 +123,7 @@ fun CategoryMeter(category: FortuneCategory, value: Int, modifier: Modifier = Mo
 @Composable
 fun YiJiRow(isYi: Boolean, items: List<String>) {
     val palette = LocalPalette.current
-    val color = if (isYi) hex(0x34D399) else hex(0xFB7185)
+    val color = if (isYi) palette.positive else palette.negative
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(
             Modifier
@@ -123,7 +132,7 @@ fun YiJiRow(isYi: Boolean, items: List<String>) {
                 .background(Brush.verticalGradient(listOf(color, color.copy(alpha = 0.75f)))),
             contentAlignment = Alignment.Center,
         ) {
-            Text(if (isYi) "宜" else "忌", style = Fonts.serif(18, bold = true), color = Color.White)
+            Text(if (isYi) "宜" else "忌", style = Fonts.serif(18, bold = true), color = color.readableForeground)
         }
         Flow(spacing = 8.dp, modifier = Modifier.weight(1f)) {
             for (item in items) {
@@ -141,22 +150,40 @@ fun YiJiRow(isYi: Boolean, items: List<String>) {
     }
 }
 
-/** 每日一句（长按拷贝） */
+/** 每日一句：点按弹出「拷贝 / 分享」（与 iOS 的长按菜单一致） */
 @Composable
 fun QuoteCard(quote: String) {
-    val clipboard = LocalClipboardManager.current
-    GlassCard(
-        padding = 22.dp,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        spacing = 10.dp,
-        onClick = {
-            clipboard.setText(AnnotatedString(quote))
-            Haptics.success()
-        },
-    ) {
-        GradientIcon(Icons.Rounded.FormatQuote, size = 24.dp)
-        Text(quote, style = Fonts.serif(19).copy(lineHeight = 30.sp), textAlign = TextAlign.Center, color = LocalPalette.current.text)
-        SecondaryText("— 星匣 · 每日一句（点按拷贝）", style = Fonts.caption2)
+    val context = LocalContext.current
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        GlassCard(
+            padding = 22.dp,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            spacing = 10.dp,
+            onClick = { menu = true },
+        ) {
+            GradientIcon(Icons.Rounded.FormatQuote, size = 24.dp)
+            Text(quote, style = Fonts.serif(19).copy(lineHeight = 30.sp), textAlign = TextAlign.Center, color = LocalPalette.current.text)
+            SecondaryText("— 星匣 · 每日一句（点按拷贝或分享）", style = Fonts.caption2)
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(
+                text = { Text("拷贝") },
+                leadingIcon = { Icon(Icons.Rounded.ContentCopy, null) },
+                onClick = {
+                    menu = false
+                    copyText(context, quote)
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("分享") },
+                leadingIcon = { Icon(Icons.Rounded.Share, null) },
+                onClick = {
+                    menu = false
+                    shareText(context, "$quote\n— 星匣 · 每日一句")
+                },
+            )
+        }
     }
 }
 
