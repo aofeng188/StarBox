@@ -184,9 +184,9 @@ enum JournalStats {
             case nil: break
             }
             switch sample.satisfaction {
-            case 1?: tally.rated += 1; tally.satisfied += 1
-            case 0?: tally.rated += 1; tally.neutral += 1
-            case -1?: tally.rated += 1; tally.regretted += 1
+            case .some(1): tally.rated += 1; tally.satisfied += 1
+            case .some(0): tally.rated += 1; tally.neutral += 1
+            case .some(-1): tally.rated += 1; tally.regretted += 1
             default: break
             }
         }
