@@ -16,15 +16,14 @@ struct MeView: View {
             VStack(spacing: 16) {
                 header
 
+                MoonBadgeCard()
+
                 VStack(spacing: 0) {
                     MeRow(route: .profiles, symbol: "person.2.fill", colors: [Color(hex: 0x60A5FA), Color(hex: 0x6366F1)],
                           title: "档案管理", value: "\(profiles.count) 个")
                     Divider().padding(.leading, 58)
                     MeRow(route: .birthChart, symbol: "circle.hexagongrid.fill", colors: [Color(hex: 0xA78BFA), Color(hex: 0xEC4899)],
                           title: "我的命盘", value: "八字 · 星盘")
-                    Divider().padding(.leading, 58)
-                    MeRow(route: .compatibility, symbol: "heart.circle.fill", colors: [Color(hex: 0xFB7185), Color(hex: 0xF43F5E)],
-                          title: "缘分配对", value: "星座 · 生肖")
                 }
                 .glassCard(padding: 6)
 

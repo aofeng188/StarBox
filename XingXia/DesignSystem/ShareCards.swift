@@ -325,16 +325,20 @@ struct ShareCardButton<Card: View>: View {
     let previewTitle: String?
     /// 页面需要知道预览是否弹出时传入（例如摇一摇页面据此暂停 onShake）
     let externalPresented: Binding<Bool>?
+    /// 预览打开时默认选中的比例（年度回顾这类长内容默认 9:16）
+    let initialRatio: ShareCardRatio
     let card: (ShareCardStyle) -> Card
 
     @State private var internalPresented = false
 
     init(title: String, systemImage: String = "square.and.arrow.up", previewTitle: String? = nil,
-         isPresented: Binding<Bool>? = nil, @ViewBuilder card: @escaping (ShareCardStyle) -> Card) {
+         isPresented: Binding<Bool>? = nil, initialRatio: ShareCardRatio = .portrait,
+         @ViewBuilder card: @escaping (ShareCardStyle) -> Card) {
         self.title = title
         self.systemImage = systemImage
         self.previewTitle = previewTitle
         self.externalPresented = isPresented
+        self.initialRatio = initialRatio
         self.card = card
     }
 
@@ -348,7 +352,7 @@ struct ShareCardButton<Card: View>: View {
             Label(title, systemImage: systemImage)
         }
         .sheet(isPresented: isPresented) {
-            ShareCardSheet(title: title, previewTitle: previewTitle ?? "星匣分享卡", card: card)
+            ShareCardSheet(title: title, previewTitle: previewTitle ?? "星匣分享卡", initialRatio: initialRatio, card: card)
         }
     }
 }
@@ -358,12 +362,19 @@ private struct ShareCardSheet<Card: View>: View {
     let previewTitle: String
     let card: (ShareCardStyle) -> Card
 
+    init(title: String, previewTitle: String, initialRatio: ShareCardRatio, card: @escaping (ShareCardStyle) -> Card) {
+        self.title = title
+        self.previewTitle = previewTitle
+        self.card = card
+        _ratio = State(initialValue: initialRatio)
+    }
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.palette) private var palette
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
 
-    @State private var ratio: ShareCardRatio = .portrait
+    @State private var ratio: ShareCardRatio
     @State private var rendered: RenderedCard?
     @State private var renderFailed = false
     @State private var isSaving = false

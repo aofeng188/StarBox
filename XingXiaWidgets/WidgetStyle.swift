@@ -51,3 +51,17 @@ struct WidgetScoreRing: View {
         }
     }
 }
+
+/// App Group 不可用（例如免费签名）时，需要和 App 共用数据的小组件显示这个，点一下打开 App
+struct WidgetOpenAppView: View {
+    let symbol: String
+    let text: String
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: symbol).font(.title2)
+            Text(text).font(.caption).multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}

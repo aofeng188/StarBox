@@ -46,6 +46,8 @@ struct RootView: View {
                 Haptics.prepare()
             } else if phase == .background {
                 dismissDecisionPrompt()
+                // 心情、求签在 App 里记录后，回到桌面时让小组件跟上
+                WidgetKinds.reloadRecordWidgets()
             }
         }
         .task {

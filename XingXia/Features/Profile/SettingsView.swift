@@ -41,6 +41,15 @@ struct SettingsView: View {
             .glassRows()
 
             Section {
+                Toggle(isOn: $settings.dailyRitualEnabled) { Label("每日仪式", systemImage: "moon.circle.fill") }
+            } header: {
+                Text("每日仪式")
+            } footer: {
+                Text("每天第一次打开星匣时，先看看今天的月亮、运势、签和心情，随时可以跳过。走完仪式的日子会点亮当晚的月相，一轮集齐八种月相得一枚满月徽章。")
+            }
+            .glassRows()
+
+            Section {
                 Toggle(isOn: $settings.dailyReminderEnabled) { Label("每日运势提醒", systemImage: "bell.badge.fill") }
                     .onChange(of: settings.dailyReminderEnabled) { _, on in
                         Task {

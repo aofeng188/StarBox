@@ -47,7 +47,8 @@ extension CountdownValue {
 
 @MainActor
 enum CountdownStore {
-    private static let container: ModelContainer? = try? AppSchema.makeContainer()
+    /// 和心情、今日一签小组件共用一个容器；App Group 不可用时为 nil，显示「打开星匣查看倒数日」
+    private static var container: ModelContainer? { SharedStore.container() }
 
     static func all() -> [CountdownValue] {
         all(on: [.today]).first ?? []
@@ -173,7 +174,7 @@ struct CountdownWidgetView: View {
 
 struct CountdownWidget: Widget {
     var body: some WidgetConfiguration {
-        AppIntentConfiguration(kind: "XingXiaCountdown", intent: CountdownConfigIntent.self, provider: CountdownProvider()) { entry in
+        AppIntentConfiguration(kind: WidgetKinds.countdown, intent: CountdownConfigIntent.self, provider: CountdownProvider()) { entry in
             CountdownWidgetView(entry: entry)
                 .containerBackground(for: .widget) { WidgetCosmicBackground() }
                 .widgetURL(URL(string: "xingxia://countdowns"))

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 /// App 与小组件之间共享数据的通道。
 ///
@@ -19,6 +20,35 @@ enum AppGroup {
         }
         return .standard
     }()
+
+    /// 当前进程是不是小组件扩展
+    static let isExtension = Bundle.main.bundlePath.hasSuffix(".appex")
+
+    /// 小组件里写进数据库的记录 App 能不能看到：扩展在没有 App Group 时只能写进自己的沙盒，等于白写
+    static var canShareRecords: Bool { isAvailable || !isExtension }
+}
+
+/// 进程内共用的数据库容器：小组件的时间线和 Intent 共用一个，Siri 在 App 进程里跑 Intent 时用 App 自己的。
+///
+/// App 启动时调用 `SharedStore.use(container)` 登记；没登记时第一次用到再建。
+/// 小组件扩展拿不到 App Group 时返回 nil，调用方显示「打开 App」，不写数据。
+enum SharedStore {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var cached: ModelContainer?
+
+    static func use(_ container: ModelContainer) {
+        lock.withLock { cached = container }
+    }
+
+    static func container() -> ModelContainer? {
+        guard AppGroup.canShareRecords else { return nil }
+        return lock.withLock {
+            if let cached { return cached }
+            let made = try? AppSchema.makeContainer()
+            cached = made
+            return made
+        }
+    }
 }
 
 /// 小组件、Siri、通知需要的「当前档案」精简信息。

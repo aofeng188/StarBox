@@ -118,7 +118,7 @@ struct FortuneWidgetView: View {
 
 struct FortuneWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "XingXiaFortune", provider: FortuneProvider()) { entry in
+        StaticConfiguration(kind: WidgetKinds.fortune, provider: FortuneProvider()) { entry in
             FortuneWidgetView(entry: entry)
                 .containerBackground(for: .widget) { WidgetCosmicBackground() }
         }

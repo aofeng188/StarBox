@@ -1,11 +1,38 @@
 import SwiftData
 import SwiftUI
 
-/// 往「决策历史」里记一笔
+/// 往「决策历史」里记一笔，以及记下之后的表态和回访
 @MainActor
 enum HistoryLog {
-    static func add(_ context: ModelContext, tool: String, title: String, result: String, detail: String? = nil) {
-        context.insert(DecisionRecord(tool: tool, title: title, result: result, detail: detail))
+    /// 记一笔并返回这条记录。「问一问」里正在问的问题（AppState.currentQuestion）一起记进 question；
+    /// App 在前台时把它设为 AppState.lastDecision，RootView 据此弹出「就这么办 / 再想想」
+    @discardableResult
+    static func add(_ context: ModelContext, tool: String, title: String, result: String, detail: String? = nil) -> DecisionRecord {
+        let record = DecisionRecord(tool: tool, title: title, result: result, detail: detail)
+        if let question = AppState.shared.currentQuestion?.trimmingCharacters(in: .whitespacesAndNewlines), !question.isEmpty {
+            record.question = question
+        }
+        context.insert(record)
+        try? context.save()
+        if UIApplication.shared.applicationState == .active {
+            AppState.shared.lastDecision = record
+        }
+        return record
+    }
+
+    /// 「就这么办」(true) /「再想想」(false)
+    static func setAdopted(_ record: DecisionRecord, _ adopted: Bool, context: ModelContext) {
+        guard !record.isDeleted else { return }
+        record.adopted = adopted
+        try? context.save()
+    }
+
+    /// 回访：1 满意，0 一般，-1 后悔；nil 表示「跳过」，只记回访时间。
+    /// 不管选了哪一项都会写 followedUpAt，这条记录之后不再出现在首页回访卡里
+    static func setSatisfaction(_ record: DecisionRecord, _ value: Int?, context: ModelContext) {
+        guard !record.isDeleted else { return }
+        record.satisfaction = value.map { min(max($0, -1), 1) }
+        record.followedUpAt = Date()
         try? context.save()
     }
 

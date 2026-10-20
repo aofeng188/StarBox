@@ -104,7 +104,7 @@ struct HoroscopeWidgetView: View {
 
 struct HoroscopeWidget: Widget {
     var body: some WidgetConfiguration {
-        AppIntentConfiguration(kind: "XingXiaHoroscope", intent: HoroscopeConfigIntent.self, provider: HoroscopeProvider()) { entry in
+        AppIntentConfiguration(kind: WidgetKinds.horoscope, intent: HoroscopeConfigIntent.self, provider: HoroscopeProvider()) { entry in
             HoroscopeWidgetView(entry: entry)
                 .containerBackground(for: .widget) { WidgetCosmicBackground() }
         }

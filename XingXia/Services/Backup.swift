@@ -4,7 +4,7 @@ import WidgetKit
 
 /// 备份里的数据类别；rawValue 就是 JSON 里的键名（与 Android 版一致）
 enum BackupCategory: String, CaseIterable, Identifiable {
-    case profiles, decisionRecords, stickDraws, tarotReadings, moods, countdowns, wheelTemplates, foodMenus,
+    case profiles, decisionRecords, stickDraws, tarotReadings, moods, ritualDays, countdowns, wheelTemplates, foodMenus,
          foodLogs, blockedFoods, lotteryPools, rosters, customPrompts, scratchPresets
 
     var id: String { rawValue }
@@ -16,6 +16,7 @@ enum BackupCategory: String, CaseIterable, Identifiable {
         case .stickDraws: "每日一签"
         case .tarotReadings: "塔罗手记"
         case .moods: "心情打卡"
+        case .ritualDays: "每日仪式"
         case .countdowns: "倒数日"
         case .wheelTemplates: "转盘"
         case .foodMenus: "菜单"
@@ -33,7 +34,7 @@ enum BackupCategory: String, CaseIterable, Identifiable {
         case .profiles, .countdowns, .wheelTemplates, .foodMenus, .lotteryPools, .rosters, .scratchPresets: "个"
         case .decisionRecords, .stickDraws, .foodLogs: "条"
         case .tarotReadings: "次"
-        case .moods: "天"
+        case .moods, .ritualDays: "天"
         case .blockedFoods: "样"
         case .customPrompts: "道"
         }
@@ -137,6 +138,7 @@ enum Backup {
         let draws = try context.fetch(FetchDescriptor<StickDraw>(sortBy: [SortDescriptor(\.date)]))
         let readings = try context.fetch(FetchDescriptor<TarotReading>(sortBy: [SortDescriptor(\.date)]))
         let moods = try context.fetch(FetchDescriptor<MoodEntry>(sortBy: [SortDescriptor(\.dayKey)]))
+        let rituals = try context.fetch(FetchDescriptor<RitualDay>(sortBy: [SortDescriptor(\.dayKey)]))
         let countdowns = try context.fetch(FetchDescriptor<Countdown>(sortBy: [SortDescriptor(\.createdAt)]))
         let wheels = try context.fetch(FetchDescriptor<WheelTemplate>(sortBy: [SortDescriptor(\.createdAt)]))
         let menus = try context.fetch(FetchDescriptor<FoodMenu>(sortBy: [SortDescriptor(\.createdAt)]))
@@ -161,8 +163,14 @@ enum Backup {
                 "enteredAsLunar": p.enteredAsLunar, "sortIndex": index, "createdAt": ms(p.createdAt),
             ]
         }
+        // question、adopted、satisfaction、followedUpAt（毫秒）是第三批追加的可选字段，没有值时写 null
         root[BackupCategory.decisionRecords.rawValue] = records.map { r -> [String: Any] in
-            ["id": idString(r.id), "tool": r.tool, "title": r.title, "result": r.result, "detail": nullable(r.detail), "date": ms(r.date)]
+            [
+                "id": idString(r.id), "tool": r.tool, "title": r.title, "result": r.result, "detail": nullable(r.detail), "date": ms(r.date),
+                "question": nullable(r.question), "adopted": r.adopted.map { $0 as Any } ?? NSNull(),
+                "satisfaction": r.satisfaction.map { $0 as Any } ?? NSNull(),
+                "followedUpAt": r.followedUpAt.map { ms($0) as Any } ?? NSNull(),
+            ]
         }
         root[BackupCategory.stickDraws.rawValue] = draws.map { d -> [String: Any] in
             ["dayKey": d.dayKey, "profileId": nullable(d.profileID.map(idString)), "stickNumber": d.stickNumber, "date": ms(d.date)]
@@ -172,6 +180,9 @@ enum Backup {
         }
         root[BackupCategory.moods.rawValue] = moods.map { m -> [String: Any] in
             ["dayKey": m.dayKey, "mood": m.mood, "note": m.note, "tags": m.tags, "date": ms(m.date)]
+        }
+        root[BackupCategory.ritualDays.rawValue] = rituals.map { r -> [String: Any] in
+            ["dayKey": r.dayKey, "completedAt": ms(r.completedAt), "skipped": r.skipped, "moonPhase": r.moonPhase]
         }
         root[BackupCategory.countdowns.rawValue] = countdowns.map { c -> [String: Any] in
             [
@@ -251,7 +262,7 @@ enum Backup {
         func n<T: PersistentModel>(_ type: T.Type) -> Int { (try? context.fetchCount(FetchDescriptor<T>())) ?? 0 }
         return [
             .profiles: n(Profile.self), .decisionRecords: n(DecisionRecord.self), .stickDraws: n(StickDraw.self),
-            .tarotReadings: n(TarotReading.self), .moods: n(MoodEntry.self), .countdowns: n(Countdown.self),
+            .tarotReadings: n(TarotReading.self), .moods: n(MoodEntry.self), .ritualDays: n(RitualDay.self), .countdowns: n(Countdown.self),
             .wheelTemplates: n(WheelTemplate.self), .foodMenus: n(FoodMenu.self), .foodLogs: n(FoodLog.self),
             .blockedFoods: n(BlockedFood.self), .lotteryPools: n(LotteryPool.self), .rosters: n(Roster.self),
             .customPrompts: n(CustomPrompt.self), .scratchPresets: n(ScratchPreset.self),
@@ -315,10 +326,10 @@ enum Backup {
         }
         guard mode == .replace else { return }
         if let cards = fields.strings("homeCards") {
-            settings.homeCards = withMissingCards(unique(cards.compactMap(HomeCard.init(rawValue:))))
+            settings.homeCards = HomeCard.normalized(withMissingCards(unique(cards.compactMap(HomeCard.init(rawValue:)))))
         }
         if let hidden = fields.strings("hiddenHomeCards") {
-            settings.hiddenHomeCards = Set(hidden.compactMap(HomeCard.init(rawValue:)))
+            settings.hiddenHomeCards = HomeCard.normalizedHidden(hidden.compactMap(HomeCard.init(rawValue:)))
         }
     }
 
@@ -437,6 +448,7 @@ private final class BackupRestorer {
         if let items = file.sections[.stickDraws] { try stickDraws(items) }
         if let items = file.sections[.tarotReadings] { try tarotReadings(items) }
         if let items = file.sections[.moods] { try moods(items) }
+        if let items = file.sections[.ritualDays] { try ritualDays(items) }
         if let items = file.sections[.countdowns] { try countdowns(items) }
         if let items = file.sections[.wheelTemplates] { try wheelTemplates(items) }
         if let items = file.sections[.foodMenus] { try foodMenus(items) }
@@ -526,6 +538,11 @@ private final class BackupRestorer {
             let record = DecisionRecord(tool: f.string("tool") ?? "", title: f.string("title") ?? "", result: f.string("result") ?? "",
                                         detail: f.string("detail"), date: f.date("date") ?? Date())
             record.id = id
+            // 老备份没有这几个字段，保持 nil
+            record.question = f.string("question").flatMap { $0.isEmpty ? nil : $0 }
+            record.adopted = f.bool("adopted")
+            record.satisfaction = f.int("satisfaction").map { clamp($0, -1...1) }
+            record.followedUpAt = f.date("followedUpAt")
             context.insert(record)
             added(.decisionRecords)
         }
@@ -573,6 +590,20 @@ private final class BackupRestorer {
             entry.date = f.date("date") ?? day.date
             context.insert(entry)
             added(.moods)
+        }
+    }
+
+    private func ritualDays(_ items: [BackupFields]) throws {
+        try clear(RitualDay.self)
+        var days = try Set(existing(RitualDay.self).map(\.dayKey))
+        for f in items {
+            // 每天一条，按 dayKey 去重
+            guard let day = f.dayKey("dayKey"), days.insert(day.rawValue).inserted else { skipped(); continue }
+            let phase = f.int("moonPhase").map { clamp($0, 0...7) } ?? MoonInfo.on(day).name.rawValue
+            let ritual = RitualDay(dayKey: day.rawValue, completedAt: f.date("completedAt") ?? day.date,
+                                   skipped: f.bool("skipped") ?? false, moonPhase: phase)
+            context.insert(ritual)
+            added(.ritualDays)
         }
     }
 
@@ -854,6 +885,19 @@ extension Backup {
             }
             let wheels = try target.mainContext.fetch(FetchDescriptor<WheelTemplate>())
             if wheels.first?.sortedOptions.map(\.title) != ["一", "二", "三"] { problems.append("转盘选项顺序不一致") }
+            let records = try target.mainContext.fetch(FetchDescriptor<DecisionRecord>())
+            if let decided = records.first(where: { $0.question != nil }) {
+                if decided.question != "要不要去跑步" || decided.adopted != true || decided.satisfaction != -1
+                    || decided.followedUpAt.map({ Int($0.timeIntervalSince1970) }) != 1_790_000_000 {
+                    problems.append("决策记录的回访字段不一致")
+                }
+            } else {
+                problems.append("决策记录的问题没有保留")
+            }
+            let rituals = try target.mainContext.fetch(FetchDescriptor<RitualDay>())
+            if !rituals.contains(where: { $0.dayKey == 20261015 && $0.skipped && $0.moonPhase == 5 }) {
+                problems.append("每日仪式字段不一致")
+            }
             let draws = try target.mainContext.fetch(FetchDescriptor<StickDraw>())
             if !draws.contains(where: { $0.profileID == nil }) || !draws.contains(where: { $0.profileID == samples.profile }) {
                 problems.append("每日一签的档案关联不一致")
@@ -875,7 +919,12 @@ extension Backup {
         profile.birthMinute = 30
         context.insert(profile)
         context.insert(Profile(name: "家人", relation: "家人", birthday: DayKey(year: 1970, month: 1, day: 2).date))
-        context.insert(DecisionRecord(tool: "coin", title: "抛硬币", result: "正面"))
+        let decided = DecisionRecord(tool: "coin", title: "抛硬币", result: "正面")
+        decided.question = "要不要去跑步"
+        decided.adopted = true
+        decided.satisfaction = -1
+        decided.followedUpAt = Date(timeIntervalSince1970: 1_790_000_000)
+        context.insert(decided)
         context.insert(DecisionRecord(tool: "dice", title: "掷骰子", result: "6", detail: "1 颗"))
         context.insert(StickDraw(dayKey: 20261015, profileID: profile.id, stickNumber: 88))
         context.insert(StickDraw(dayKey: 20261015, profileID: nil, stickNumber: 3))
@@ -883,6 +932,8 @@ extension Backup {
         let mood = MoodEntry(dayKey: 20261014, mood: 4, note: "不错")
         mood.tags = ["工作", "运动"]
         context.insert(mood)
+        context.insert(RitualDay(dayKey: 20261014, skipped: false, moonPhase: 4))
+        context.insert(RitualDay(dayKey: 20261015, skipped: true, moonPhase: 5))
         let countdown = Countdown(title: "中秋", emoji: "🥮", date: DayKey(year: 2026, month: 9, day: 25).date, kind: CountdownKind.countdown.rawValue)
         countdown.isLunar = true
         countdown.lunarMonth = 8
@@ -921,7 +972,8 @@ extension Backup {
         func n<T: PersistentModel>(_ type: T.Type) throws -> Int { try context.fetchCount(FetchDescriptor<T>()) }
         return try [
             "profiles": n(Profile.self), "decisionRecords": n(DecisionRecord.self), "stickDraws": n(StickDraw.self),
-            "tarotReadings": n(TarotReading.self), "moods": n(MoodEntry.self), "countdowns": n(Countdown.self),
+            "tarotReadings": n(TarotReading.self), "moods": n(MoodEntry.self), "ritualDays": n(RitualDay.self),
+            "countdowns": n(Countdown.self),
             "wheelTemplates": n(WheelTemplate.self), "wheelOptions": n(WheelOption.self), "foodMenus": n(FoodMenu.self),
             "foodMenuItems": n(FoodMenuItem.self), "foodLogs": n(FoodLog.self), "blockedFoods": n(BlockedFood.self),
             "lotteryPools": n(LotteryPool.self), "lotteryItems": n(LotteryItem.self), "rosters": n(Roster.self),

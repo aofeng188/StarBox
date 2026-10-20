@@ -27,10 +27,14 @@ struct TodayView: View {
                     SetupProfileBanner { showOnboarding = true }
                 }
 
+                // 决定回访固定在最前、通栏；没有要回访的决定时不占位置
+                FollowUpCard(today: today)
+
                 // 宽屏（Duo 展开横持）排成两栏
                 ColumnsLayout(columns: isWide ? 2 : 1, spacing: 16, fold: fold) {
-                    ForEach(settings.homeCards.filter { !settings.hiddenHomeCards.contains($0) }) { card in
+                    ForEach(settings.homeCards.filter { $0.isEditable && !settings.hiddenHomeCards.contains($0) }) { card in
                         switch card {
+                        case .followUp: EmptyView()
                         case .fortune: FortuneHeroCard(fortune: fortune)
                         case .family: FamilyFortuneCard(today: today)
                         case .almanac: AlmanacCard(fortune: fortune, almanac: almanac)
