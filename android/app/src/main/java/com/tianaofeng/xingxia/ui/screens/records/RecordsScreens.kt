@@ -11,21 +11,20 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BarChart
-import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Construction
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.History
-import androidx.compose.material.icons.rounded.HourglassEmpty
+import androidx.compose.material.icons.rounded.QuestionAnswer
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -41,12 +40,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.tianaofeng.xingxia.core.DateText
 import com.tianaofeng.xingxia.core.DayKey
+import com.tianaofeng.xingxia.core.JournalStats
 import com.tianaofeng.xingxia.data.DecisionRecord
-import com.tianaofeng.xingxia.data.CountdownItem
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.ChipRow
 import com.tianaofeng.xingxia.ui.components.CircleIconButton
@@ -62,62 +62,37 @@ import com.tianaofeng.xingxia.ui.components.ToolIcon
 import com.tianaofeng.xingxia.ui.components.copyText
 import com.tianaofeng.xingxia.ui.components.rememberToday
 import com.tianaofeng.xingxia.ui.components.weight
-import com.tianaofeng.xingxia.ui.nav.LocalNavigator
-import com.tianaofeng.xingxia.ui.nav.Routes
 import com.tianaofeng.xingxia.ui.screens.divination.GlassTextField
+import com.tianaofeng.xingxia.ui.screens.journal.DecisionEditDialog
+import com.tianaofeng.xingxia.ui.screens.journal.DecisionMarks
 import com.tianaofeng.xingxia.ui.screens.tools.toolInfo
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
-import com.tianaofeng.xingxia.ui.theme.hex
 import java.time.Instant
 
+/** 决策历史的一行：结果、工具和标题，「问一问」带来的问题，以及照做 / 满意度标记（与 iOS 的 HistoryRow 一致） */
 @Composable
-fun RecordsHubScreen() {
-    val navigator = LocalNavigator.current
-    val palette = LocalPalette.current
-    // 过零点、回到前台时刷新，心情卡和一周走势跟着换日
-    val today = rememberToday()
-    Screen(title = "记录", isRoot = true) {
-        val records = Store.records.items
-        MoodCheckInCard(today) { navigator.open(Routes.MOOD) }
-        WeekMoodCard(today) { navigator.open(Routes.MOOD) }
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            RecordTile(
-                Icons.Rounded.CalendarMonth, listOf(palette.accent, palette.accentSecondary), "运势日历",
-                "${today.month}月", "每日运势一览", Modifier.weight(1f),
-            ) { navigator.open(Routes.CALENDAR) }
-            // 倒数日含档案生日（开关打开时），和倒数日列表一致
-            val countdownItems = CountdownItem.current()
-            val upcoming = CountdownItem.nearest(countdownItems, today)
-            val caption = upcoming?.let { (c, s) -> if (s.isToday) "${c.title} 就是今天" else "${c.title} 还有${s.days}天" } ?: "添加重要日子"
-            RecordTile(
-                Icons.Rounded.HourglassEmpty, listOf(hex(0x22D3EE), hex(0x6366F1)), "倒数日",
-                "${countdownItems.size}", caption, Modifier.weight(1f),
-            ) { navigator.open(Routes.COUNTDOWNS) }
-        }
-        GlassCard(onClick = { navigator.open(Routes.HISTORY) }, spacing = 10.dp) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SectionHeader("决策历史", subtitle = "共 ${records.size} 条", icon = Icons.Rounded.History, modifier = Modifier.weight(1f))
-                Icon(Icons.Rounded.ChevronRight, null, tint = palette.tertiaryText)
-            }
-            if (records.isEmpty()) {
-                SecondaryText("用过的随机工具结果都会自动记在这里")
-            } else {
-                for (record in records.takeLast(4).reversed()) RecordRow(record.tool, record.title, record.result, record.date)
-            }
-        }
-    }
-}
-
-@Composable
-private fun RecordRow(tool: String, title: String, result: String, date: Long) {
-    val (name, icon, colors) = toolInfo(tool)
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+private fun RecordRow(record: DecisionRecord) {
+    val (name, icon, colors) = toolInfo(record.tool)
+    // 「问一问」带过来的问题；和标题一样时（硬币、答案之书把问题当标题）不重复显示
+    val question = record.question?.trim()?.takeIf { it.isNotEmpty() && it != record.title.trim() }
+    Row(
+        Modifier.semantics(mergeDescendants = true) {},
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         ToolIcon(icon, colors, 34.dp)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(result, style = Fonts.subheadline.copy(fontWeight = FontWeight.Medium), maxLines = 2)
-            SecondaryText(if (title.isBlank()) name else "$name · $title", style = Fonts.caption, maxLines = 1)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(record.result, style = Fonts.subheadline.copy(fontWeight = FontWeight.Medium), maxLines = 2)
+            SecondaryText(if (record.title.isBlank()) name else "$name · ${record.title}", style = Fonts.caption, maxLines = 1)
+            if (question != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Rounded.QuestionAnswer, null, Modifier.size(12.dp), tint = LocalPalette.current.secondaryText)
+                    SecondaryText(question, style = Fonts.caption, maxLines = 1)
+                }
+            }
+            DecisionMarks(record)
         }
-        SecondaryText(DateText.relative(Instant.ofEpochMilli(date)), style = Fonts.caption2)
+        SecondaryText(DateText.relative(Instant.ofEpochMilli(record.date)), style = Fonts.caption2)
     }
 }
 
@@ -128,6 +103,8 @@ fun HistoryScreen() {
     var filter by rememberSaveable { mutableStateOf<String?>(null) }
     var search by rememberSaveable { mutableStateOf("") }
     var confirmClear by remember { mutableStateOf(false) }
+    /** 点开补记照做 / 满意度的那条 */
+    var editing by rememberSaveable { mutableStateOf<String?>(null) }
     val records = Store.records.items
     // 新的在前
     val tools = remember(records) { records.asReversed().map { it.tool }.distinct() }
@@ -137,7 +114,11 @@ fun HistoryScreen() {
     val shown = remember(records, activeFilter, query) {
         records.asReversed().filter { record ->
             (activeFilter == null || record.tool == activeFilter) &&
-                (query.isEmpty() || record.result.contains(query, ignoreCase = true) || record.title.contains(query, ignoreCase = true))
+                (
+                    query.isEmpty() || record.result.contains(query, ignoreCase = true) ||
+                        record.title.contains(query, ignoreCase = true) ||
+                        record.question?.contains(query, ignoreCase = true) == true
+                    )
         }
     }
     // 按天分组
@@ -178,7 +159,7 @@ fun HistoryScreen() {
             }
             item(key = "count") {
                 SecondaryText(
-                    if (query.isEmpty()) "共 ${shown.size} 条 · 长按可拷贝或删除" else "找到 ${shown.size} 条",
+                    if (query.isEmpty()) "共 ${shown.size} 条 · 点决定可补记后来怎么样，长按可拷贝或删除" else "找到 ${shown.size} 条",
                     style = Fonts.caption,
                     modifier = Modifier.padding(start = 4.dp, top = 10.dp),
                 )
@@ -196,17 +177,23 @@ fun HistoryScreen() {
                     )
                 }
                 itemsIndexed(items, key = { _, record -> record.id }) { index, record ->
-                    HistoryItem(record, isFirst = index == 0, isLast = index == items.lastIndex)
+                    HistoryItem(record, isFirst = index == 0, isLast = index == items.lastIndex) { editing = record.id }
                 }
             }
         }
     }
+
+    editing?.let { id -> DecisionEditDialog(id) { editing = null } }
 }
 
-/** 历史列表里的一条：同一天的几条拼成一张卡片；点按或长按弹出「拷贝结果 / 删除」 */
+/**
+ * 历史列表里的一条：同一天的几条拼成一张卡片。决定点按补记「照做了吗、后来怎么样」，
+ * 占卜和游戏点按弹出菜单；长按都弹出「拷贝结果 / 删除」
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun HistoryItem(record: DecisionRecord, isFirst: Boolean, isLast: Boolean) {
+private fun HistoryItem(record: DecisionRecord, isFirst: Boolean, isLast: Boolean, onEdit: () -> Unit) {
+    val editable = JournalStats.isDecision(record.tool)
     val palette = LocalPalette.current
     val context = LocalContext.current
     var menu by remember { mutableStateOf(false) }
@@ -222,12 +209,22 @@ private fun HistoryItem(record: DecisionRecord, isFirst: Boolean, isLast: Boolea
             .fillMaxWidth()
             .clip(shape)
             .background(palette.glassFill)
-            .combinedClickable(onClickLabel = "更多操作", onLongClickLabel = "更多操作", onLongClick = { menu = true }) { menu = true },
+            .combinedClickable(
+                onClickLabel = if (editable) "补记是否照做、后来怎么样" else "更多操作",
+                onLongClickLabel = "更多操作",
+                onLongClick = { menu = true },
+            ) {
+                if (editable) {
+                    onEdit()
+                } else {
+                    menu = true
+                }
+            },
     ) {
         Column(Modifier.padding(horizontal = 12.dp)) {
             if (!isFirst) HorizontalDivider(color = palette.subtle(0.08f))
             Column(Modifier.padding(vertical = 12.dp)) {
-                RecordRow(record.tool, record.title, record.result, record.date)
+                RecordRow(record)
                 record.detail?.let { SecondaryText("「$it」", style = Fonts.caption, modifier = Modifier.padding(start = 46.dp, top = 2.dp)) }
             }
         }

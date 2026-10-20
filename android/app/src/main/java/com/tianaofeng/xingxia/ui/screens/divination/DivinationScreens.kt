@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Book
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -34,7 +35,6 @@ import androidx.compose.material.icons.rounded.EventAvailable
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FormatQuote
-import androidx.compose.material.icons.rounded.GridOn
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.NightsStay
@@ -145,13 +145,17 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.ZoneId
 
-// region 占卜首页
+// region 问一问里的占卜区
 
+/**
+ * 「问一问」里的占卜区：求签、塔罗、答案之书、星座运势、运势详解、黄历、缘分配对、塔罗手记、择吉日。
+ * 原来的「占卜」tab 根页，现在嵌在问一问的滚动页里（命盘只留在「我的」，与 iOS 的 DivinationSection 一致）。
+ */
 @Composable
-fun DivinationHubScreen() {
+fun DivinationSection() {
     val navigator = LocalNavigator.current
     val palette = LocalPalette.current
-    Screen(title = "占卜", isRoot = true, spacing = 14.dp) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         // 摇签筒
         GlassCard(tint = hex(0xB91C1C, 0.12f), onClick = { navigator.open(Routes.STICK) }) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -196,8 +200,8 @@ fun DivinationHubScreen() {
         val tiles = listOf(
             MiniTileData(Routes.FORTUNE, Icons.Rounded.AutoAwesome, "运势详解", "五维运势与幸运指南", listOf(palette.accent, palette.accentSecondary), palette.onAccent),
             MiniTileData(Routes.ALMANAC, Icons.Rounded.CalendarMonth, "黄历", "农历 · 节气 · 宜忌", listOf(hex(0xEF4444), hex(0xF59E0B))),
-            MiniTileData(Routes.BIRTH_CHART, Icons.Rounded.GridOn, "命盘", "八字 · 星盘三巨头", listOf(hex(0xA78BFA), hex(0xEC4899))),
             MiniTileData(Routes.COMPATIBILITY, Icons.Rounded.Favorite, "缘分配对", "星座 + 生肖", listOf(hex(0xFB7185), hex(0xF43F5E))),
+            MiniTileData(Routes.TAROT_JOURNAL, Icons.Rounded.Book, "塔罗手记", "回看抽过的牌", listOf(hex(0x8B5CF6), hex(0x3B82F6))),
         )
         for (row in tiles.chunked(2)) {
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {

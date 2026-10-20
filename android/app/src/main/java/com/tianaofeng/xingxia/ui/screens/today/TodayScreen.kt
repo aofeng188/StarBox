@@ -117,6 +117,7 @@ import com.tianaofeng.xingxia.ui.screens.common.stickLevelInk
 import com.tianaofeng.xingxia.ui.screens.tools.FavoriteTool
 import com.tianaofeng.xingxia.ui.screens.records.CountdownStrip
 import com.tianaofeng.xingxia.ui.screens.records.MoodCheckInCard
+import com.tianaofeng.xingxia.ui.screens.journal.FollowUpCard
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.hex
 import com.tianaofeng.xingxia.ui.theme.toColor
@@ -161,6 +162,8 @@ fun TodayScreen() {
         val hidden = AppSettings.hiddenHomeCards
         for (card in AppSettings.homeCards.filter { it !in hidden }) {
             when (card) {
+                // 最近几天点过「就这么办」的决定，问问后来怎么样；没有要回访的就不显示
+                HomeCard.FOLLOW_UP -> FollowUpCard(today.rawValue)
                 HomeCard.FORTUNE -> FortuneHeroCard(fortune)
                 HomeCard.FAMILY -> FamilyFortuneCard(today)
                 HomeCard.ALMANAC -> AlmanacCard(fortune, almanac)
@@ -591,9 +594,10 @@ private fun QuickTool(
 fun HomeEditorScreen() {
     val palette = LocalPalette.current
     Screen(title = "编辑首页") {
-        SecondaryText("打开开关显示模块，用箭头调整顺序。", style = Fonts.footnote)
+        SecondaryText("打开开关显示模块，用箭头调整顺序。「决定回访」固定在最前，有要回访的决定时才出现。", style = Fonts.footnote)
         GlassCard(padding = 8.dp, spacing = 0.dp) {
-            val cards = AppSettings.homeCards
+            // 「决定回访」固定在最前、不能隐藏，不进编辑列表
+            val cards = AppSettings.homeCards.filter { it.isEditable }
             cards.forEachIndexed { index, card ->
                 val shown = card !in AppSettings.hiddenHomeCards
                 Row(

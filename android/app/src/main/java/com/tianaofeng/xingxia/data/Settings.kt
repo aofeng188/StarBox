@@ -3,8 +3,12 @@ package com.tianaofeng.xingxia.data
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
-/** 首页模块 */
+/**
+ * 首页模块。FOLLOW_UP（决定回访）排在最前，有需要回访的决定时自动出现、没有时不占位置，
+ * 不出现在「编辑首页」列表里，也不能隐藏；其余模块按用户的顺序和开关（与 iOS 一致）
+ */
 enum class HomeCard(val key: String, val label: String) {
+    FOLLOW_UP("followUp", "决定回访"),
     FORTUNE("fortune", "今日运势"),
     FAMILY("family", "家人今日"),
     ALMANAC("almanac", "宜忌"),
@@ -15,8 +19,18 @@ enum class HomeCard(val key: String, val label: String) {
     MOOD("mood", "心情打卡"),
     QUOTE("quote", "每日一句");
 
+    /** 「编辑首页」里可以排序、隐藏的模块 */
+    val isEditable: Boolean get() = this != FOLLOW_UP
+
     companion object {
+        /** 认不出的键（另一端或更新版本加的模块）返回 null，调用方直接忽略 */
         fun of(key: String) = entries.firstOrNull { it.key == key }
+
+        /** FOLLOW_UP 挪到最前，其余保持原顺序 */
+        fun normalized(cards: List<HomeCard>): List<HomeCard> = listOf(FOLLOW_UP) + cards.filter { it != FOLLOW_UP }.distinct()
+
+        /** 隐藏列表里去掉不能隐藏的 FOLLOW_UP */
+        fun normalizedHidden(cards: Collection<HomeCard>): Set<HomeCard> = cards.filter { it.isEditable }.toSet()
     }
 }
 
@@ -44,6 +58,8 @@ object AppSettings {
     var skyReminders by Prefs.bool("skyReminders", false)
     /** 上次导出备份的时间（毫秒），0 表示没导出过 */
     var backupLastExportAt by Prefs.long("backupLastExportAt", 0L)
+    /** 每天第一次打开 App 时展示「每日仪式」（月相、运势、一签、心情） */
+    var dailyRitualEnabled by Prefs.bool("dailyRitualEnabled", true)
 
     private val profileBirthdaysState by lazy { Prefs.bool("profileBirthdaysInCountdowns", true) }
 
@@ -57,7 +73,10 @@ object AppSettings {
             Store.onDataChanged()
         }
 
-    /** 新版本加入的模块放到默认顺序里它前一个模块的后面（如「家人今日」跟在「今日运势」后面），找不到就追加到末尾（与 iOS 一致） */
+    /**
+     * 新版本加入的模块放到默认顺序里它前一个模块的后面（如「家人今日」跟在「今日运势」后面），找不到就追加到末尾（与 iOS 一致）。
+     * 「决定回访」固定在最前，老设置里没有时自动补上
+     */
     var homeCards: List<HomeCard>
         get() {
             val cards = homeCardKeys.value.mapNotNull { HomeCard.of(it) }.distinct().toMutableList()
@@ -70,13 +89,13 @@ object AppSettings {
                     else -> cards.add(card)
                 }
             }
-            return cards
+            return HomeCard.normalized(cards)
         }
-        set(value) { homeCardKeys.value = value.map { it.key } }
+        set(value) { homeCardKeys.value = HomeCard.normalized(value).map { it.key } }
 
     var hiddenHomeCards: Set<HomeCard>
-        get() = hiddenHomeCardKeys.value.mapNotNull { HomeCard.of(it) }.toSet()
-        set(value) { hiddenHomeCardKeys.value = value.map { it.key } }
+        get() = HomeCard.normalizedHidden(hiddenHomeCardKeys.value.mapNotNull { HomeCard.of(it) })
+        set(value) { hiddenHomeCardKeys.value = HomeCard.normalizedHidden(value).map { it.key } }
 
     var favoriteTools: List<String>
         get() = favoriteToolsState.value

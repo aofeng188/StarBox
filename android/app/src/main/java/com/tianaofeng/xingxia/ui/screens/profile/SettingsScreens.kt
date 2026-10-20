@@ -289,6 +289,14 @@ fun SettingsScreen() {
             ToggleRow("摇一摇", AppSettings.shakeEnabled, "在求签、骰子、抛硬币等页面摇动手机触发") { AppSettings.shakeEnabled = it }
         }
         GlassCard {
+            SectionHeader("每日仪式")
+            ToggleRow("每日仪式", AppSettings.dailyRitualEnabled) { AppSettings.dailyRitualEnabled = it }
+            SecondaryText(
+                "每天第一次打开星匣时，先看看今天的月亮、运势、签和心情，随时可以跳过。走完仪式的日子会点亮当晚的月相，一轮集齐八种月相得一枚满月徽章。",
+                style = Fonts.caption,
+            )
+        }
+        GlassCard {
             SectionHeader("提醒")
             ToggleRow("每天推送今日运势", AppSettings.dailyReminderEnabled, "按当前档案计算，点通知直接打开运势详解") { on ->
                 if (on && !ReminderScheduler.hasPermission(context) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -351,7 +359,7 @@ fun SettingsScreen() {
         }
         GlassCard(spacing = 8.dp) {
             SectionHeader("桌面小组件与快捷方式", icon = Icons.Rounded.Widgets)
-            SecondaryText("长按桌面空白处 ▸ 小组件 ▸ 星匣，可以添加「今日运势」「星座运势」「倒数日」三种小组件；星座运势和倒数日可以选择要显示的星座或日子，之后长按小组件能重新设置。长按星匣图标还能直接打开今天吃什么、抛硬币、求签和今日运势。", style = Fonts.caption)
+            SecondaryText("长按桌面空白处 ▸ 小组件 ▸ 星匣，可以添加「今日运势」「星座运势」「倒数日」「心情」「抛硬币」五种小组件；星座运势和倒数日可以选择要显示的星座或日子，之后长按小组件能重新设置；心情和抛硬币直接在桌面上点。长按星匣图标还能直接打开今天吃什么、抛硬币、求签和今日运势。", style = Fonts.caption)
         }
         GlassCard(spacing = 8.dp) {
             SectionHeader("关于", icon = Icons.Rounded.Info)

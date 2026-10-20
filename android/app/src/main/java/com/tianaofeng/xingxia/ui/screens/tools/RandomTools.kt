@@ -98,6 +98,8 @@ import com.tianaofeng.xingxia.ui.components.ToggleRow
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.weight
+import com.tianaofeng.xingxia.ui.screens.ask.PrefillQuestion
+import com.tianaofeng.xingxia.ui.screens.ask.QuestionBanner
 import com.tianaofeng.xingxia.ui.screens.divination.GlassTextField
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.hex
@@ -155,6 +157,8 @@ fun CoinScreen() {
     }
 
     OnShake { flip() }
+    // 从问一问带着问题进来时预填进问题框
+    PrefillQuestion(question) { question = it }
 
     Screen(title = "抛硬币", horizontalAlignment = Alignment.CenterHorizontally) {
         GlassTextField(question, "想决定什么？（可选）") { question = it }
@@ -335,6 +339,7 @@ fun DiceScreen() {
     OnShake { roll() }
 
     Screen(title = "骰子", horizontalAlignment = Alignment.CenterHorizontally) {
+        QuestionBanner()
         Box(Modifier.height(50.dp), contentAlignment = Alignment.Center) {
             if (!settled || rolling) {
                 SecondaryText(if (rolling) "骰子滚动中…" else "点按桌面或摇一摇掷骰子", style = Fonts.headline)

@@ -125,6 +125,7 @@ import com.tianaofeng.xingxia.ui.components.copyText
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.weight
+import com.tianaofeng.xingxia.ui.screens.ask.QuestionBanner
 import com.tianaofeng.xingxia.ui.screens.divination.GlassTextField
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.hex
@@ -541,6 +542,7 @@ fun FingerScreen() {
 
     Screen(title = "指尖轮盘", scrollable = false) {
         if (touches.isEmpty()) {
+            QuestionBanner()
             GlassCard(padding = 14.dp) {
                 SegmentedPicker(FingerMode.entries, mode, { it.label }) { mode = it }
                 if (mode == FingerMode.SEVERAL) StepperRow("选出 $pickCount 人", pickCount, 2..8) { pickCount = it }

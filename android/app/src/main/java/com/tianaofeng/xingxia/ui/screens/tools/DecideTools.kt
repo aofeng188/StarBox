@@ -124,6 +124,7 @@ import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.copyText
 import com.tianaofeng.xingxia.ui.components.shareText
 import com.tianaofeng.xingxia.ui.components.weight
+import com.tianaofeng.xingxia.ui.screens.ask.QuestionBanner
 import com.tianaofeng.xingxia.ui.screens.divination.GlassTextField
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.hex
@@ -292,6 +293,7 @@ fun FoodScreen() {
         Screen(title = "今天吃什么", actions = {
             CircleIconButton(Icons.Rounded.PanTool, "黑名单（${Store.blockedFoods.items.size}）") { showBlocked = true }
         }) {
+            QuestionBanner()
             SegmentedPicker(FoodSource.entries, source, { it.label }) {
                 source = it
                 result = null
@@ -647,6 +649,7 @@ fun WheelScreen() {
                 }
             }
         }) {
+            QuestionBanner()
             if (template == null) {
                 EmptyHint(Icons.Rounded.Casino, "还没有转盘", "点右上角新建一个吧")
                 return@Screen

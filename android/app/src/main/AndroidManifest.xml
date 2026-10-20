@@ -98,5 +98,18 @@
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/countdown_widget_info" />
         </receiver>
+        <!-- 可以点的小组件：点表情记心情、点硬币抛一次（Glance 的 actionRunCallback，在 App 进程里写数据） -->
+        <receiver android:name=".system.MoodWidgetReceiver" android:exported="true" android:label="心情">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/mood_widget_info" />
+        </receiver>
+        <receiver android:name=".system.CoinWidgetReceiver" android:exported="true" android:label="抛硬币">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/coin_widget_info" />
+        </receiver>
     </application>
 </manifest>

@@ -67,7 +67,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        // 离开 App 时刷新小组件（主题、档案、日期都可能变了）
+        // 退到后台时收起「就这么办 / 再想想」浮层（收起不算表态）
+        Store.lastDecision = null
+        // 离开 App 时刷新小组件（主题、档案、日期、心情都可能变了）
         Widgets.updateAll(this)
     }
 

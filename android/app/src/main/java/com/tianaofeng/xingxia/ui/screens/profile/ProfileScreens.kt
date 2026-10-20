@@ -112,6 +112,7 @@ import com.tianaofeng.xingxia.ui.screens.common.ZodiacBadge
 import com.tianaofeng.xingxia.ui.screens.divination.CompatibilityShareButton
 import com.tianaofeng.xingxia.ui.screens.divination.GlassTextField
 import com.tianaofeng.xingxia.ui.screens.divination.ShareSide
+import com.tianaofeng.xingxia.ui.screens.ritual.MoonBadgeCard
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.ThemeManager
 import com.tianaofeng.xingxia.ui.theme.color
@@ -168,17 +169,18 @@ fun MeScreen() {
             }
         }
 
+        // 月相徽章：走完每日仪式的日子点亮当晚的月相
+        MoonBadgeCard()
+
         GlassCard(padding = 6.dp, spacing = 0.dp) {
             MeRow(Icons.Rounded.People, listOf(hex(0x60A5FA), hex(0x6366F1)), "档案管理", "${profiles.size} 个") { navigator.open(Routes.PROFILES) }
             RowDivider()
             MeRow(Icons.Rounded.GridOn, listOf(hex(0xA78BFA), hex(0xEC4899)), "我的命盘", "八字 · 星盘") { navigator.open(Routes.BIRTH_CHART) }
-            RowDivider()
-            MeRow(Icons.Rounded.Favorite, listOf(hex(0xFB7185), hex(0xF43F5E)), "缘分配对", "星座 · 生肖") { navigator.open(Routes.COMPATIBILITY) }
         }
         GlassCard(padding = 6.dp, spacing = 0.dp) {
             MeRow(Icons.Rounded.Palette, palette.spectrum.take(2), "主题与外观", ThemeManager.resolve(java.time.LocalDateTime.now(), Store.birth, false).first.name) { navigator.open(Routes.THEMES) }
             RowDivider()
-            MeRow(Icons.Rounded.Settings, listOf(hex(0x94A3B8), hex(0x475569)), "设置", "震动 · 摇一摇 · 动画") { navigator.open(Routes.SETTINGS) }
+            MeRow(Icons.Rounded.Settings, listOf(hex(0x94A3B8), hex(0x475569)), "设置", "音效 · 震动 · 提醒") { navigator.open(Routes.SETTINGS) }
             RowDivider()
             MeRow(Icons.Rounded.SettingsBackupRestore, listOf(hex(0x2DD4BF), hex(0x0EA5E9)), "数据备份", backupValue()) { navigator.open(Routes.BACKUP) }
         }

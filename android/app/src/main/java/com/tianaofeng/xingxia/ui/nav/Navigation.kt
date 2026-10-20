@@ -20,9 +20,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.CalendarMonth
-import androidx.compose.material.icons.rounded.GridView
-import androidx.compose.material.icons.rounded.NightsStay
+import androidx.compose.material.icons.rounded.Book
+import androidx.compose.material.icons.rounded.QuestionAnswer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,20 +43,25 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.tianaofeng.xingxia.core.DayKey
+import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.Fonts
 import com.tianaofeng.xingxia.ui.components.Haptics
 import com.tianaofeng.xingxia.ui.components.LocalFavoriteId
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.weight
+import com.tianaofeng.xingxia.ui.screens.ask.AskScreen
+import com.tianaofeng.xingxia.ui.screens.ask.DecisionPrompt
 import com.tianaofeng.xingxia.ui.screens.divination.AlmanacDetailScreen
 import com.tianaofeng.xingxia.ui.screens.divination.AnswerBookScreen
 import com.tianaofeng.xingxia.ui.screens.divination.AuspiciousDaysScreen
-import com.tianaofeng.xingxia.ui.screens.divination.DivinationHubScreen
 import com.tianaofeng.xingxia.ui.screens.divination.FortuneDetailScreen
 import com.tianaofeng.xingxia.ui.screens.divination.HoroscopeScreen
 import com.tianaofeng.xingxia.ui.screens.divination.StickScreen
 import com.tianaofeng.xingxia.ui.screens.divination.TarotJournalScreen
 import com.tianaofeng.xingxia.ui.screens.divination.TarotScreen
+import com.tianaofeng.xingxia.ui.screens.journal.AnnualReviewScreen
+import com.tianaofeng.xingxia.ui.screens.journal.JournalScreen
 import com.tianaofeng.xingxia.ui.screens.profile.BackupScreen
 import com.tianaofeng.xingxia.ui.screens.profile.BirthChartScreen
 import com.tianaofeng.xingxia.ui.screens.profile.CompatibilityScreen
@@ -71,22 +75,21 @@ import com.tianaofeng.xingxia.ui.screens.records.CountdownListScreen
 import com.tianaofeng.xingxia.ui.screens.records.FortuneCalendarScreen
 import com.tianaofeng.xingxia.ui.screens.records.MoodScreen
 import com.tianaofeng.xingxia.ui.screens.records.HistoryScreen
-import com.tianaofeng.xingxia.ui.screens.records.RecordsHubScreen
+import com.tianaofeng.xingxia.ui.screens.ritual.DailyRitualHost
 import com.tianaofeng.xingxia.ui.screens.today.HomeEditorScreen
 import com.tianaofeng.xingxia.ui.screens.today.SkyCalendarScreen
 import com.tianaofeng.xingxia.ui.screens.today.TodayScreen
 import com.tianaofeng.xingxia.ui.screens.tools.FavoriteToolsScreen
 import com.tianaofeng.xingxia.ui.screens.tools.ToolKind
 import com.tianaofeng.xingxia.ui.screens.tools.ToolScreen
-import com.tianaofeng.xingxia.ui.screens.tools.ToolsHubScreen
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 
 /** App 内所有可直接跳转的页面 */
 object Routes {
+    // 底栏四个 tab：今日 · 问一问 · 日记 · 我的（原「占卜」「百宝」并进问一问，「记录」换成日记）
     const val TODAY = "today"
-    const val DIVINATION = "divination"
-    const val TOOLS = "tools"
-    const val RECORDS = "records"
+    const val ASK = "ask"
+    const val JOURNAL = "journal"
     const val ME = "me"
 
     const val FORTUNE = "fortune"
@@ -120,7 +123,16 @@ object Routes {
     fun profileEditor(id: String? = null, onboarding: Boolean = false) = "profileEditor?id=${id ?: ""}&onboarding=$onboarding"
     fun comingSoon(title: String) = "comingSoon/${Uri.encode(title)}"
 
-    /** 深链接：xingxia://tool/coin、xingxia://fortune 等（与 iOS 版一致） */
+    /** 年度回顾（日记） */
+    fun annualReview(year: Int = reviewYear()) = "annualReview/$year"
+
+    /** 默认回顾哪一年：1 月看刚过去的一年，其余月份看今年（与 iOS 的 AppRoute.reviewYear 一致） */
+    fun reviewYear(today: DayKey = DayKey.today): Int = if (today.month == 1) today.year - 1 else today.year
+
+    /** 深链接里的年份缺省或不在 1900…2200 时用默认年份 */
+    private fun reviewYearOf(segment: String?): Int = segment?.toIntOrNull()?.takeIf { it in 1900..2200 } ?: reviewYear()
+
+    /** 深链接：xingxia://tool/coin、xingxia://fortune、xingxia://review/2026 等（与 iOS 版一致） */
     fun fromUri(uri: Uri?): String? {
         if (uri == null || uri.scheme != "xingxia") return null
         val first = uri.pathSegments.firstOrNull()
@@ -140,6 +152,7 @@ object Routes {
             "sky" -> SKY_CALENDAR
             "tarot-journal" -> TAROT_JOURNAL
             "backup" -> BACKUP
+            "review" -> annualReview(reviewYearOf(first))
             else -> null
         }
     }
@@ -169,9 +182,8 @@ private data class TabItem(val route: String, val label: String, val icon: Image
 
 private val tabs = listOf(
     TabItem(Routes.TODAY, "今日", Icons.Rounded.AutoAwesome),
-    TabItem(Routes.DIVINATION, "占卜", Icons.Rounded.NightsStay),
-    TabItem(Routes.TOOLS, "百宝", Icons.Rounded.GridView),
-    TabItem(Routes.RECORDS, "记录", Icons.Rounded.CalendarMonth),
+    TabItem(Routes.ASK, "问一问", Icons.Rounded.QuestionAnswer),
+    TabItem(Routes.JOURNAL, "日记", Icons.Rounded.Book),
     TabItem(Routes.ME, "我的", Icons.Rounded.AccountCircle),
 )
 
@@ -188,6 +200,11 @@ fun AppNavigation(pendingLink: MutableState<String?>) {
         navigator.open(link)
     }
 
+    // 切换 tab、进出页面时收起决策浮层（收起不算表态）
+    LaunchedEffect(backStack?.id) {
+        if (Store.lastDecision != null) Store.lastDecision = null
+    }
+
     CompositionLocalProvider(LocalNavigator provides navigator) {
         Box(Modifier.fillMaxSize()) {
             NavHost(
@@ -200,9 +217,8 @@ fun AppNavigation(pendingLink: MutableState<String?>) {
                 popExitTransition = { fadeOut() + slideOutHorizontally { it / 6 } },
             ) {
                 composable(Routes.TODAY) { TodayScreen() }
-                composable(Routes.DIVINATION) { DivinationHubScreen() }
-                composable(Routes.TOOLS) { ToolsHubScreen() }
-                composable(Routes.RECORDS) { RecordsHubScreen() }
+                composable(Routes.ASK) { AskScreen() }
+                composable(Routes.JOURNAL) { JournalScreen() }
                 composable(Routes.ME) { MeScreen() }
 
                 composable(Routes.FORTUNE) { FortuneDetailScreen() }
@@ -244,11 +260,19 @@ fun AppNavigation(pendingLink: MutableState<String?>) {
                 composable("comingSoon/{title}") { entry ->
                     ComingSoonScreen(entry.arguments?.getString("title") ?: "")
                 }
+                composable("annualReview/{year}") { entry ->
+                    AnnualReviewScreen(entry.arguments?.getString("year")?.toIntOrNull() ?: Routes.reviewYear())
+                }
             }
 
-            if (tabs.any { it.route == currentRoute }) {
+            val showsTabBar = tabs.any { it.route == currentRoute }
+            if (showsTabBar) {
                 TabBar(currentRoute, Modifier.align(Alignment.BottomCenter)) { navigator.switchTab(it) }
             }
+            // 刚记下的决定：「就这么办 / 再想想」，底栏可见时浮在底栏上方
+            DecisionPrompt(tabBarVisible = showsTabBar, modifier = Modifier.align(Alignment.BottomCenter))
+            // 每天第一次打开时的仪式（全屏，自己判断要不要显示）
+            DailyRitualHost()
         }
     }
 }

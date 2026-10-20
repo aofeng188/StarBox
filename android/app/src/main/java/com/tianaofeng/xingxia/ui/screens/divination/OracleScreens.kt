@@ -143,6 +143,9 @@ import com.tianaofeng.xingxia.ui.components.starPath
 import com.tianaofeng.xingxia.ui.components.weight
 import com.tianaofeng.xingxia.ui.nav.LocalNavigator
 import com.tianaofeng.xingxia.ui.nav.Routes
+import com.tianaofeng.xingxia.ui.screens.ask.AskHandoff
+import com.tianaofeng.xingxia.ui.screens.ask.PrefillQuestion
+import com.tianaofeng.xingxia.ui.screens.ask.QuestionBanner
 import com.tianaofeng.xingxia.ui.screens.common.StickTubeIllustration
 import com.tianaofeng.xingxia.ui.screens.common.TarotBackMini
 import com.tianaofeng.xingxia.ui.screens.common.TarotCardBack
@@ -369,6 +372,7 @@ fun StickScreen() {
             }
         } else {
             Screen(title = "求签", scrollable = false, horizontalAlignment = Alignment.CenterHorizontally) {
+                QuestionBanner()
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(if (phase == StickPhase.DROPPED) "签已落地" else "心中默念所求之事", style = Fonts.serif(26, bold = true))
                     SecondaryText(
@@ -1110,6 +1114,13 @@ fun TarotScreen() {
         }
     }
 
+    // 从问一问带着问题进来时预填进问题框；推荐了具体牌阵时预选
+    PrefillQuestion(question) { question = it }
+    LaunchedEffect(Unit) {
+        val pending = AskHandoff.takeTarotSpread()
+        if (pending != null && phase == TarotPhase.SETUP) spread = TarotSpread.of(pending)
+    }
+
     Box(Modifier.fillMaxSize()) {
         when (phase) {
             TarotPhase.SETUP -> Screen(
@@ -1448,6 +1459,8 @@ fun AnswerBookScreen() {
     // 分享卡预览弹出时不响应摇一摇
     val sharing = remember { mutableStateOf(false) }
     OnShake(enabled = !isOpen && !sharing.value) { open() }
+    // 从问一问带着问题进来时预填进问题框
+    PrefillQuestion(question) { question = it }
 
     Screen(
         title = "答案之书",

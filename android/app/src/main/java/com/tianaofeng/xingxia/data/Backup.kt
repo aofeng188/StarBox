@@ -2,6 +2,7 @@ package com.tianaofeng.xingxia.data
 
 import com.tianaofeng.xingxia.core.CountdownKind
 import com.tianaofeng.xingxia.core.DayKey
+import com.tianaofeng.xingxia.core.MoonInfo
 import com.tianaofeng.xingxia.ui.screens.tools.FavoriteTool
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -25,6 +26,7 @@ enum class BackupCategory(val key: String, val label: String, val unit: String) 
     STICK_DRAWS("stickDraws", "每日一签", "条"),
     TAROT_READINGS("tarotReadings", "塔罗手记", "次"),
     MOODS("moods", "心情打卡", "天"),
+    RITUAL_DAYS("ritualDays", "每日仪式", "天"),
     COUNTDOWNS("countdowns", "倒数日", "个"),
     WHEEL_TEMPLATES("wheelTemplates", "转盘", "个"),
     FOOD_MENUS("foodMenus", "菜单", "个"),
@@ -43,6 +45,7 @@ enum class BackupCategory(val key: String, val label: String, val unit: String) 
             STICK_DRAWS -> Store.stickDraws.items.size
             TAROT_READINGS -> Store.tarotReadings.items.size
             MOODS -> Store.moods.items.size
+            RITUAL_DAYS -> Store.ritualDays.items.size
             COUNTDOWNS -> Store.countdowns.items.size
             WHEEL_TEMPLATES -> Store.wheels.items.size
             FOOD_MENUS -> Store.foodMenus.items.size
@@ -159,6 +162,11 @@ object Backup {
                         put("result", r.result)
                         put("detail", r.detail)
                         put("date", r.date)
+                        // 第三批追加的可选字段，没有值时写 null（followedUpAt 为毫秒，与 iOS 一致）
+                        put("question", r.question)
+                        put("adopted", r.adopted)
+                        put("satisfaction", r.satisfaction)
+                        put("followedUpAt", r.followedUpAt)
                     }
                 }
             }
@@ -191,6 +199,16 @@ object Backup {
                         put("note", m.note)
                         putJsonArray("tags") { m.tags.forEach { add(it) } }
                         put("date", m.date)
+                    }
+                }
+            }
+            putJsonArray(BackupCategory.RITUAL_DAYS.key) {
+                for (r in Store.ritualDays.items.sortedBy { it.dayKey }) {
+                    addJsonObject {
+                        put("dayKey", r.dayKey)
+                        put("completedAt", r.completedAt)
+                        put("skipped", r.skipped)
+                        put("moonPhase", r.moonPhase)
                     }
                 }
             }
@@ -382,11 +400,12 @@ object Backup {
             AppSettings.favoriteTools = (if (mode == BackupMode.MERGE) AppSettings.favoriteTools + valid else valid).distinct()
         }
         if (mode != BackupMode.REPLACE) return
+        // 认不出的模块键（另一端或更新版本加的）直接忽略；「决定回访」固定在最前、不能隐藏
         fields.strings("homeCards")?.let { keys ->
-            AppSettings.homeCards = withMissingCards(keys.mapNotNull { HomeCard.of(it) }.distinct())
+            AppSettings.homeCards = HomeCard.normalized(withMissingCards(keys.mapNotNull { HomeCard.of(it) }.distinct()))
         }
         fields.strings("hiddenHomeCards")?.let { keys ->
-            AppSettings.hiddenHomeCards = keys.mapNotNull { HomeCard.of(it) }.toSet()
+            AppSettings.hiddenHomeCards = HomeCard.normalizedHidden(keys.mapNotNull { HomeCard.of(it) })
         }
     }
 
@@ -492,6 +511,7 @@ private class BackupRestorer(private val mode: BackupMode) {
     private var stickDraws: List<StickDraw>? = null
     private var tarotReadings: List<TarotReading>? = null
     private var moods: List<MoodEntry>? = null
+    private var ritualDays: List<RitualDay>? = null
     private var countdowns: List<Countdown>? = null
     private var wheels: List<WheelTemplate>? = null
     private var foodMenus: List<FoodMenu>? = null
@@ -509,6 +529,7 @@ private class BackupRestorer(private val mode: BackupMode) {
         file.sections[BackupCategory.STICK_DRAWS]?.let { stickDraws(it) }
         file.sections[BackupCategory.TAROT_READINGS]?.let { tarotReadings(it) }
         file.sections[BackupCategory.MOODS]?.let { moods(it) }
+        file.sections[BackupCategory.RITUAL_DAYS]?.let { ritualDays(it) }
         file.sections[BackupCategory.COUNTDOWNS]?.let { countdowns(it) }
         file.sections[BackupCategory.WHEEL_TEMPLATES]?.let { wheelTemplates(it) }
         file.sections[BackupCategory.FOOD_MENUS]?.let { foodMenus(it) }
@@ -526,6 +547,7 @@ private class BackupRestorer(private val mode: BackupMode) {
         stickDraws?.let { list -> Store.stickDraws.update { list } }
         tarotReadings?.let { list -> Store.tarotReadings.update { list } }
         moods?.let { list -> Store.moods.update { list } }
+        ritualDays?.let { list -> Store.ritualDays.update { list } }
         countdowns?.let { list -> Store.countdowns.update { list } }
         wheels?.let { list -> Store.wheels.update { list } }
         foodMenus?.let { list -> Store.foodMenus.update { list } }
@@ -624,6 +646,11 @@ private class BackupRestorer(private val mode: BackupMode) {
                 result = f.string("result") ?: "",
                 detail = f.string("detail"),
                 date = f.date("date") ?: now,
+                // 老备份没有这几个字段，保持 null
+                question = f.string("question")?.takeIf { it.isNotEmpty() },
+                adopted = f.bool("adopted"),
+                satisfaction = f.int("satisfaction")?.coerceIn(-1, 1),
+                followedUpAt = f.date("followedUpAt"),
             )
             added(BackupCategory.DECISION_RECORDS)
         }
@@ -698,6 +725,29 @@ private class BackupRestorer(private val mode: BackupMode) {
             added(BackupCategory.MOODS)
         }
         moods = old + added
+    }
+
+    private fun ritualDays(items: List<BackupFields>) {
+        val old = existing(Store.ritualDays.items)
+        val days = old.map { it.dayKey }.toHashSet()
+        val added = mutableListOf<RitualDay>()
+        for (f in items) {
+            // 每天一条，按 dayKey 去重
+            val day = f.dayKey("dayKey")
+            if (day == null || !days.add(day.rawValue)) {
+                skipped()
+                continue
+            }
+            added += RitualDay(
+                dayKey = day.rawValue,
+                completedAt = f.date("completedAt") ?: day.noon.toEpochMilli(),
+                skipped = f.bool("skipped") ?: false,
+                // 缺月相时按那天晚上的月相推算
+                moonPhase = f.int("moonPhase")?.coerceIn(0, 7) ?: MoonInfo.on(day).name.ordinal,
+            )
+            added(BackupCategory.RITUAL_DAYS)
+        }
+        ritualDays = (old + added).sortedBy { it.dayKey }
     }
 
     /** 倒数日的内容特征：重复的日子只看月日（农历看农历月日），不重复的看完整日期 */

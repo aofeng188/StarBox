@@ -21,18 +21,14 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.RemoveCircleOutline
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Construction
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -45,7 +41,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.ui.components.CircleIconButton
-import com.tianaofeng.xingxia.ui.components.EmptyHint
 import com.tianaofeng.xingxia.ui.components.Fonts
 import com.tianaofeng.xingxia.ui.components.GlassCard
 import com.tianaofeng.xingxia.ui.components.Haptics
@@ -59,7 +54,6 @@ import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.weight
 import com.tianaofeng.xingxia.ui.nav.LocalNavigator
 import com.tianaofeng.xingxia.ui.nav.Routes
-import com.tianaofeng.xingxia.ui.screens.divination.GlassTextField
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.hex
 
@@ -81,52 +75,39 @@ fun ToolScreen(kind: ToolKind) {
     }
 }
 
+/** 收藏的工具横排一行（问一问顶部，与 iOS 的 FavoriteToolsRow 一致）。没有收藏时不占位置 */
 @Composable
-fun ToolsHubScreen() {
-    var search by rememberSaveable { mutableStateOf("") }
+fun FavoriteToolsRow() {
     val navigator = LocalNavigator.current
-    // 收藏里可能有答案之书（"answers"），它不在百宝箱里
+    // 收藏里可能有答案之书（"answers"），它不在工具列表里
     val favorites = AppSettings.favoriteTools.mapNotNull { FavoriteTool.of(it) }
+    if (favorites.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionHeader("我的收藏", icon = Icons.Rounded.Star) {
+            TextAction("管理") { navigator.open(Routes.FAVORITES) }
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            for (tool in favorites) FavoritePill(tool)
+        }
+    }
+}
 
-    Screen(title = "百宝箱", isRoot = true, spacing = 22.dp) {
-        GlassTextField(search, "搜索工具") { search = it }
-        if (search.isBlank()) {
-            if (favorites.isNotEmpty()) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SectionHeader("我的收藏", icon = Icons.Rounded.Star) {
-                        TextAction("管理") { navigator.open(Routes.FAVORITES) }
-                    }
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        for (tool in favorites) FavoritePill(tool)
-                    }
-                }
-            }
-            for (category in ToolCategory.entries) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SectionHeader(category.label, icon = category.icon)
-                    val tools = ToolKind.inCategory(category)
-                    val paired = if (tools.size % 2 == 0) tools else tools.dropLast(1)
-                    for (row in paired.chunked(2)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            for (tool in row) ToolTile(tool, Modifier.weight(1f))
-                        }
-                    }
-                    // 单数时最后一个做成通栏
-                    if (tools.size % 2 == 1) WideToolTile(tools.last())
-                }
-            }
-        } else {
-            val query = search.trim()
-            val matches = ToolKind.entries.filter { query in it.label || query in it.subtitle || query in it.keywords }
-            if (matches.isEmpty()) {
-                EmptyHint(Icons.Rounded.Search, "没有找到「$query」", "试试「吃」「硬币」「骰子」等关键词")
-            } else {
-                for (row in matches.chunked(2)) {
+/** 全部工具，按「帮我决定 / 随机一下 / 聚会时光」分区排成格子，长按可收藏到首页（原「百宝」tab，现在嵌在问一问里） */
+@Composable
+fun ToolCategorySections() {
+    Column(verticalArrangement = Arrangement.spacedBy(22.dp)) {
+        for (category in ToolCategory.entries) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SectionHeader(category.label, icon = category.icon)
+                val tools = ToolKind.inCategory(category)
+                val paired = if (tools.size % 2 == 0) tools else tools.dropLast(1)
+                for (row in paired.chunked(2)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         for (tool in row) ToolTile(tool, Modifier.weight(1f))
-                        if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
                 }
+                // 单数时最后一个做成通栏
+                if (tools.size % 2 == 1) WideToolTile(tools.last())
             }
         }
         SecondaryText("长按工具或在工具页右上角点星标，可以收藏到首页", style = Fonts.caption)

@@ -370,14 +370,20 @@ fun ShareCardButton(title: String, tag: String, open: MutableState<Boolean>, car
 }
 
 @Composable
-fun ShareCardDialog(title: String, tag: String, onDismiss: () -> Unit, card: @Composable (ShareCardStyle) -> Unit) {
+fun ShareCardDialog(
+    title: String,
+    tag: String,
+    onDismiss: () -> Unit,
+    initialRatio: ShareCardRatio = ShareCardRatio.PORTRAIT,
+    card: @Composable (ShareCardStyle) -> Unit,
+) {
     val context = LocalContext.current
     val view = LocalView.current
     val scope = rememberCoroutineScope()
     val powerSave = rememberPowerSaveMode()
     // 与 App 当前用的主题一致（含省电模式下的「黑洞」）
     val theme = remember(powerSave) { ThemeManager.resolve(LocalDateTime.now(), Store.birth, powerSave).first }
-    var ratio by rememberSaveable { mutableStateOf(ShareCardRatio.PORTRAIT) }
+    var ratio by rememberSaveable { mutableStateOf(initialRatio) }
     val style = ShareCardStyle(ratio, theme)
     val layer = rememberGraphicsLayer()
     var busy by remember { mutableStateOf(false) }
