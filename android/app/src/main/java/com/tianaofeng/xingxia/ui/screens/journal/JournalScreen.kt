@@ -91,6 +91,7 @@ import com.tianaofeng.xingxia.ui.components.TagChip
 import com.tianaofeng.xingxia.ui.components.ToolIcon
 import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.rememberToday
+import com.tianaofeng.xingxia.ui.components.rootBottomPadding
 import com.tianaofeng.xingxia.ui.components.weight
 import com.tianaofeng.xingxia.ui.nav.LocalNavigator
 import com.tianaofeng.xingxia.ui.nav.Routes
@@ -212,7 +213,7 @@ fun JournalScreen() {
             Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            contentPadding = PaddingValues(bottom = 96.dp),
+            contentPadding = PaddingValues(bottom = rootBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             if (today.month == 12 || today.month == 1) {
@@ -300,9 +301,10 @@ private fun MonthSwitcher(month: DayKey, isCurrentMonth: Boolean, onToday: () ->
 @Composable
 private fun AnnualReviewBanner(year: Int, isDecember: Boolean, onClick: () -> Unit) {
     val palette = LocalPalette.current
-    GlassCard(onClick = onClick, tint = hex(0xF59E0B).copy(alpha = 0.12f)) {
+    val (amber, red) = palette.identity(listOf(hex(0xF59E0B), hex(0xEF4444)))
+    GlassCard(onClick = onClick, tint = amber.copy(alpha = 0.12f)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            GlowIcon(Icons.Rounded.AutoAwesome, hex(0xF59E0B), hex(0xEF4444), 46.dp)
+            GlowIcon(Icons.Rounded.AutoAwesome, amber, red, 46.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("$year 年度回顾", style = Fonts.headline, color = palette.text)
                 SecondaryText(
@@ -430,7 +432,7 @@ private fun JournalShortcuts(today: DayKey) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        ToolIcon(shortcut.icon, shortcut.colors, 44.dp)
+                        ToolIcon(shortcut.icon, palette.identity(shortcut.colors), 44.dp)
                         Text(shortcut.name, style = Fonts.caption, color = palette.text, maxLines = 1)
                     }
                 }
@@ -600,7 +602,7 @@ private fun DecisionLine(record: DecisionRecord, onEdit: (DecisionRecord) -> Uni
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        ToolIcon(icon, colors, 30.dp)
+        ToolIcon(icon, palette.identity(colors), 30.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SecondaryText("${DateText.time(Instant.ofEpochMilli(record.date))} · $name", style = Fonts.caption)
             Text(record.result, style = Fonts.subheadline.weight(FontWeight.SemiBold), color = palette.text, maxLines = 3)
@@ -627,7 +629,7 @@ private fun StickLine(draw: StickDraw, forName: String?) {
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        ToolIcon(Icons.Rounded.LocalFireDepartment, listOf(hex(0xFF8A3D), hex(0xE11D48)), 30.dp)
+        ToolIcon(Icons.Rounded.LocalFireDepartment, palette.identity(listOf(hex(0xFF8A3D), hex(0xE11D48))), 30.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SecondaryText(
                 "${DateText.time(Instant.ofEpochMilli(draw.date))} · 今日一签" + (forName?.let { " · 为$it" } ?: ""),
@@ -663,7 +665,7 @@ private fun TarotLine(reading: TarotReading, onClick: () -> Unit) {
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        ToolIcon(Icons.Rounded.Style, listOf(hex(0x8B5CF6), hex(0x3B82F6)), 30.dp)
+        ToolIcon(Icons.Rounded.Style, palette.identity(listOf(hex(0x8B5CF6), hex(0x3B82F6))), 30.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SecondaryText("${DateText.time(Instant.ofEpochMilli(reading.date))} · 塔罗 · ${spread.label}", style = Fonts.caption)
             Text(

@@ -1,16 +1,21 @@
 package com.tianaofeng.xingxia.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -18,6 +23,9 @@ import com.tianaofeng.xingxia.core.SeededGenerator
 import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.ThemePalette
+import dev.chrisbanes.haze.HazeDefaults
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.delay
 import kotlin.math.cos
 import kotlin.math.max
@@ -53,6 +61,22 @@ fun CosmicBackground(modifier: Modifier = Modifier) {
         drawRect(Brush.verticalGradient(listOf(palette.backgroundTop, palette.backgroundBottom)))
         drawNebula(time, palette)
         if (palette.isDark) StarField.draw(this, time, palette) else StarField.drawDaylight(this, time, palette)
+    }
+}
+
+/**
+ * 星空背景 + 前景：系统支持时背景同时是玻璃的模糊来源，前景里的 [glass] 会把它磨砂。
+ * 模糊用 RenderEffect，Android 12 起才有；Haze 默认从 12L（API 32）起开，12 上有 RenderNode 不刷新的已知问题，这里沿用它的判断。
+ * 省电模式下不模糊，玻璃保持半透明。根布局和全屏弹层（掷筊、每日仪式、分享卡、月相徽章）都用它，各自模糊自己的背景
+ */
+@Composable
+fun CosmicBackdrop(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+    val blur = HazeDefaults.blurEnabled() && !rememberPowerSaveMode()
+    val view = LocalView.current
+    val backdrop = remember(view) { GlassBackdrop(HazeState(), view) }
+    Box(modifier.fillMaxSize()) {
+        CosmicBackground(if (blur) Modifier.hazeSource(backdrop.state) else Modifier)
+        CompositionLocalProvider(LocalGlassBackdrop provides if (blur) backdrop else null) { content() }
     }
 }
 

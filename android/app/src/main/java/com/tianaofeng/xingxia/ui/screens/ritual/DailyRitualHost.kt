@@ -101,7 +101,7 @@ import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.BigActionButton
 import com.tianaofeng.xingxia.ui.components.ColorDotChip
-import com.tianaofeng.xingxia.ui.components.CosmicBackground
+import com.tianaofeng.xingxia.ui.components.CosmicBackdrop
 import com.tianaofeng.xingxia.ui.components.Flow
 import com.tianaofeng.xingxia.ui.components.Fonts
 import com.tianaofeng.xingxia.ui.components.GlassButton
@@ -305,8 +305,8 @@ private fun RitualDialog(day: DayKey, onFinish: (String?) -> Unit) {
         onDismissRequest = { finish(skipped = pagerState.currentPage < pages.lastIndex) },
         properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false),
     ) {
-        Box(Modifier.fillMaxSize()) {
-            CosmicBackground()
+        // 全屏弹层自己的星空背景，里面的玻璃模糊它（不是被盖住的主窗口）
+        CosmicBackdrop {
             Column(Modifier.fillMaxSize()) {
                 Box(
                     Modifier
@@ -613,7 +613,7 @@ private fun RitualStickPage(stick: FortuneStick?, onDraw: () -> Unit) {
                 Modifier
                     .size(100.dp, 116.dp)
                     .clip(RoundedCornerShape(24.dp))
-                    .background(Brush.verticalGradient(listOf(hex(0xB91C1C), hex(0x7F1D1D))))
+                    .background(Brush.verticalGradient(palette.identity(listOf(hex(0xB91C1C), hex(0x7F1D1D)))))
                     .clearAndSetSemantics { },
                 contentAlignment = Alignment.Center,
             ) {
@@ -622,7 +622,7 @@ private fun RitualStickPage(stick: FortuneStick?, onDraw: () -> Unit) {
                     null,
                     Modifier
                         .size(48.dp)
-                        .gradientTint(Brush.verticalGradient(listOf(hex(0xFFD166), hex(0xFF8A3D)))),
+                        .gradientTint(Brush.verticalGradient(palette.identity(listOf(hex(0xFFD166), hex(0xFF8A3D))))),
                     tint = Color.White,
                 )
             }
@@ -691,7 +691,7 @@ private fun RitualSummaryPage(day: DayKey, moon: MoonInfo, fortune: DailyFortune
                     null,
                     Modifier
                         .size(28.dp)
-                        .gradientTint(Brush.verticalGradient(listOf(hex(0xFF8A3D), hex(0xE11D48)))),
+                        .gradientTint(Brush.verticalGradient(palette.identity(listOf(hex(0xFF8A3D), hex(0xE11D48))))),
                     tint = Color.White,
                 )
             }

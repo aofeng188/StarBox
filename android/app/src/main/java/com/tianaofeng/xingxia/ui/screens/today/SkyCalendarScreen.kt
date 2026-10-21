@@ -350,7 +350,7 @@ private fun SkyEventRow(event: SkyEvent, today: DayKey, modifier: Modifier) {
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        ToolIcon(skyEventIcon(event.kind), skyEventColors(event.kind), 40.dp)
+        ToolIcon(skyEventIcon(event.kind), palette.identity(skyEventColors(event.kind)), 40.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(event.title, style = Fonts.headline, modifier = Modifier.weight(1f))

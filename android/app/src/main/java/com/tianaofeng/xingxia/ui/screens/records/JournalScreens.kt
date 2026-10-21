@@ -9,7 +9,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -133,6 +132,7 @@ import com.tianaofeng.xingxia.ui.components.SegmentedPicker
 import com.tianaofeng.xingxia.ui.components.TagChip
 import com.tianaofeng.xingxia.ui.components.TextAction
 import com.tianaofeng.xingxia.ui.components.ToggleRow
+import com.tianaofeng.xingxia.ui.components.fadingHorizontalScroll
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.rememberToday
@@ -142,6 +142,7 @@ import com.tianaofeng.xingxia.ui.nav.Routes
 import com.tianaofeng.xingxia.ui.screens.common.stickLevelColor
 import com.tianaofeng.xingxia.ui.screens.divination.GlassTextField
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
+import com.tianaofeng.xingxia.ui.theme.ThemePalette
 import com.tianaofeng.xingxia.ui.theme.hex
 import com.tianaofeng.xingxia.ui.theme.readableForeground
 import kotlinx.coroutines.delay
@@ -199,7 +200,7 @@ fun MoodPicker(selected: Int?, size: Dp = 46.dp, onSelect: (MoodLevel) -> Unit) 
                         .alpha(if (selected == null || isSelected) 1f else 0.5f),
                     contentAlignment = Alignment.Center,
                 ) { Text(mood.emoji, style = TextStyle(fontSize = (size.value * 0.55f).sp)) }
-                Text(mood.label, style = Fonts.caption2, color = if (isSelected) palette.text else palette.secondaryText)
+                Text(mood.label, style = Fonts.caption2, color = if (isSelected) palette.text else palette.labelText)
             }
         }
     }
@@ -548,21 +549,27 @@ private fun MonthHeatmap(map: Map<Int, Int>, today: DayKey, month: YearMonth, on
                 if (mood != null) {
                     Text(mood.emoji, style = Fonts.caption)
                 } else {
-                    SecondaryText("$day", style = Fonts.caption2, modifier = Modifier.alpha(if (isFuture) 0.5f else 1f))
+                    Text("$day", style = Fonts.caption2, color = palette.labelText, modifier = Modifier.alpha(if (isFuture) 0.5f else 1f))
                 }
             }
         }
-        SecondaryText("点过去的日子可以补记心情", style = Fonts.caption2)
+        Text("点过去的日子可以补记心情", style = Fonts.caption2, color = palette.labelText)
     }
 }
+
+/**
+ * 心情名称、星期、日期这类压在彩色光斑上的小字：浅色模式下次要文字色还偏淡，再深一档（与 iOS 一致）；深色模式照旧
+ */
+private val ThemePalette.labelText: Color get() = if (isDark) secondaryText else text.copy(alpha = 0.85f)
 
 /** 一周从周一开始的月历网格 */
 @Composable
 fun CalendarGrid(leading: Int, days: Int, cellHeight: Dp, cell: @Composable (Int) -> Unit) {
+    val palette = LocalPalette.current
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (name in listOf("一", "二", "三", "四", "五", "六", "日")) {
-                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { SecondaryText(name, style = Fonts.caption2) }
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { Text(name, style = Fonts.caption2, color = palette.labelText) }
             }
         }
         val cells: List<Int?> = List(leading) { null } + (1..days).toList()
@@ -801,7 +808,7 @@ fun CountdownStrip(today: DayKey = DayKey.today, onOpen: () -> Unit) {
                 GlassButton("添加生日、纪念日或假期倒计时", Icons.Rounded.Add, onClick = onOpen)
             }
         } else {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fadingHorizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 for (item in shown) {
                     val status = item.status(today)
                     // 底色、描边用原色；文字用 ink 版本，浅色模式下粉彩色才看得清
@@ -906,7 +913,7 @@ private fun CountdownEditor(existing: Countdown?, onDone: () -> Unit) {
     ) {
         GlassCard {
             GlassTextField(title, "名称，如「妈妈生日」「去日本旅行」") { title = it }
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fadingHorizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (item in COUNTDOWN_EMOJIS) {
                     Box(
                         Modifier
@@ -1156,7 +1163,7 @@ fun FortuneCalendarScreen() {
                         Text(
                             mood?.emoji ?: "$score",
                             style = TextStyle(fontSize = if (mood == null) 9.sp else 11.sp, fontWeight = FontWeight.Medium),
-                            color = if (isSelected) palette.onAccent.copy(alpha = 0.85f) else palette.secondaryText,
+                            color = if (isSelected) palette.onAccent.copy(alpha = 0.85f) else palette.labelText,
                         )
                     }
                     if (sticks[day.rawValue] != null) {
@@ -1166,7 +1173,7 @@ fun FortuneCalendarScreen() {
                                 .padding(5.dp)
                                 .size(6.dp)
                                 .clip(CircleShape)
-                                .background(hex(0xEF4444)),
+                                .background(palette.identity(hex(0xEF4444))),
                         )
                     }
                 }

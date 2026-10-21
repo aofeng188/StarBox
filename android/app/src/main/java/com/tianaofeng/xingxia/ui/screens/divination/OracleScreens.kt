@@ -432,9 +432,11 @@ fun StickScreen() {
                         .weight(1f),
                     contentAlignment = Alignment.Center,
                 ) {
+                    // 签筒的光晕保留暖橙，但向主题强调色靠一点
+                    val glow = palette.identity(hex(0xFFB347))
                     Canvas(Modifier.size(380.dp)) {
                         drawCircle(
-                            Brush.radialGradient(listOf(hex(0xFFB347).copy(alpha = 0.45f + energy.coerceAtMost(1f) * 0.4f), Color.Transparent)),
+                            Brush.radialGradient(listOf(glow.copy(alpha = 0.45f + energy.coerceAtMost(1f) * 0.4f), Color.Transparent)),
                             size.minDimension / 2 * (1 + energy.coerceAtMost(1f) * 0.15f),
                         )
                     }
@@ -480,7 +482,7 @@ fun StickScreen() {
                                 .fillMaxWidth(energy.coerceIn(0f, 1f))
                                 .height(8.dp)
                                 .clip(CircleShape)
-                                .background(Brush.horizontalGradient(listOf(hex(0xFFD166), hex(0xFF6B35)))),
+                                .background(palette.accentBrush),
                         )
                     }
                     val pressScale by animateFloatAsState(if (holding) 0.95f else 1f, label = "hold")
@@ -491,7 +493,8 @@ fun StickScreen() {
                             .height(56.dp)
                             .graphicsLayer { scaleX = pressScale; scaleY = pressScale }
                             .clip(CircleShape)
-                            .background(Brush.horizontalGradient(listOf(hex(0xE11D48), hex(0xF59E0B))))
+                            // 主按钮用主题强调色（和其他页面的大按钮一致），不再是写死的红橙渐变
+                            .background(palette.accentBrush)
                             .pointerInput(Unit) {
                                 detectTapGestures(onPress = {
                                     holding = true
@@ -501,7 +504,7 @@ fun StickScreen() {
                             },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("按住摇签", style = Fonts.headline, color = Color.White)
+                        Text("按住摇签", style = Fonts.headline, color = palette.onAccent)
                     }
                 } else {
                     BigActionButton("解签", modifier = Modifier.padding(bottom = 30.dp)) { reveal() }
@@ -512,26 +515,27 @@ fun StickScreen() {
     }
 }
 
-/** 掉出来的一支签 */
+/** 掉出来的一支签。签条保留传统红和木色，但向主题强调色靠一点 */
 @Composable
 private fun SingleStick(number: Int, modifier: Modifier = Modifier) {
+    val palette = LocalPalette.current
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
                 .size(34.dp, 26.dp)
                 .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
-                .background(hex(0xC0392B)),
+                .background(palette.identity(hex(0xC0392B))),
         )
         Column(
             Modifier
                 .size(34.dp, 210.dp)
                 .clip(RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp))
-                .background(Brush.horizontalGradient(listOf(hex(0xF7E1B5), hex(0xD9AE6D)))),
+                .background(Brush.horizontalGradient(palette.identity(listOf(hex(0xF7E1B5), hex(0xD9AE6D))))),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
         ) {
             for (char in "第${chineseNumber(number)}签") {
-                Text(char.toString(), style = Fonts.serif(17, bold = true), color = hex(0x7B1E1E))
+                Text(char.toString(), style = Fonts.serif(17, bold = true), color = palette.identity(hex(0x7B1E1E)))
             }
         }
     }
@@ -633,7 +637,11 @@ private fun StickResult(
                 }
             }
         }
-        GlassCard(padding = 22.dp, tint = stickLevelColor(stick.level).copy(alpha = 0.08f), spacing = 18.dp) {
+        // 印章、签诗框是「物件」，保留传统红和金，但向主题强调色靠一点；签等的颜色同样处理
+        val levelColor = palette.identity(stickLevelColor(stick.level))
+        val sealRed = palette.identity(hex(0xE53935))
+        val poemGold = palette.identity(hex(0xFFD166))
+        GlassCard(padding = 22.dp, tint = levelColor.copy(alpha = 0.08f), spacing = 18.dp) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(stick.numberText, style = Fonts.serif(30, bold = true))
@@ -650,11 +658,11 @@ private fun StickResult(
                             scaleY = s
                             alpha = 0.92f * stamp.value
                         }
-                        .border(3.dp, hex(0xE53935), RoundedCornerShape(10.dp))
+                        .border(3.dp, sealRed, RoundedCornerShape(10.dp))
                         .clearAndSetSemantics { contentDescription = stick.levelDisplayName },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(if (stick.level == "下") "下签" else stick.level, style = Fonts.serif(if (stick.level.length > 1) 22 else 26, bold = true), color = hex(0xE53935))
+                    Text(if (stick.level == "下") "下签" else stick.level, style = Fonts.serif(if (stick.level.length > 1) 22 else 26, bold = true), color = sealRed)
                 }
             }
 
@@ -664,8 +672,8 @@ private fun StickResult(
                     Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(18.dp))
-                        .background(Brush.verticalGradient(listOf(hex(0xFFF6E0, 0.12f), hex(0xFFD166, 0.06f))))
-                        .border(1.dp, hex(0xFFD166, 0.35f), RoundedCornerShape(18.dp))
+                        .background(Brush.verticalGradient(listOf(palette.identity(hex(0xFFF6E0)).copy(alpha = 0.12f), poemGold.copy(alpha = 0.06f))))
+                        .border(1.dp, poemGold.copy(alpha = 0.35f), RoundedCornerShape(18.dp))
                         .padding(vertical = 18.dp)
                         .clearAndSetSemantics { contentDescription = stick.poem.joinToString("，") },
                     horizontalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterHorizontally),
@@ -726,8 +734,8 @@ private fun StickResult(
                             Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(14.dp))
-                                .background(if (highlighted) stickLevelColor(stick.level).copy(alpha = 0.18f) else palette.subtle(0.05f))
-                                .then(if (highlighted) Modifier.border(1.dp, stickLevelColor(stick.level).copy(alpha = 0.6f), RoundedCornerShape(14.dp)) else Modifier)
+                                .background(if (highlighted) levelColor.copy(alpha = 0.18f) else palette.subtle(0.05f))
+                                .then(if (highlighted) Modifier.border(1.dp, levelColor.copy(alpha = 0.6f), RoundedCornerShape(14.dp)) else Modifier)
                                 .padding(vertical = 12.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -1485,6 +1493,9 @@ fun AnswerBookScreen() {
         GlassTextField(question, "写下问题（可选）", enabled = !isOpen) { question = it }
 
         val bookScale by animateFloatAsState(if (pressing) 1.04f else 1f, label = "book")
+        // 书是「物件」：封面的棕金保留，但向主题强调色靠一点；内页纸色和正文不动，保证读得清
+        val (coverTop, coverBottom, coverGold, coverIcon, sparkle) =
+            palette.identity(listOf(hex(0x7C4A12), hex(0x3B2006), hex(0xF5D78E), hex(0xF5B83D), hex(0xC08A2E)))
         Box(
             Modifier
                 .size(260.dp, 340.dp)
@@ -1516,7 +1527,7 @@ fun AnswerBookScreen() {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
             ) {
-                Text("✦", color = hex(0xC08A2E), style = Fonts.title3)
+                Text("✦", color = sparkle, style = Fonts.title3)
                 Text(
                     answer,
                     style = Fonts.serif(26, bold = true),
@@ -1526,7 +1537,7 @@ fun AnswerBookScreen() {
                         .padding(horizontal = 24.dp)
                         .alpha(if (cover > 90f) 1f else 0f),
                 )
-                Text("✦", color = hex(0xC08A2E), style = Fonts.title3)
+                Text("✦", color = sparkle, style = Fonts.title3)
             }
             // 封面
             if (cover < 90f) {
@@ -1539,15 +1550,15 @@ fun AnswerBookScreen() {
                             cameraDistance = 10 * density
                         }
                         .clip(RoundedCornerShape(14.dp))
-                        .background(Brush.linearGradient(listOf(hex(0x7C4A12), hex(0x3B2006))))
+                        .background(Brush.linearGradient(listOf(coverTop, coverBottom)))
                         .padding(14.dp)
-                        .border(2.dp, hex(0xF5D78E, 0.8f), RoundedCornerShape(10.dp)),
+                        .border(2.dp, coverGold.copy(alpha = 0.8f), RoundedCornerShape(10.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                        Icon(Icons.Rounded.NightsStay, null, Modifier.size(54.dp), tint = hex(0xF5B83D))
-                        Text("答案之书", style = Fonts.serif(30, bold = true), color = hex(0xF5D78E))
-                        Text("THE BOOK OF ANSWERS", style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold), color = hex(0xF5D78E, 0.7f))
+                        Icon(Icons.Rounded.NightsStay, null, Modifier.size(54.dp), tint = coverIcon)
+                        Text("答案之书", style = Fonts.serif(30, bold = true), color = coverGold)
+                        Text("THE BOOK OF ANSWERS", style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold), color = coverGold.copy(alpha = 0.7f))
                     }
                 }
             }
@@ -1563,13 +1574,14 @@ fun AnswerBookScreen() {
                         val inset = stroke / 2
                         val arc = Size(size.width - stroke, size.height - stroke)
                         drawArc(palette.subtle(0.1f), 0f, 360f, false, Offset(inset, inset), arc, style = Stroke(stroke))
+                        // 「按住翻开」是这页的主操作，进度环用主题强调色
                         drawArc(
-                            Brush.verticalGradient(listOf(hex(0xFFE7A3), hex(0xF59E0B))),
+                            palette.accentBrush,
                             -90f, 360f * hold.value, false, Offset(inset, inset), arc,
                             style = Stroke(stroke, cap = StrokeCap.Round),
                         )
                     }
-                    Icon(Icons.Rounded.TouchApp, null, Modifier.size(28.dp), tint = hex(0xF5B83D))
+                    Icon(Icons.Rounded.TouchApp, null, Modifier.size(28.dp), tint = palette.ink(palette.accent))
                 }
                 SecondaryText(if (pressing) "专注于你的问题…" else "按住书本，默念问题", style = Fonts.footnote)
             }

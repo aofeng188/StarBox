@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +52,13 @@ val ReadableWidth = 640.dp
  * 页面主界面（没有自定义返回的 Screen）的顶栏右侧会显示收藏星标；页面内的编辑器等子界面不显示。
  */
 val LocalFavoriteId = staticCompositionLocalOf<String?> { null }
+
+/** 悬浮底栏占的高度（不含系统导航栏），由 AppNavigation 量出来提供；还没量到时是 0 */
+val LocalTabBarHeight = compositionLocalOf { 0.dp }
+
+/** 根页面最底部要留的空白：最后一张卡片能完整滚到悬浮底栏上方，大字号下底栏变高也够 */
+@Composable
+fun rootBottomPadding(): Dp = maxOf(96.dp, LocalTabBarHeight.current + 20.dp)
 
 /**
  * 页面骨架：透明顶栏（返回 + 标题 + 操作）+ 可滚动内容。
@@ -97,7 +105,7 @@ fun Screen(
                 content()
                 if (scrollable) {
                     // 根页面底部要给悬浮底栏留出空间
-                    Spacer(Modifier.height(if (isRoot) 96.dp else 24.dp))
+                    Spacer(Modifier.height(if (isRoot) rootBottomPadding() else 24.dp))
                     Spacer(Modifier.navigationBarsPadding())
                 }
             }

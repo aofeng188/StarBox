@@ -141,7 +141,9 @@ fun FortuneShareContent(fortune: DailyFortune, name: String?, style: ShareCardSt
 fun StickShareContent(stick: FortuneStick, wish: String, forName: String?, confirmed: Boolean, style: ShareCardStyle) {
     val tall = style.isTall
     val charSize = if (tall) 24 else 17
-    val gold = hex(0xFFD166)
+    // 分享卡的颜色保留，但跟分享卡的主题走（ShareCardFrame 注入了分享卡的 palette）
+    val palette = LocalPalette.current
+    val gold = palette.identity(hex(0xFFD166))
     Column(
         Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -171,7 +173,7 @@ fun StickShareContent(stick: FortuneStick, wish: String, forName: String?, confi
             Row(
                 Modifier
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Brush.verticalGradient(listOf(hex(0xFFF6E0, 0.12f), gold.copy(alpha = 0.05f))))
+                    .background(Brush.verticalGradient(listOf(palette.identity(hex(0xFFF6E0)).copy(alpha = 0.12f), gold.copy(alpha = 0.05f))))
                     .border(1.dp, gold.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
                     .padding(vertical = if (tall) 18.dp else 12.dp, horizontal = if (tall) 26.dp else 20.dp)
                     .clearAndSetSemantics {
@@ -234,7 +236,7 @@ fun StickShareContent(stick: FortuneStick, wish: String, forName: String?, confi
 /** 等级红印章：旋转、半透明 */
 @Composable
 private fun StickLevelSeal(stick: FortuneStick, size: Int, modifier: Modifier = Modifier) {
-    val red = hex(0xF05A4F)
+    val red = LocalPalette.current.identity(hex(0xF05A4F))
     val shape = RoundedCornerShape((size * 0.14f).dp)
     Box(
         modifier
@@ -376,8 +378,10 @@ private fun TarotShareOrientation(entry: DrawnCard) {
 fun AnswerShareContent(question: String, answer: String, style: ShareCardStyle) {
     val tall = style.isTall
     val asked = question.trim()
+    val palette = LocalPalette.current
     val brown = hex(0x4A2C0A)
-    val ochre = hex(0xC08A2E)
+    val ochre = palette.identity(hex(0xC08A2E))
+    val glow = palette.identity(hex(0xFFD166)).copy(alpha = 0.4f)
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(if (tall) 22.dp else 14.dp)) {
         if (asked.isNotEmpty()) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -398,7 +402,6 @@ fun AnswerShareContent(question: String, answer: String, style: ShareCardStyle) 
                 .size(width.dp, height.dp)
                 .drawBehind {
                     // 书页周围的金色光晕
-                    val glow = hex(0xFFD166, 0.4f)
                     drawCircle(
                         Brush.radialGradient(listOf(glow, Color.Transparent), center, size.maxDimension * 0.75f),
                         size.maxDimension * 0.75f,
@@ -407,7 +410,7 @@ fun AnswerShareContent(question: String, answer: String, style: ShareCardStyle) 
                 }
                 .clip(pageShape)
                 .background(Brush.verticalGradient(listOf(hex(0xFFF8E7), hex(0xF3E3C3))))
-                .border(3.dp, Brush.linearGradient(listOf(hex(0xF5D78E), ochre), Offset.Zero, Offset.Infinite), pageShape),
+                .border(3.dp, Brush.linearGradient(listOf(palette.identity(hex(0xF5D78E)), ochre), Offset.Zero, Offset.Infinite), pageShape),
             contentAlignment = Alignment.Center,
         ) {
             // 内框：跟书页一样大，内缩 12dp

@@ -80,7 +80,7 @@ private fun RecordRow(record: DecisionRecord) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        ToolIcon(icon, colors, 34.dp)
+        ToolIcon(icon, LocalPalette.current.identity(colors), 34.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(record.result, style = Fonts.subheadline.copy(fontWeight = FontWeight.Medium), maxLines = 2)
             SecondaryText(if (record.title.isBlank()) name else "$name · ${record.title}", style = Fonts.caption, maxLines = 1)

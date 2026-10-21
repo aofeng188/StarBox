@@ -216,9 +216,13 @@ fun stickLevelInk(level: String, dark: Boolean): Color = if (dark) stickLevelCol
     else -> hex(0x047857)
 }
 
-/** 签筒插画 */
+/** 签筒插画。签筒保留传统红，但向主题强调色靠一点 */
 @Composable
 fun StickTubeIllustration(size: Dp = 96.dp, shake: Float = 0f, modifier: Modifier = Modifier) {
+    val palette = LocalPalette.current
+    val wood = palette.identity(listOf(hex(0xF5DEB3), hex(0xD2A86E)))
+    val tube = palette.identity(listOf(hex(0xC0392B), hex(0x7B1E1E)))
+    val gold = palette.identity(hex(0xFFD166))
     Box(modifier.size(size, size * 1.05f), contentAlignment = Alignment.BottomCenter) {
         Canvas(Modifier.fillMaxSize()) {
             val s = this.size.width
@@ -234,25 +238,24 @@ fun StickTubeIllustration(size: Dp = 96.dp, shake: Float = 0f, modifier: Modifie
                 val pivot = Offset(s / 2 + (i - 3) * s * 0.05f, tubeTop + tubeH * 0.55f - s * 0.32f + abs(i - 3) * s * 0.02f - sin(shake * 5 + i) * s * 0.04f + stickH / 2)
                 rotate(angle, pivot) {
                     drawRoundRect(
-                        Brush.verticalGradient(listOf(hex(0xF5DEB3), hex(0xD2A86E)), pivot.y - stickH, pivot.y),
+                        Brush.verticalGradient(wood, pivot.y - stickH, pivot.y),
                         Offset(pivot.x - stickW / 2, pivot.y - stickH), Size(stickW, stickH), CornerRadius(2.dp.toPx()),
                     )
-                    drawRoundRect(hex(0xC0392B), Offset(pivot.x - stickW / 2, pivot.y - stickH), Size(stickW, s * 0.08f), CornerRadius(2.dp.toPx()))
+                    drawRoundRect(tube[0], Offset(pivot.x - stickW / 2, pivot.y - stickH), Size(stickW, s * 0.08f), CornerRadius(2.dp.toPx()))
                 }
             }
             // 筒身
             val left = (s - tubeW) / 2
             drawRoundRect(
-                Brush.horizontalGradient(listOf(hex(0xC0392B), hex(0x7B1E1E)), left, left + tubeW),
+                Brush.horizontalGradient(tube, left, left + tubeW),
                 Offset(left, tubeTop), Size(tubeW, tubeH), CornerRadius(s * 0.08f),
             )
-            val gold = hex(0xFFD166)
             drawRoundRect(gold, Offset(left + s * 0.06f, tubeTop + tubeH * 0.2f), Size(tubeW - s * 0.12f, s * 0.025f), CornerRadius(s * 0.0125f))
             drawRoundRect(gold, Offset(left + s * 0.06f, tubeTop + tubeH * 0.78f), Size(tubeW - s * 0.12f, s * 0.025f), CornerRadius(s * 0.0125f))
         }
         Text(
             "签",
-            style = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Black, fontSize = (size.value * 0.22f).sp, color = hex(0xFFD166)),
+            style = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Black, fontSize = (size.value * 0.22f).sp, color = gold),
             modifier = Modifier.padding(bottom = size * 0.17f),
         )
     }

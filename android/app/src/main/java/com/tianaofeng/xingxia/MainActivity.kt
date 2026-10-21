@@ -7,8 +7,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -17,12 +15,11 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
 import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.data.Store
-import com.tianaofeng.xingxia.ui.components.CosmicBackground
+import com.tianaofeng.xingxia.ui.components.CosmicBackdrop
 import com.tianaofeng.xingxia.ui.components.HapticsHost
 import com.tianaofeng.xingxia.ui.components.SensitiveClipboard
 import com.tianaofeng.xingxia.ui.components.SoundEngine
@@ -126,10 +123,8 @@ fun XingXiaRoot(pendingLink: MutableState<String?>) {
     XingXiaTheme(palette) {
         CompositionLocalProvider(LocalContentColor provides palette.text) {
             HapticsHost()
-            Box(Modifier.fillMaxSize()) {
-                CosmicBackground()
-                AppNavigation(pendingLink)
-            }
+            // 星空背景同时是玻璃卡片的模糊来源
+            CosmicBackdrop { AppNavigation(pendingLink) }
         }
     }
 }

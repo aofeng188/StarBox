@@ -339,7 +339,7 @@ private fun ToolsCard(review: AnnualReview) {
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text("${index + 1}", style = Fonts.headline, color = palette.ink(palette.accent), modifier = Modifier.width(20.dp))
-                ToolIcon(icon, colors, 34.dp)
+                ToolIcon(icon, palette.identity(colors), 34.dp)
                 Text(name, style = Fonts.subheadline.weight(FontWeight.SemiBold), color = palette.text, modifier = Modifier.weight(1f))
                 SecondaryText("${tool.count} 次")
             }

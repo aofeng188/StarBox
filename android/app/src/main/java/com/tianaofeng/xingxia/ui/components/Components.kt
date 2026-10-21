@@ -1,13 +1,15 @@
-@file:OptIn(ExperimentalLayoutApi::class)
+@file:OptIn(ExperimentalLayoutApi::class, ExperimentalHazeApi::class)
 
 package com.tianaofeng.xingxia.ui.components
 
+import android.view.View
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,9 +44,12 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -63,6 +68,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -71,12 +77,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tianaofeng.xingxia.core.NamedColor
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.toColor
+import dev.chrisbanes.haze.ExperimentalHazeApi
+import dev.chrisbanes.haze.HazeEffectScope
+import dev.chrisbanes.haze.HazeInputScale
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.hazeEffect
 import kotlin.math.roundToInt
 
 // region 字体
@@ -110,10 +123,33 @@ fun TextStyle.weight(weight: FontWeight) = copy(fontWeight = weight)
 
 // region 玻璃卡片
 
-/** 半透明「玻璃」底：透出背后的星空。 */
+/**
+ * 玻璃模糊的来源：根布局（和全屏弹层）里的星空背景，见 [CosmicBackdrop]；view 是它所在窗口的根视图。
+ * 普通弹窗、菜单是另一个窗口，读到的是外层的来源，磨出来的会是被弹窗盖住的那层星空，所以只在同一个窗口里模糊
+ */
+@Stable
+class GlassBackdrop(val state: HazeState, val view: View)
+
+/**
+ * null 时玻璃只是半透明底：Android 12L 以下、省电模式，或者已经在一张玻璃卡片里面（叠两层模糊看起来和底下那层一样，反而没有层次）
+ */
+val LocalGlassBackdrop = staticCompositionLocalOf<GlassBackdrop?> { null }
+
+/** 列表里会同时有很多张玻璃：模糊半径适中、不加噪点，在缩小的画面上模糊再放大，省 GPU */
+private val GlassHazeBlock: HazeEffectScope.() -> Unit = { inputScale = HazeInputScale.Auto }
+
+/** 半透明「玻璃」底：透出背后的星空；系统支持时（API 32+、非省电）把背后的星空磨砂。 */
 fun Modifier.glass(shape: Shape = RoundedCornerShape(28.dp), tint: Color? = null): Modifier = composed {
     val palette = LocalPalette.current
-    var result = this.clip(shape).background(palette.glassFill)
+    val backdrop = LocalGlassBackdrop.current
+    var result = this.clip(shape)
+    if (backdrop != null && backdrop.view == LocalView.current) {
+        val style = remember(palette) {
+            HazeStyle(backgroundColor = palette.backgroundTop, tints = emptyList(), blurRadius = 20.dp, noiseFactor = 0f)
+        }
+        result = result.hazeEffect(backdrop.state, style, GlassHazeBlock)
+    }
+    result = result.background(palette.glassFill)
     if (tint != null) result = result.background(tint)
     result.border(0.8.dp, palette.glassStroke, shape)
 }
@@ -151,8 +187,10 @@ fun GlassCard(
             .padding(padding),
         verticalArrangement = Arrangement.spacedBy(spacing),
         horizontalAlignment = horizontalAlignment,
-        content = content,
-    )
+    ) {
+        // 卡片里的玻璃按钮、分段选择只叠半透明底，不再各自模糊一遍
+        CompositionLocalProvider(LocalGlassBackdrop provides null) { content() }
+    }
 }
 
 // endregion
@@ -291,8 +329,8 @@ fun MeterBar(value: Int, modifier: Modifier = Modifier, color: Color? = null, he
 fun TagChip(text: String, color: Color? = null, icon: ImageVector? = null) {
     val palette = LocalPalette.current
     val tint = color ?: palette.accent
-    // 文字按深浅模式调成读得清的版本，底色仍用原色
-    val ink = palette.ink(tint)
+    // 文字按深浅模式调成读得清的版本（浅色模式比底色深两档），底色仍用原色
+    val ink = palette.tagInk(tint)
     Row(
         Modifier
             .clip(CircleShape)
@@ -516,13 +554,48 @@ fun SelectChip(text: String, selected: Boolean, icon: ImageVector? = null, onCli
     }
 }
 
-/** 横向滚动的一排胶囊 */
+/**
+ * 挂在横向滚动行上（放在 horizontalScroll 前面）：哪一端还有内容没露出来，哪一端就渐隐，提示可以滑（与 iOS 的 fadingScrollEdges 一致）
+ */
+fun Modifier.fadingScrollEdges(state: ScrollState, length: Dp = 20.dp): Modifier = this
+    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+    .drawWithContent {
+        drawContent()
+        val fade = minOf(length.toPx(), size.width / 2)
+        if (fade <= 0f) return@drawWithContent
+        // 从行首滚出去的内容在左边（从右往左排版时在右边）
+        val rtl = layoutDirection == LayoutDirection.Rtl
+        val hiddenAtStart = state.value > 0
+        val hiddenAtEnd = state.value < state.maxValue
+        val fadeLeft = if (rtl) hiddenAtEnd else hiddenAtStart
+        val fadeRight = if (rtl) hiddenAtStart else hiddenAtEnd
+        if (fadeLeft) {
+            drawRect(
+                Brush.horizontalGradient(listOf(Color.Transparent, Color.Black), startX = 0f, endX = fade),
+                size = Size(fade, size.height),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+        if (fadeRight) {
+            drawRect(
+                Brush.horizontalGradient(listOf(Color.Black, Color.Transparent), startX = size.width - fade, endX = size.width),
+                topLeft = Offset(size.width - fade, 0f),
+                size = Size(fade, size.height),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+    }
+
+/** 横向滚动，还有内容没露出来的那端渐隐（chip 行、图标行都用它，代替单独的 horizontalScroll） */
+fun Modifier.fadingHorizontalScroll(state: ScrollState): Modifier = fadingScrollEdges(state).horizontalScroll(state)
+
+/** 横向滚动的一排胶囊；还有内容没露出来的那端渐隐 */
 @Composable
 fun ChipRow(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     Row(
         modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
+            .fadingHorizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content,

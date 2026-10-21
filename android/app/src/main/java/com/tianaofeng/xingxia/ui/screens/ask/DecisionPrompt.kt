@@ -55,6 +55,7 @@ import com.tianaofeng.xingxia.data.DecisionRecord
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.Fonts
 import com.tianaofeng.xingxia.ui.components.Haptics
+import com.tianaofeng.xingxia.ui.components.LocalTabBarHeight
 import com.tianaofeng.xingxia.ui.components.ToolIcon
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.isReduceMotion
@@ -93,7 +94,8 @@ fun DecisionPrompt(tabBarVisible: Boolean, modifier: Modifier = Modifier) {
     // 浮层区域的底边（窗口坐标，即根布局底边）和卡片高度，用来判断原位会不会盖住主按钮
     var containerBottom by remember { mutableFloatStateOf(0f) }
     var cardHeight by remember { mutableIntStateOf(0) }
-    val restingInset = if (tabBarVisible) 84.dp else 8.dp
+    // 底栏高度按实测（大字号下底栏更高），量到之前按 84dp
+    val restingInset = if (tabBarVisible) maxOf(84.dp, LocalTabBarHeight.current + 6.dp) else 8.dp
     // 收起的动画里也按同一个位置算，卡片不会在淡出时跳回原位
     val action = PromptAnchor.bounds
     val navigationBottom = WindowInsets.navigationBars.getBottom(density)
@@ -187,7 +189,8 @@ private fun decide(record: DecisionRecord, adopted: Boolean, view: android.view.
 @Composable
 private fun PromptCard(record: DecisionRecord, onDecide: (Boolean) -> Unit) {
     val palette = LocalPalette.current
-    val (name, icon, colors) = toolInfo(record.tool)
+    val (name, icon, toolColors) = toolInfo(record.tool)
+    val colors = palette.identity(toolColors)
     val summary = "$name：${record.result}"
     val tint = palette.backgroundBottom.copy(alpha = if (palette.isDark) 0.88f else 0.8f)
     // 字号调大时一行放不下两个按钮，改成两行卡片（对应 iOS 的 ViewThatFits）

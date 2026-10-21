@@ -11,7 +11,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -122,6 +121,7 @@ import com.tianaofeng.xingxia.ui.components.StepperRow
 import com.tianaofeng.xingxia.ui.components.TextAction
 import com.tianaofeng.xingxia.ui.components.ToggleRow
 import com.tianaofeng.xingxia.ui.components.copyText
+import com.tianaofeng.xingxia.ui.components.fadingHorizontalScroll
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.weight
@@ -386,7 +386,7 @@ private fun LotteryEditor(pool: LotteryPool, onDone: () -> Unit) {
     Screen(title = "编辑奖池", onBack = onDone, actions = { TextAction("完成", onClick = onDone) }) {
         GlassCard {
             GlassTextField(pool.name, "名称") { name -> save { it.copy(name = name) } }
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fadingHorizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (icon in icons) {
                     Box(
                         Modifier
@@ -791,7 +791,8 @@ private fun PasswordGenerator() {
         entropy < 80 -> 3
         else -> 4
     }
-    val levelColor = listOf(Color.Transparent, hex(0xEF4444), hex(0xF59E0B), hex(0x34D399), hex(0x22D3EE))[level]
+    // 弱、一般、强用语义的红、橙、绿，非常强用青色（与 iOS 一致）
+    val levelColor = listOf(Color.Transparent, palette.negative, palette.caution, palette.positive, palette.identity(hex(0x22D3EE)))[level]
 
     fun generate() {
         if (charset.isEmpty()) return

@@ -60,5 +60,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.navigation:navigation-compose:2.8.5")
     implementation("androidx.glance:glance-appwidget:1.1.1")
+    // 玻璃卡片的背景模糊（Android 12L 起用 RenderEffect）。1.2.2 基于 Compose 1.7.6、Kotlin 2.1.0，与上面的 BOM 一致
+    implementation("dev.chrisbanes.haze:haze:1.2.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 }

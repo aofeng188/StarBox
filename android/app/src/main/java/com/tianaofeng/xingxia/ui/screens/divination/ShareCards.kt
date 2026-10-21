@@ -88,9 +88,10 @@ import com.tianaofeng.xingxia.core.lunar
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.BigActionButton
 import com.tianaofeng.xingxia.ui.components.CircleIconButton
-import com.tianaofeng.xingxia.ui.components.CosmicBackground
+import com.tianaofeng.xingxia.ui.components.CosmicBackdrop
 import com.tianaofeng.xingxia.ui.components.Fonts
 import com.tianaofeng.xingxia.ui.components.GlassButton
+import com.tianaofeng.xingxia.ui.components.LocalGlassBackdrop
 import com.tianaofeng.xingxia.ui.components.Haptics
 import com.tianaofeng.xingxia.ui.components.SecondaryText
 import com.tianaofeng.xingxia.ui.components.SegmentedPicker
@@ -143,7 +144,8 @@ private const val EXPORT_SCALE = 3f
 @Composable
 fun ShareCardFrame(style: ShareCardStyle, day: DayKey = DayKey.today, title: String, content: @Composable ColumnScope.() -> Unit) {
     val palette = style.palette
-    CompositionLocalProvider(LocalPalette provides palette, LocalContentColor provides Color.White) {
+    // 卡片有自己的背景，会被导出成图片：里面的玻璃不去模糊弹层的星空
+    CompositionLocalProvider(LocalPalette provides palette, LocalContentColor provides Color.White, LocalGlassBackdrop provides null) {
         Column(
             Modifier
                 .requiredSize(style.width, style.height)
@@ -451,8 +453,8 @@ fun ShareCardDialog(
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         val palette = LocalPalette.current
-        Box(Modifier.fillMaxSize()) {
-            CosmicBackground()
+        // 全屏弹层自己的星空背景，里面的玻璃模糊它（不是被盖住的主窗口）
+        CosmicBackdrop {
             Column(
                 Modifier
                     .fillMaxSize()

@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -101,6 +100,7 @@ import com.tianaofeng.xingxia.ui.components.SegmentedPicker
 import com.tianaofeng.xingxia.ui.components.StarRatingView
 import com.tianaofeng.xingxia.ui.components.TagChip
 import com.tianaofeng.xingxia.ui.components.ToolIcon
+import com.tianaofeng.xingxia.ui.components.fadingHorizontalScroll
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.rememberToday
@@ -316,7 +316,7 @@ private fun FamilyFortuneCard(today: DayKey) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
+                .fadingHorizontalScroll(rememberScrollState())
                 .padding(vertical = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -492,10 +492,10 @@ private fun StickMiniCard(today: DayKey) {
                 Modifier
                     .size(56.dp, 64.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Brush.verticalGradient(listOf(hex(0xB91C1C), hex(0x7F1D1D)))),
+                    .background(Brush.verticalGradient(palette.identity(listOf(hex(0xB91C1C), hex(0x7F1D1D))))),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.LocalFireDepartment, null, Modifier.size(28.dp), tint = hex(0xFFB347))
+                Icon(Icons.Rounded.LocalFireDepartment, null, Modifier.size(28.dp), tint = palette.identity(hex(0xFFB347)))
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (draw != null) {
@@ -533,12 +533,12 @@ private fun QuickToolsRow() {
         Row(
             Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
+                .fadingHorizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             // 按收藏顺序显示；认不出的 id（已下线的工具）跳过
             for (tool in AppSettings.favoriteTools.mapNotNull { FavoriteTool.of(it) }) {
-                QuickTool(tool.label, { ToolIcon(tool.icon, tool.colors, 54.dp) }) { navigator.open(tool.route) }
+                QuickTool(tool.label, { ToolIcon(tool.icon, palette.identity(tool.colors), 54.dp) }) { navigator.open(tool.route) }
             }
             QuickTool("添加", {
                 val accent = palette.accent

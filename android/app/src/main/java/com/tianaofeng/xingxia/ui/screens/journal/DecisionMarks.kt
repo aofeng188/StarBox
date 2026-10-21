@@ -93,7 +93,7 @@ fun DecisionEditDialog(recordId: String, onDismiss: () -> Unit) {
         confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } },
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ToolIcon(icon, colors, 40.dp)
+                ToolIcon(icon, LocalPalette.current.identity(colors), 40.dp)
                 Column(Modifier.semantics(mergeDescendants = true) {}) {
                     Text(name, style = Fonts.headline)
                     SecondaryText("${DateText.full(DayKey.of(instant))} ${DateText.time(instant)}", style = Fonts.caption)

@@ -55,7 +55,7 @@ import com.tianaofeng.xingxia.core.MoonPhaseName
 import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.CircleIconButton
-import com.tianaofeng.xingxia.ui.components.CosmicBackground
+import com.tianaofeng.xingxia.ui.components.CosmicBackdrop
 import com.tianaofeng.xingxia.ui.components.Fonts
 import com.tianaofeng.xingxia.ui.components.GlassButton
 import com.tianaofeng.xingxia.ui.components.GlassCard
@@ -152,8 +152,8 @@ private fun MoonBadgeInfoDialog(progress: MoonBadgeProgress, today: DayKey, onDi
     val complete = progress.collected.size == MoonPhaseName.entries.size
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         val palette = LocalPalette.current
-        Box(Modifier.fillMaxSize()) {
-            CosmicBackground()
+        // 全屏弹层自己的星空背景，里面的玻璃模糊它（不是被盖住的主窗口）
+        CosmicBackdrop {
             Column(Modifier.fillMaxSize()) {
                 Box(
                     Modifier

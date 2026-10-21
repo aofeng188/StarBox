@@ -8,6 +8,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import com.tianaofeng.xingxia.core.NamedColor
 import com.tianaofeng.xingxia.core.WuXing
@@ -36,7 +37,8 @@ data class ThemePalette(
     fun color(index: Int): Color = spectrum[Math.floorMod(index, spectrum.size)]
 
     val text: Color get() = if (isDark) Color(0xFFF5F3FF) else Color(0xFF1B1726)
-    val secondaryText: Color get() = text.copy(alpha = 0.62f)
+    /** 次要文字：浅色模式下玻璃卡片透出彩色光斑，0.62 偏淡，提一档（与 iOS 的 subtleForeground 一致） */
+    val secondaryText: Color get() = text.copy(alpha = if (isDark) 0.62f else 0.72f)
     val tertiaryText: Color get() = text.copy(alpha = 0.36f)
     /** 相当于 SwiftUI 的 `.primary.opacity(x)` */
     fun subtle(alpha: Float = 0.08f): Color = text.copy(alpha = alpha)
@@ -60,6 +62,17 @@ data class ThemePalette(
     /** spectrum 的文字版本，和 [color] 一一对应 */
     fun inkColor(index: Int): Color = ink(color(index))
 
+    /**
+     * 标签（同色系浅底上的小字，如 TagChip）的文字色：要比底色深两档。
+     * 深色模式用 ink；浅色模式在 ink 的基础上继续压暗同色系，直到相对亮度不超过 0.1（压在同色浅底上约 6:1），与 iOS 的 TagChip 一致
+     */
+    fun tagInk(color: Color): Color = if (isDark) ink(color) else ink(color).darkened(toLuminance = 0.1f)
+
+    /** 工具、签、答案之书、掷筊等写死的身份色向主题强调色靠一点（默认 20%，Oklab 插值）：保留辨识度，换主题时不和强调色打架（与 iOS 一致） */
+    fun identity(color: Color, amount: Float = 0.2f): Color = lerp(color, accent, amount)
+
+    fun identity(colors: List<Color>, amount: Float = 0.2f): List<Color> = colors.map { identity(it, amount) }
+
     /** 语义色：深色模式用明亮的 400 级，浅色模式用加深的 700 级，当文字用时也读得清 */
     val positive: Color get() = if (isDark) hex(0x34D399) else hex(0x047857)
     val negative: Color get() = if (isDark) hex(0xFB7185) else hex(0xBE123C)
@@ -75,6 +88,17 @@ private fun Color.mix(other: Color, amount: Float) = Color(
     blue + (other.blue - blue) * amount,
     alpha,
 )
+
+/** 按比例缩小 sRGB 分量（色相不变）直到相对亮度不超过 toLuminance；本来就够深时原样返回（与 iOS 的 darkened 一致） */
+private fun Color.darkened(toLuminance: Float): Color {
+    var factor = 1f
+    var result = this
+    while (factor > 0.3f && result.luminance() > toLuminance) {
+        factor -= 0.05f
+        result = Color(red * factor, green * factor, blue * factor, alpha)
+    }
+    return result
+}
 
 /** 压在这个颜色上的文字该用的颜色：亮底用深字，暗底用白字 */
 val Color.readableForeground: Color get() = if (luminance() > 0.18f) INK_DARK else Color.White

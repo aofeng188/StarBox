@@ -109,7 +109,7 @@ private fun SearchSection(title: String, icon: ImageVector, items: List<SearchIt
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    ToolIcon(item.icon, item.colors, 40.dp)
+                    ToolIcon(item.icon, palette.identity(item.colors), 40.dp)
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(item.name, style = Fonts.headline, color = palette.text)
                         SecondaryText(item.subtitle, style = Fonts.caption, maxLines = 2)

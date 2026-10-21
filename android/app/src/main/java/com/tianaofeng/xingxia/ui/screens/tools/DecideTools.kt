@@ -92,7 +92,6 @@ import com.tianaofeng.xingxia.data.FoodMenuItem
 import com.tianaofeng.xingxia.ui.components.SoundEffect
 import com.tianaofeng.xingxia.ui.components.SoundEngine
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import com.tianaofeng.xingxia.data.Prefs
 import com.tianaofeng.xingxia.data.Roster
@@ -120,6 +119,7 @@ import com.tianaofeng.xingxia.ui.components.SelectChip
 import com.tianaofeng.xingxia.ui.components.StepperRow
 import com.tianaofeng.xingxia.ui.components.TextAction
 import com.tianaofeng.xingxia.ui.components.ToggleRow
+import com.tianaofeng.xingxia.ui.components.fadingHorizontalScroll
 import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.copyText
 import com.tianaofeng.xingxia.ui.components.shareText
@@ -411,7 +411,7 @@ private fun FoodMenuEditor(menu: FoodMenu, onDone: () -> Unit) {
     Screen(title = "编辑菜单", onBack = onDone, actions = { TextAction("完成", onClick = onDone) }) {
         GlassCard {
             GlassTextField(menu.name, "菜单名称") { name -> save { it.copy(name = name) } }
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fadingHorizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (icon in icons) {
                     Box(
                         Modifier
@@ -667,7 +667,9 @@ fun WheelScreen() {
             }
             Box(Modifier.size(340.dp), contentAlignment = Alignment.Center) {
                 WheelCanvas(segments, angle.value, palette.spectrum, spinning)
-                // 指针
+                // 指针（金色物件，向主题强调色靠一点）
+                val pointer = palette.identity(listOf(hex(0xFFF3C4), hex(0xF5B83D)))
+                val pointerEdge = palette.identity(hex(0x8A6A2A))
                 Canvas(
                     Modifier
                         .align(Alignment.TopCenter)
@@ -680,8 +682,8 @@ fun WheelScreen() {
                         lineTo(size.width, 0f)
                         close()
                     }
-                    drawPath(path, Brush.verticalGradient(listOf(hex(0xFFF3C4), hex(0xF5B83D))))
-                    drawPath(path, hex(0x8A6A2A), style = Stroke(1.5.dp.toPx()))
+                    drawPath(path, Brush.verticalGradient(pointer))
+                    drawPath(path, pointerEdge, style = Stroke(1.5.dp.toPx()))
                 }
                 // 中心按钮
                 Box(
@@ -741,12 +743,17 @@ fun WheelScreen() {
 @Composable
 private fun WheelCanvas(segments: List<WheelOption>, rotation: Float, colors: List<Color>, lightsOn: Boolean) {
     val measurer = rememberTextMeasurer()
+    // 金边和跑马灯是「物件」，保留金色，但向主题强调色靠一点；深色底盘不动
+    val palette = LocalPalette.current
+    val rim = palette.identity(listOf(hex(0xF5D78E), hex(0xB8862E)))
+    val bulbOn = palette.identity(hex(0xFFF3C4))
+    val bulbOff = palette.identity(hex(0x8A6A2A))
     Canvas(Modifier.fillMaxSize()) {
         val radius = size.minDimension / 2
         val center = this.center
         // 外圈
         drawCircle(Brush.verticalGradient(listOf(hex(0x2A2340), hex(0x120E22))), radius)
-        drawCircle(Brush.verticalGradient(listOf(hex(0xF5D78E), hex(0xB8862E))), radius - 2.dp.toPx(), style = Stroke(4.dp.toPx()))
+        drawCircle(Brush.verticalGradient(rim), radius - 2.dp.toPx(), style = Stroke(4.dp.toPx()))
         val r = radius * 0.86f
         val total = max(0.0001, segments.sumOf { it.weight })
         rotate(rotation, center) {
@@ -789,7 +796,7 @@ private fun WheelCanvas(segments: List<WheelOption>, rotation: Float, colors: Li
             val a = i / 24.0 * 2 * Math.PI
             val on = if (lightsOn) (i + (rotation / 15).toInt()) % 2 == 0 else i % 2 == 0
             val p = Offset(center.x + (cos(a) * radius * 0.93).toFloat(), center.y + (sin(a) * radius * 0.93).toFloat())
-            drawCircle(if (on) hex(0xFFF3C4) else hex(0x8A6A2A), size.minDimension * 0.014f, p)
+            drawCircle(if (on) bulbOn else bulbOff, size.minDimension * 0.014f, p)
         }
     }
 }

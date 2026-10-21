@@ -2,7 +2,6 @@ package com.tianaofeng.xingxia.ui.screens.tools
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,12 +31,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.ui.components.CircleIconButton
@@ -49,13 +51,13 @@ import com.tianaofeng.xingxia.ui.components.SecondaryText
 import com.tianaofeng.xingxia.ui.components.SectionHeader
 import com.tianaofeng.xingxia.ui.components.TextAction
 import com.tianaofeng.xingxia.ui.components.ToolIcon
+import com.tianaofeng.xingxia.ui.components.fadingHorizontalScroll
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.weight
 import com.tianaofeng.xingxia.ui.nav.LocalNavigator
 import com.tianaofeng.xingxia.ui.nav.Routes
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
-import com.tianaofeng.xingxia.ui.theme.hex
 
 @Composable
 fun ToolScreen(kind: ToolKind) {
@@ -86,7 +88,7 @@ fun FavoriteToolsRow() {
         SectionHeader("我的收藏", icon = Icons.Rounded.Star) {
             TextAction("管理") { navigator.open(Routes.FAVORITES) }
         }
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fadingHorizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             for (tool in favorites) FavoritePill(tool)
         }
     }
@@ -132,23 +134,24 @@ private fun ToolTile(tool: ToolKind, modifier: Modifier) {
     val navigator = LocalNavigator.current
     val palette = LocalPalette.current
     val favorite = tool.id in AppSettings.favoriteTools
+    val colors = palette.identity(tool.colors)
     Column(
         modifier
             .alpha(if (tool.available) 1f else 0.55f)
             .toolClick(tool.id) { navigator.open(Routes.tool(tool)) }
-            .glass(RoundedCornerShape(28.dp), tint = tool.colors[0].copy(alpha = 0.08f))
+            .glass(RoundedCornerShape(28.dp), tint = colors[0].copy(alpha = 0.08f))
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row {
-            ToolIcon(tool.icon, tool.colors, 48.dp)
+            ToolIcon(tool.icon, colors, 48.dp)
             Spacer(Modifier.weight(1f))
-            if (favorite) Icon(Icons.Rounded.Star, "已收藏", Modifier.size(16.dp), tint = hex(0xFACC15))
+            if (favorite) Icon(Icons.Rounded.Star, "已收藏", Modifier.size(16.dp), tint = palette.gold)
             if (!tool.available) Icon(Icons.Rounded.Construction, "即将推出", Modifier.size(16.dp), tint = palette.secondaryText)
         }
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(tool.label, style = Fonts.headline, maxLines = 1)
-            SecondaryText(if (tool.available) tool.subtitle else "即将推出", style = Fonts.caption, maxLines = 1)
+            TileSubtitle(if (tool.available) tool.subtitle else "即将推出", colors[0], maxLines = 1)
         }
     }
 }
@@ -157,30 +160,45 @@ private fun ToolTile(tool: ToolKind, modifier: Modifier) {
 private fun WideToolTile(tool: ToolKind) {
     val navigator = LocalNavigator.current
     val palette = LocalPalette.current
+    val colors = palette.identity(tool.colors)
     Row(
         Modifier
             .alpha(if (tool.available) 1f else 0.55f)
             .toolClick(tool.id) { navigator.open(Routes.tool(tool)) }
-            .glass(RoundedCornerShape(28.dp), tint = tool.colors[0].copy(alpha = 0.08f))
+            .glass(RoundedCornerShape(28.dp), tint = colors[0].copy(alpha = 0.08f))
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        ToolIcon(tool.icon, tool.colors, 48.dp)
+        ToolIcon(tool.icon, colors, 48.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(tool.label, style = Fonts.headline)
-                if (tool.id in AppSettings.favoriteTools) Icon(Icons.Rounded.Star, null, Modifier.size(14.dp), tint = hex(0xFACC15))
+                if (tool.id in AppSettings.favoriteTools) Icon(Icons.Rounded.Star, null, Modifier.size(14.dp), tint = palette.gold)
             }
-            SecondaryText(if (tool.available) tool.subtitle else "即将推出", style = Fonts.caption)
+            TileSubtitle(if (tool.available) tool.subtitle else "即将推出", colors[0])
         }
         Icon(Icons.Rounded.ChevronRight, null, tint = palette.tertiaryText)
     }
 }
 
+/** 格子副标题：浅色模式下用工具色的深色版（比格子的浅色底深两档），深色模式照旧用次要文字色 */
+@Composable
+private fun TileSubtitle(text: String, color: Color, maxLines: Int = Int.MAX_VALUE) {
+    val palette = LocalPalette.current
+    Text(
+        text,
+        style = Fonts.caption,
+        color = if (palette.isDark) palette.secondaryText else lerp(color, Color.Black, 0.5f),
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
 @Composable
 private fun FavoritePill(tool: FavoriteTool) {
     val navigator = LocalNavigator.current
+    val palette = LocalPalette.current
     Row(
         Modifier
             .toolClick(tool.id) { navigator.open(tool.route) }
@@ -189,7 +207,7 @@ private fun FavoritePill(tool: FavoriteTool) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        ToolIcon(tool.icon, tool.colors, 36.dp)
+        ToolIcon(tool.icon, palette.identity(tool.colors), 36.dp)
         Text(tool.label, style = Fonts.subheadline.weight(FontWeight.SemiBold))
     }
 }
@@ -275,8 +293,9 @@ fun FavoriteToolsScreen() {
 
 @Composable
 private fun FavoriteToolLabel(tool: FavoriteTool, modifier: Modifier = Modifier) {
+    val palette = LocalPalette.current
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        ToolIcon(tool.icon, tool.colors, 36.dp)
+        ToolIcon(tool.icon, palette.identity(tool.colors), 36.dp)
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(tool.label, style = Fonts.body, maxLines = 1)
             SecondaryText(tool.subtitle, style = Fonts.caption, maxLines = 1)

@@ -3,7 +3,6 @@ package com.tianaofeng.xingxia.ui.screens.profile
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -104,6 +103,7 @@ import com.tianaofeng.xingxia.ui.components.TagChip
 import com.tianaofeng.xingxia.ui.components.TextAction
 import com.tianaofeng.xingxia.ui.components.ToggleRow
 import com.tianaofeng.xingxia.ui.components.ToolIcon
+import com.tianaofeng.xingxia.ui.components.fadingHorizontalScroll
 import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.weight
 import com.tianaofeng.xingxia.ui.nav.LocalNavigator
@@ -225,7 +225,7 @@ private fun MeRow(icon: ImageVector, colors: List<Color>, title: String, value: 
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        ToolIcon(icon, colors, 34.dp)
+        ToolIcon(icon, palette.identity(colors), 34.dp)
         Text(title, style = Fonts.body, modifier = Modifier.weight(1f))
         SecondaryText(value)
         Icon(Icons.Rounded.ChevronRight, null, tint = palette.tertiaryText)
@@ -390,7 +390,7 @@ fun ProfileEditorScreen(profileId: String?, isOnboarding: Boolean) {
 
         GlassCard {
             SectionHeader("头像与称呼")
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fadingHorizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 for (emoji in AVATARS) {
                     val selected = emoji == avatar
                     Box(
@@ -426,8 +426,8 @@ fun ProfileEditorScreen(profileId: String?, isOnboarding: Boolean) {
                     InfoRow("对应公历", DateText.full(converted))
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Warning, null, Modifier.size(16.dp), tint = hex(0xF59E0B))
-                        Text("这一天在农历中不存在，请检查日期", style = Fonts.footnote, color = hex(0xF59E0B))
+                        Icon(Icons.Rounded.Warning, null, Modifier.size(16.dp), tint = palette.caution)
+                        Text("这一天在农历中不存在，请检查日期", style = Fonts.footnote, color = palette.caution)
                     }
                 }
             } else {

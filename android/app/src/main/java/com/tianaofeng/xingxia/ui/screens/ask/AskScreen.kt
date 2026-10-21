@@ -416,7 +416,7 @@ private fun AskResultCard(analysis: QuestionAnalysis, onPick: (AskMethod) -> Uni
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    ToolIcon(method.icon, method.colors, 40.dp)
+                    ToolIcon(method.icon, palette.identity(method.colors), 40.dp)
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(

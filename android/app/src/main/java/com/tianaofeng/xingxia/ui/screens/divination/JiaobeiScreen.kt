@@ -80,7 +80,7 @@ import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.BigActionButton
 import com.tianaofeng.xingxia.ui.components.CircleIconButton
 import com.tianaofeng.xingxia.ui.components.Confetti
-import com.tianaofeng.xingxia.ui.components.CosmicBackground
+import com.tianaofeng.xingxia.ui.components.CosmicBackdrop
 import com.tianaofeng.xingxia.ui.components.Fonts
 import com.tianaofeng.xingxia.ui.components.GlassButton
 import com.tianaofeng.xingxia.ui.components.Haptics
@@ -307,8 +307,8 @@ internal fun JiaobeiDialog(stick: FortuneStick, forName: String?, onConfirmed: (
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         OnShake(enabled = outcome == JiaobeiOutcome.PENDING && !throwing) { throwCups() }
-        Box(Modifier.fillMaxSize()) {
-            CosmicBackground()
+        // 全屏弹层自己的星空背景，里面的玻璃模糊它（不是被盖住的主窗口）
+        CosmicBackdrop {
             Column(Modifier.fillMaxSize()) {
                 Box(
                     Modifier
@@ -441,7 +441,7 @@ private fun JiaobeiHeader(stick: FortuneStick, forName: String?, streak: Int) {
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 repeat(JIAOBEI_NEEDED) { index ->
-                    val fill = if (index < streak) hex(0xE53935) else palette.subtle(0.15f)
+                    val fill = if (index < streak) palette.identity(hex(0xE53935)) else palette.subtle(0.15f)
                     Canvas(Modifier.size(26.dp, 16.dp)) { drawPath(jiaobeiPath(size), fill) }
                 }
             }
@@ -560,6 +560,8 @@ private fun JiaobeiStage(
 /** 一片筊杯：绕水平轴翻转，翻到侧立（90°）时才换面 */
 @Composable
 private fun JiaobeiPiece(spin: () -> Float, modifier: Modifier) {
+    val palette = LocalPalette.current
+    val tones = remember(palette) { JiaobeiTones(palette) }
     Canvas(
         modifier.graphicsLayer {
             rotationX = spin()
@@ -568,27 +570,35 @@ private fun JiaobeiPiece(spin: () -> Float, modifier: Modifier) {
     ) {
         if (isFlatUp(spin())) {
             // 平面那一面是翻过半圈才看到的，先上下倒一次抵消
-            scale(scaleX = 1f, scaleY = -1f) { drawJiaobeiFace(flat = true) }
+            scale(scaleX = 1f, scaleY = -1f) { drawJiaobeiFace(flat = true, tones) }
         } else {
-            drawJiaobeiFace(flat = false)
+            drawJiaobeiFace(flat = false, tones)
         }
     }
 }
 
+/** 筊杯保留传统朱漆红，但向主题强调色靠一点 */
+private class JiaobeiTones(palette: ThemePalette) {
+    val flat = palette.identity(listOf(hex(0xDB4A3E), hex(0xB3261E)))
+    val flatRim = palette.identity(hex(0xFFD6C9)).copy(alpha = 0.55f)
+    val dome = palette.identity(listOf(hex(0xF0564A), hex(0xB71C1C), hex(0x6B0F0F)))
+    val outline = palette.identity(hex(0x5A0B0B)).copy(alpha = 0.7f)
+}
+
 /** 筊杯的一面：凸面漆色深、带一道高光；平面颜色平匀，带一圈浅色描边 */
-private fun DrawScope.drawJiaobeiFace(flat: Boolean) {
+private fun DrawScope.drawJiaobeiFace(flat: Boolean, tones: JiaobeiTones) {
     val w = size.width
     val h = size.height
     val path = jiaobeiPath(size)
     val line = maxOf(density, w * 0.012f)
     clipPath(path) {
         if (flat) {
-            drawPath(path, Brush.verticalGradient(listOf(hex(0xDB4A3E), hex(0xB3261E))))
+            drawPath(path, Brush.verticalGradient(tones.flat))
             translate(top = h * 0.05f) {
-                scale(0.82f) { drawPath(path, hex(0xFFD6C9, 0.55f), style = Stroke(line)) }
+                scale(0.82f) { drawPath(path, tones.flatRim, style = Stroke(line)) }
             }
         } else {
-            drawPath(path, Brush.verticalGradient(listOf(hex(0xF0564A), hex(0xB71C1C), hex(0x6B0F0F))))
+            drawPath(path, Brush.verticalGradient(tones.dome))
             // 高光：压扁的圆形渐变
             val center = Offset(w * 0.5f, h * 0.6f)
             val radius = w * 0.21f
@@ -597,7 +607,7 @@ private fun DrawScope.drawJiaobeiFace(flat: Boolean) {
             }
         }
         // 描边一半落在裁切外，看到的宽度与 iOS 相同
-        drawPath(path, hex(0x5A0B0B, 0.7f), style = Stroke(line))
+        drawPath(path, tones.outline, style = Stroke(line))
     }
 }
 
@@ -625,10 +635,10 @@ private fun jiaobeiPath(size: Size): Path {
 
 // region 已确认小印
 
-/** 掷筊连得三次圣杯后盖在签上的「已确认」小印（签诗页和分享卡共用） */
+/** 掷筊连得三次圣杯后盖在签上的「已确认」小印（签诗页和分享卡共用；印章红向主题强调色靠一点，分享卡里跟分享卡的主题走） */
 @Composable
 fun JiaobeiSeal(size: Int = 13, modifier: Modifier = Modifier) {
-    val red = hex(0xE53935)
+    val red = LocalPalette.current.identity(hex(0xE53935))
     val shape = RoundedCornerShape((size * 0.35f).dp)
     Text(
         "已确认",

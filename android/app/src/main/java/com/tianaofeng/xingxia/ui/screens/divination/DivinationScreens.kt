@@ -6,7 +6,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -70,6 +69,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
@@ -122,6 +122,7 @@ import com.tianaofeng.xingxia.ui.components.SegmentedPicker
 import com.tianaofeng.xingxia.ui.components.StarRatingView
 import com.tianaofeng.xingxia.ui.components.TagChip
 import com.tianaofeng.xingxia.ui.components.TextAction
+import com.tianaofeng.xingxia.ui.components.fadingHorizontalScroll
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.rememberToday
@@ -156,11 +157,14 @@ fun DivinationSection() {
     val navigator = LocalNavigator.current
     val palette = LocalPalette.current
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        // 摇签筒
-        GlassCard(tint = hex(0xB91C1C, 0.12f), onClick = { navigator.open(Routes.STICK) }) {
+        // 摇签筒。签、塔罗、答案之书的身份色向主题强调色靠一点，换主题时不和强调色打架
+        val (stickRed, stickGold) = palette.identity(listOf(hex(0xB91C1C), hex(0xF59E0B)))
+        GlassCard(tint = stickRed.copy(alpha = 0.12f), onClick = { navigator.open(Routes.STICK) }) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("心诚则灵 · 一日一签", style = Fonts.caption.weight(FontWeight.SemiBold), color = palette.ink(hex(0xF59E0B)))
+                    // 比卡片底色深两档：浅色模式下压暗一半多，免得橙字融进浅粉底
+                    val labelColor = if (palette.isDark) palette.ink(stickGold) else lerp(stickGold, Color.Black, 0.55f)
+                    Text("心诚则灵 · 一日一签", style = Fonts.caption.weight(FontWeight.SemiBold), color = labelColor)
                     Text("摇签筒", style = Fonts.title)
                     SecondaryText("默念心中所求，摇动手机，抽出今天的指引")
                 }
@@ -170,11 +174,11 @@ fun DivinationSection() {
 
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             val tarotSubtitle = if (AppSettings.tarotFullDeck) "${ContentLibrary.tarot.size} 张 · 四种牌阵" else "大阿卡纳 · 四种牌阵"
-            SmallHeroCard("塔罗占卜", tarotSubtitle, hex(0x6D28D9), Modifier.weight(1f), { navigator.open(Routes.TAROT) }) {
+            SmallHeroCard("塔罗占卜", tarotSubtitle, palette.identity(hex(0x6D28D9)), Modifier.weight(1f), { navigator.open(Routes.TAROT) }) {
                 TarotBackMini()
             }
-            SmallHeroCard("答案之书", "默念问题 · 翻开一页", hex(0xD97706), Modifier.weight(1f), { navigator.open(Routes.ANSWERS) }) {
-                Icon(Icons.Rounded.MenuBook, null, Modifier.size(52.dp), tint = hex(0xF5B83D))
+            SmallHeroCard("答案之书", "默念问题 · 翻开一页", palette.identity(hex(0xD97706)), Modifier.weight(1f), { navigator.open(Routes.ANSWERS) }) {
+                Icon(Icons.Rounded.MenuBook, null, Modifier.size(52.dp), tint = palette.identity(hex(0xF5B83D)))
             }
         }
 
@@ -199,9 +203,9 @@ fun DivinationSection() {
 
         val tiles = listOf(
             MiniTileData(Routes.FORTUNE, Icons.Rounded.AutoAwesome, "运势详解", "五维运势与幸运指南", listOf(palette.accent, palette.accentSecondary), palette.onAccent),
-            MiniTileData(Routes.ALMANAC, Icons.Rounded.CalendarMonth, "黄历", "农历 · 节气 · 宜忌", listOf(hex(0xEF4444), hex(0xF59E0B))),
-            MiniTileData(Routes.COMPATIBILITY, Icons.Rounded.Favorite, "缘分配对", "星座 + 生肖", listOf(hex(0xFB7185), hex(0xF43F5E))),
-            MiniTileData(Routes.TAROT_JOURNAL, Icons.Rounded.Book, "塔罗手记", "回看抽过的牌", listOf(hex(0x8B5CF6), hex(0x3B82F6))),
+            MiniTileData(Routes.ALMANAC, Icons.Rounded.CalendarMonth, "黄历", "农历 · 节气 · 宜忌", palette.identity(listOf(hex(0xEF4444), hex(0xF59E0B)))),
+            MiniTileData(Routes.COMPATIBILITY, Icons.Rounded.Favorite, "缘分配对", "星座 + 生肖", palette.identity(listOf(hex(0xFB7185), hex(0xF43F5E)))),
+            MiniTileData(Routes.TAROT_JOURNAL, Icons.Rounded.Book, "塔罗手记", "回看抽过的牌", palette.identity(listOf(hex(0x8B5CF6), hex(0x3B82F6)))),
         )
         for (row in tiles.chunked(2)) {
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -515,8 +519,8 @@ fun AlmanacDetailScreen() {
             val year = almanac.lunar.yearGanZhi
             SecondaryText("${year.branch.animalEmoji} ${year.name}${year.branch.animal}年 · 纳音${almanac.day.nayin}", style = Fonts.footnote)
             Flow(spacing = 8.dp, horizontalAlignment = Alignment.CenterHorizontally) {
-                TagChip(almanac.jianChu.name, if (almanac.jianChu.isLucky) hex(0x34D399) else hex(0xFBBF24))
-                TagChip("${almanac.deity.name} · ${almanac.deity.pathName}", if (almanac.deity.isYellowPath) hex(0xFBBF24) else hex(0x94A3B8))
+                TagChip(almanac.jianChu.name, if (almanac.jianChu.isLucky) palette.positive else palette.caution)
+                TagChip("${almanac.deity.name} · ${almanac.deity.pathName}", if (almanac.deity.isYellowPath) palette.gold else hex(0x94A3B8))
             }
             if (almanac.shensha.isNotEmpty()) {
                 // 神煞多时（大字号下）放不下就换行；读屏合成一句
@@ -532,7 +536,7 @@ fun AlmanacDetailScreen() {
             }
             if (almanac.festivals.isNotEmpty()) {
                 Flow(spacing = 8.dp, horizontalAlignment = Alignment.CenterHorizontally) {
-                    for (f in almanac.festivals) TagChip(f, hex(0xFB7185))
+                    for (f in almanac.festivals) TagChip(f, palette.identity(hex(0xFB7185)))
                 }
             }
         }
@@ -664,7 +668,7 @@ fun HoroscopeScreen() {
     val scroll = rememberScrollState()
 
     Screen(title = "星座运势") {
-        Row(Modifier.horizontalScroll(scroll), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fadingHorizontalScroll(scroll), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             for (item in ZodiacSign.entries) {
                 val selected = item == sign
                 Column(

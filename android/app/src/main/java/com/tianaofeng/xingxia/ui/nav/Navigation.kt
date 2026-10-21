@@ -1,6 +1,8 @@
 package com.tianaofeng.xingxia.ui.nav
 
 import android.net.Uri
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -29,14 +31,20 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -48,6 +56,8 @@ import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.Fonts
 import com.tianaofeng.xingxia.ui.components.Haptics
 import com.tianaofeng.xingxia.ui.components.LocalFavoriteId
+import com.tianaofeng.xingxia.ui.components.LocalGlassBackdrop
+import com.tianaofeng.xingxia.ui.components.LocalTabBarHeight
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.weight
 import com.tianaofeng.xingxia.ui.screens.ask.AskScreen
@@ -187,12 +197,20 @@ private val tabs = listOf(
     TabItem(Routes.ME, "我的", Icons.Rounded.AccountCircle),
 )
 
+/** 两个 tab 根页之间切换（底栏点按，或返回到今日）：只淡入淡出，不横滑 */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.isTabSwitch(): Boolean =
+    tabs.any { it.route == initialState.destination.route } && tabs.any { it.route == targetState.destination.route }
+
+private const val TAB_FADE_MS = 220
+
 @Composable
 fun AppNavigation(pendingLink: MutableState<String?>) {
     val controller = rememberNavController()
     val navigator = remember(controller) { Navigator(controller) }
     val backStack by controller.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
+    // 量出来的悬浮底栏高度：根页面按它在底部留白，决策浮层按它浮在底栏上方
+    var tabBarHeight by remember { mutableStateOf(0.dp) }
 
     LaunchedEffect(pendingLink.value) {
         val link = pendingLink.value ?: return@LaunchedEffect
@@ -205,16 +223,17 @@ fun AppNavigation(pendingLink: MutableState<String?>) {
         if (Store.lastDecision != null) Store.lastDecision = null
     }
 
-    CompositionLocalProvider(LocalNavigator provides navigator) {
+    CompositionLocalProvider(LocalNavigator provides navigator, LocalTabBarHeight provides tabBarHeight) {
         Box(Modifier.fillMaxSize()) {
             NavHost(
                 navController = controller,
                 startDestination = Routes.TODAY,
                 modifier = Modifier.fillMaxSize(),
-                enterTransition = { fadeIn() + slideInHorizontally { it / 6 } },
-                exitTransition = { fadeOut() },
-                popEnterTransition = { fadeIn() },
-                popExitTransition = { fadeOut() + slideOutHorizontally { it / 6 } },
+                // tab 之间淡入淡出；进入详情页才横滑（底栏切到「今日」时导航栈会弹回起点，按返回处理，所以 pop 也要分）
+                enterTransition = { if (isTabSwitch()) fadeIn(tween(TAB_FADE_MS)) else fadeIn() + slideInHorizontally { it / 6 } },
+                exitTransition = { if (isTabSwitch()) fadeOut(tween(TAB_FADE_MS)) else fadeOut() },
+                popEnterTransition = { if (isTabSwitch()) fadeIn(tween(TAB_FADE_MS)) else fadeIn() },
+                popExitTransition = { if (isTabSwitch()) fadeOut(tween(TAB_FADE_MS)) else fadeOut() + slideOutHorizontally { it / 6 } },
             ) {
                 composable(Routes.TODAY) { TodayScreen() }
                 composable(Routes.ASK) { AskScreen() }
@@ -266,24 +285,30 @@ fun AppNavigation(pendingLink: MutableState<String?>) {
             }
 
             val showsTabBar = tabs.any { it.route == currentRoute }
-            if (showsTabBar) {
-                TabBar(currentRoute, Modifier.align(Alignment.BottomCenter)) { navigator.switchTab(it) }
+            val bottom = Modifier.align(Alignment.BottomCenter)
+            // 浮在页面内容上的玻璃不做模糊：模糊源只有星空，会把底下的卡片盖成一块星空
+            CompositionLocalProvider(LocalGlassBackdrop provides null) {
+                if (showsTabBar) {
+                    TabBar(currentRoute, bottom, onHeight = { tabBarHeight = it }) { navigator.switchTab(it) }
+                }
+                // 刚记下的决定：「就这么办 / 再想想」，底栏可见时浮在底栏上方
+                DecisionPrompt(tabBarVisible = showsTabBar, modifier = bottom)
             }
-            // 刚记下的决定：「就这么办 / 再想想」，底栏可见时浮在底栏上方
-            DecisionPrompt(tabBarVisible = showsTabBar, modifier = Modifier.align(Alignment.BottomCenter))
             // 每天第一次打开时的仪式（全屏，自己判断要不要显示）
             DailyRitualHost()
         }
     }
 }
 
-/** 悬浮的玻璃底栏 */
+/** 悬浮的玻璃底栏；onHeight 报告它占的高度（不含系统导航栏） */
 @Composable
-private fun TabBar(current: String?, modifier: Modifier = Modifier, onSelect: (String) -> Unit) {
+private fun TabBar(current: String?, modifier: Modifier = Modifier, onHeight: (Dp) -> Unit, onSelect: (String) -> Unit) {
     val palette = LocalPalette.current
+    val density = LocalDensity.current
     Row(
         modifier
             .navigationBarsPadding()
+            .onSizeChanged { onHeight(with(density) { it.height.toDp() }) }
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .fillMaxWidth()
             .glass(CircleShape, tint = palette.backgroundBottom.copy(alpha = if (palette.isDark) 0.55f else 0.35f))

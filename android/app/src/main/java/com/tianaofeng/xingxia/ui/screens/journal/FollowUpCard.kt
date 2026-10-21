@@ -97,7 +97,7 @@ private fun FollowUpContent(record: DecisionRecord, today: DayKey) {
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            ToolIcon(icon, colors, 40.dp)
+            ToolIcon(icon, palette.identity(colors), 40.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(FollowUpText.sentence(record, today), style = Fonts.subheadline.weight(FontWeight.SemiBold), color = palette.text)
                 record.askedQuestion?.let { SecondaryText("当时问的是「$it」", style = Fonts.caption, maxLines = 2) }
