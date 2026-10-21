@@ -95,6 +95,8 @@ final class AppState {
     var currentQuestion: String?
     /// 刚刚在前台记下的决定，RootView 据此弹出「就这么办 / 再想想」浮层
     var lastDecision: DecisionRecord?
+    /// 最近一次从深链接（小组件、通知、锁屏）打开页面的时间：每日仪式这次不盖住用户点进来的页面
+    var lastDeepLinkAt: Date?
     /// 问一问拆出的选项，转盘页出现时取走，写进「问一问」转盘
     var pendingWheelOptions: [String]?
     /// 问一问推荐的塔罗牌阵，塔罗页出现时取走
@@ -119,7 +121,9 @@ final class AppState {
     }
 
     func handle(url: URL) {
-        if let route = AppRoute(url: url) { open(route) }
+        guard let route = AppRoute(url: url) else { return }
+        lastDeepLinkAt = Date()
+        open(route)
     }
 
     /// 收起决策浮层（不记录表态）

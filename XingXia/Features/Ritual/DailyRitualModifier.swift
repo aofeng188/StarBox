@@ -3,6 +3,7 @@ import SwiftData
 
 extension View {
     /// 每天第一次进入前台时全屏展示每日仪式：需要打开了「每日仪式」、已经走过档案引导、今天还没有 RitualDay。
+    /// 从小组件、通知点进来的那次不展示（已经弹出的也收起），等下次回到前台再判断。
     /// DEBUG 下启动参数 `-forceRitual` 每次启动都展示一次（截图用），`-skipRitual` 或带 `-debugTab` / `-debugRoute` 时不展示。
     func dailyRitual() -> some View {
         modifier(DailyRitualModifier())
@@ -62,6 +63,10 @@ private struct DailyRitualModifier: ViewModifier {
                     break
                 }
             }
+            // 深链接和回到前台谁先到不一定：仪式已经弹出来了也收起，不记录，下次回到前台再弹
+            .onChange(of: app.lastDeepLinkAt) { _, _ in
+                if session != nil { session = nil }
+            }
     }
 
     private func evaluate() {
@@ -79,6 +84,7 @@ private struct DailyRitualModifier: ViewModifier {
         #endif
         guard settings.dailyRitualEnabled, !waitsForBackground,
               settings.hasOnboarded || app.primary != nil else { return }
+        if let at = app.lastDeepLinkAt, Date().timeIntervalSince(at) < 3 { return }
         let key = today.rawValue
         let descriptor = FetchDescriptor<RitualDay>(predicate: #Predicate<RitualDay> { $0.dayKey == key })
         // 查询出错时按「已经看过」处理，宁可少弹一次
