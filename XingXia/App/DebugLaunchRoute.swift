@@ -6,6 +6,7 @@ import Foundation
 /// `xcrun simctl launch <设备> com.tianaofeng.xingxia -debugRoute xingxia://tool/coin`
 /// 没有深链接的页面直接写名字：`-debugRoute backup`、`-debugRoute settings`；
 /// 年度回顾：`-debugRoute review`（默认年份）或 `-debugRoute xingxia://review/2025`
+/// 每日仪式：带 `-debugTab` / `-debugRoute` 时不弹；只截别的页面可加 `-skipRitual`，截仪式本身加 `-forceRitual`
 enum DebugLaunchRoute {
     /// 名字 → 页面，覆盖所有不需要参数的路由（含没有深链接的档案、主题、设置等）
     private static var named: [String: AppRoute] {

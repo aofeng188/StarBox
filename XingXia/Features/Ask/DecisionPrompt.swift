@@ -133,4 +133,15 @@ extension AppRoute {
         default: false
         }
     }
+
+    /// 最底下是大号主按钮的舞台页（抛硬币、掷骰子）：浮层抬到主按钮上方，不然连抛、连掷时 8 秒内按不到按钮。
+    /// 按默认字号下主按钮（掷骰子还有下面一行历史）的高度估出
+    var promptLiftAboveAction: CGFloat? {
+        guard case .tool(let tool) = self else { return nil }
+        switch tool {
+        case .coin: return 80
+        case .dice: return 108
+        default: return nil
+        }
+    }
 }

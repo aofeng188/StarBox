@@ -6,6 +6,8 @@ struct RootView: View {
     @Environment(ThemeManager.self) private var themes
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// 动态字体的放大倍数：舞台页主按钮跟着字号变高，浮层也要抬得更高
+    @ScaledMetric(relativeTo: .headline) private var textScale: CGFloat = 1
 
     var body: some View {
         @Bindable var app = app
@@ -60,10 +62,13 @@ struct RootView: View {
         }
     }
 
-    /// 决策浮层底部让出的高度：iPhone 上 tab 栏浮在底部，沉浸页隐藏了 tab 栏就贴近安全区；iPad 的 tab 栏在顶部
+    /// 决策浮层底部让出的高度：iPhone 上 tab 栏浮在底部，沉浸页隐藏了 tab 栏就贴近安全区；iPad 的 tab 栏在顶部。
+    /// 抛硬币、掷骰子的主按钮在最底下（iPad 竖屏也是），浮层抬到按钮上方
     private var promptInset: CGFloat {
+        let route = app.paths[app.selectedTab]?.last
+        if let lift = route?.promptLiftAboveAction { return lift * min(max(textScale, 1), 1.6) }
         guard horizontalSizeClass == .compact else { return 8 }
-        return app.paths[app.selectedTab]?.last?.hidesTabBar == true ? 8 : 64
+        return route?.hidesTabBar == true ? 8 : 64
     }
 
     private func dismissDecisionPrompt() {

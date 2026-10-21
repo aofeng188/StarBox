@@ -57,7 +57,8 @@ enum CountdownStore {
     /// 读一次库，按给定的每一天分别计算状态。含档案生日（App 里关掉了，或读不到档案时跳过）
     static func all(on days: [DayKey]) -> [[CountdownValue]] {
         guard let container else { return days.map { _ in [] } }
-        let context = container.mainContext
+        // 每次新建 context 读最新数据：扩展进程常驻时，mainContext 里已有的对象不会随 App 的修改刷新
+        let context = ModelContext(container)
         let countdowns = (try? context.fetch(FetchDescriptor<Countdown>(sortBy: [SortDescriptor(\.createdAt)]))) ?? []
         let profiles = CountdownItem.profileBirthdaysEnabled
             ? ((try? context.fetch(FetchDescriptor<Profile>(sortBy: [SortDescriptor(\.sortIndex)]))) ?? [])

@@ -56,12 +56,12 @@ struct SearchView: View {
                             }
                             Spacer(minLength: 0)
                             Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                                .accessibilityHidden(true)
                         }
                         .padding(.vertical, 10)
                         .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint(item.subtitle)
                 }
             }
             .glassCard(padding: 14)

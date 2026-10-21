@@ -42,7 +42,8 @@ struct LogMoodIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         guard let container = SharedStore.container() else { return .result() }
-        let context = container.mainContext
+        // 每次新建 context：小组件进程常驻时，mainContext 里留着的旧心情不会随 App 里的修改刷新，改写它会覆盖或冲突
+        let context = ModelContext(container)
         let key = DayKey.today.rawValue
         let value = min(max(mood, 1), 5)
         let descriptor = FetchDescriptor<MoodEntry>(predicate: #Predicate { $0.dayKey == key },
