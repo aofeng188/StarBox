@@ -14,18 +14,23 @@ struct RootView: View {
         TabView(selection: $app.selectedTab) {
             Tab("今日", systemImage: "sparkles", value: AppTab.today) {
                 NavigationStack(path: app.binding(for: .today)) { TodayView().withAppRoutes() }
+                    .zoomTransitionRoot()
             }
             Tab("问一问", systemImage: "questionmark.bubble.fill", value: AppTab.ask) {
                 NavigationStack(path: app.binding(for: .ask)) { AskView().withAppRoutes() }
+                    .zoomTransitionRoot()
             }
             Tab("日记", systemImage: "text.book.closed.fill", value: AppTab.journal) {
                 NavigationStack(path: app.binding(for: .journal)) { JournalView().withAppRoutes() }
+                    .zoomTransitionRoot()
             }
             Tab("我的", systemImage: "person.crop.circle.fill", value: AppTab.me) {
                 NavigationStack(path: app.binding(for: .me)) { MeView().withAppRoutes() }
+                    .zoomTransitionRoot()
             }
             Tab(value: AppTab.search, role: .search) {
                 NavigationStack(path: app.binding(for: .search)) { SearchView().withAppRoutes() }
+                    .zoomTransitionRoot()
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
@@ -80,6 +85,7 @@ extension View {
     func withAppRoutes() -> some View {
         navigationDestination(for: AppRoute.self) { route in
             RouteDestination(route: route)
+                .zoomDestination(route)
         }
     }
 }

@@ -56,6 +56,15 @@ struct ThemePalette: Sendable {
         return luminance > 0.25 ? color.mix(with: .black, by: 0.5) : color
     }
 
+    /// 工具、签、答案之书等的身份色向主题强调色靠一点（默认 20%）：保留辨识度，换主题时不和强调色打架
+    func identity(_ color: Color, amount: Double = 0.2) -> Color {
+        color.mix(with: accent, by: amount)
+    }
+
+    func identity(_ colors: [Color], amount: Double = 0.2) -> [Color] {
+        colors.map { identity($0, amount: amount) }
+    }
+
     /// spectrum 的文字版本，和 `color(at:)` 一一对应
     func inkColor(at index: Int) -> Color { ink(color(at: index)) }
 }

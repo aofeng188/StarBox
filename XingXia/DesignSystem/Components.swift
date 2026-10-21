@@ -384,3 +384,41 @@ enum AppFont {
         return .system(size: size, weight: weight, design: .serif)
     }
 }
+
+// MARK: - 横向滚动行的渐隐边缘
+
+private struct ScrollEdges: Equatable {
+    var leading = false
+    var trailing = false
+}
+
+private struct FadingScrollEdgesModifier: ViewModifier {
+    let length: CGFloat
+    @State private var edges = ScrollEdges()
+
+    func body(content: Content) -> some View {
+        content
+            .onScrollGeometryChange(for: ScrollEdges.self) { geometry in
+                ScrollEdges(leading: geometry.visibleRect.minX > 1,
+                            trailing: geometry.visibleRect.maxX < geometry.contentSize.width - 1)
+            } action: { _, new in
+                edges = new
+            }
+            .mask {
+                HStack(spacing: 0) {
+                    LinearGradient(colors: [edges.leading ? .clear : .black, .black], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: length)
+                    Rectangle()
+                    LinearGradient(colors: [.black, edges.trailing ? .clear : .black], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: length)
+                }
+            }
+    }
+}
+
+extension View {
+    /// 挂在横向 ScrollView 上：哪一端还有内容没露出来，哪一端就渐隐，提示可以滑（chip 行、星座选择、签分类等）
+    func fadingScrollEdges(_ length: CGFloat = 20) -> some View {
+        modifier(FadingScrollEdgesModifier(length: length))
+    }
+}
