@@ -45,16 +45,6 @@ struct TarotCard: Decodable, Identifiable, Hashable {
         }
     }
 
-    /// 每张牌的主色调：大阿卡纳限定在深蓝 → 紫 → 品红的「宝石色」区间，与星空主题协调；小阿卡纳用花色主色
-    var hue: Double { 0.55 + Double((id * 7) % 22) / 22.0 * 0.4 }
-    var colors: [Color] {
-        if let suit = suitKind { return suit.colors }
-        return [Color(hue: hue, saturation: 0.7, brightness: 0.5), Color(hue: (hue + 0.06).truncatingRemainder(dividingBy: 1), saturation: 0.8, brightness: 0.2)]
-    }
-
-    /// 牌面描边、牌号等点缀色
-    var accent: Color { suitKind?.accent ?? Color(hex: 0xF5D78E) }
-
     /// 按正逆位取关键词；逆位缺字段时为 nil
     func shownKeywords(isReversed: Bool) -> [String]? {
         isReversed ? keywordsReversed : keywords
@@ -93,7 +83,7 @@ enum TarotSuit: String, CaseIterable {
         }
     }
 
-    /// 牌面渐变：权杖火红、圣杯水蓝、宝剑银灰、星币金黄
+    /// 花色身份色（牌面底色里透出的那一点）：权杖火红、圣杯水蓝、宝剑银灰、星币金黄。界面上经过 palette.identity 再用
     var colors: [Color] {
         switch self {
         case .wands: [Color(hex: 0xB83A1B), Color(hex: 0x3A0D05)]
@@ -103,7 +93,7 @@ enum TarotSuit: String, CaseIterable {
         }
     }
 
-    /// 压在牌面深色渐变上的点缀色
+    /// 压在深色牌面上的点缀色，同样经过 palette.identity 再用
     var accent: Color {
         switch self {
         case .wands: Color(hex: 0xFFB48A)
@@ -205,7 +195,11 @@ struct TarotView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.palette) private var palette
     @Environment(AppSettings.self) private var settings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var namespace
+    /// 牌阵 chip 的玻璃高亮在 chip 之间流动用
+    @Namespace private var glassNamespace
+    @ScaledMetric(relativeTo: .title3) private var spreadIconSize: CGFloat = 40
 
     @State private var phase: Phase = .setup
     @State private var spread: TarotSpread = .time
@@ -294,40 +288,87 @@ struct TarotView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                VStack(spacing: 10) {
-                    ForEach(TarotSpread.allCases) { item in
-                        Button {
-                            spread = item
-                            Haptics.selection()
-                        } label: {
-                            HStack(spacing: 14) {
-                                Image(systemName: item.symbol)
-                                    .font(.title3)
-                                    .frame(width: 40, height: 40)
-                                    .foregroundStyle(spread == item ? palette.onAccent : palette.ink(palette.accent))
-                                    .background(Circle().fill(spread == item ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(palette.accent.opacity(0.12))))
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("\(item.name) · \(item.positions.count) 张").font(.headline).foregroundStyle(.primary)
-                                    Text(item.detail).font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if spread == item {
-                                    Image(systemName: "checkmark.circle.fill").foregroundStyle(palette.accent)
-                                        .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("牌阵").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                    // 一排玻璃 chip：选中的高亮像水滴一样流到新的 chip 上
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        GlassEffectContainer(spacing: 10) {
+                            HStack(spacing: 8) {
+                                ForEach(TarotSpread.allCases) { item in
+                                    spreadChip(item)
                                 }
                             }
-                            .glassCard(cornerRadius: 22, padding: 14, interactive: true)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 4)
                         }
-                        .buttonStyle(.pressableCard)
-                        .accessibilityAddTraits(spread == item ? .isSelected : [])
                     }
+                    .fadingScrollEdges()
+                    .pageBleed(20)
+                    spreadDetail
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 BigActionButton(title: "开始洗牌", symbol: "sparkles") { startShuffle() }
                     .padding(.top, 6)
             }
             .pageContent(padding: 20)
             .padding(.bottom, 30)
+        }
+    }
+
+    private func spreadChip(_ item: TarotSpread) -> some View {
+        let selected = spread == item
+        return Button {
+            guard spread != item else { return }
+            Haptics.selection()
+            withAnimation(reduceMotion ? nil : .bouncy(duration: 0.4)) { spread = item }
+        } label: {
+            Label(item.name, systemImage: item.symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(selected ? palette.onAccent : .primary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .glassEffect(selected ? Glass.regular.tint(palette.accent).interactive() : Glass.regular.interactive(), in: .capsule)
+        // 选中的那颗玻璃始终是同一个 ID，换选中时它从旧 chip 流到新 chip
+        .glassEffectID(selected ? "spread-selection" : item.rawValue, in: glassNamespace)
+        .accessibilityLabel("\(item.name)，\(item.positions.count) 张")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    /// 选中牌阵的说明和牌位
+    private var spreadDetail: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
+                Image(systemName: spread.symbol)
+                    .font(.title3)
+                    .frame(width: min(spreadIconSize, 64), height: min(spreadIconSize, 64))
+                    .foregroundStyle(palette.onAccent)
+                    .background(Circle().fill(palette.accentGradient))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(spread.name) · \(spread.positions.count) 张").font(.headline)
+                    Text(spread.detail).font(.caption).subtleForeground()
+                }
+                Spacer(minLength: 0)
+            }
+            // 牌位依次排开；超大字号放不下时竖排
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) { positionTags }
+                VStack(alignment: .leading, spacing: 6) { positionTags }
+            }
+        }
+        .glassCard(cornerRadius: 22, padding: 14)
+        .accessibilityElement(children: .combine)
+        .animation(reduceMotion ? nil : .snappy, value: spread)
+    }
+
+    @ViewBuilder
+    private var positionTags: some View {
+        ForEach(Array(spread.positions.enumerated()), id: \.offset) { index, name in
+            TagChip(text: "\(index + 1) · \(name)")
         }
     }
 
@@ -411,10 +452,15 @@ struct TarotView: View {
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(Array(picked.enumerated()), id: \.offset) { slot, entry in
                         VStack(spacing: 8) {
+                            // 窄屏上三张牌一起等比缩小，不撑出屏幕
                             FlippableTarotCard(entry: entry, isFaceUp: flipped.contains(slot))
-                                .frame(width: spread == .single ? 180 : 106, height: spread == .single ? 292 : 172)
+                                .aspectRatio(106.0 / 172.0, contentMode: .fit)
+                                .frame(maxWidth: spread == .single ? 180 : 106)
                                 .onTapGesture { flip(slot) }
-                            Text(spread.position(slot)).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            Text(spread.position(slot))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
                         }
                     }
                 }
@@ -554,33 +600,44 @@ struct TarotInterpretationCard: View {
 
     @Environment(\.palette) private var palette
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let card = entry.card
         let aspect = spread.aspect(at: slot, question: question)
         let extra = aspect.flatMap { card.text(for: $0, isReversed: entry.reversed) }
+        // 超大字号下牌位、牌名、正逆位竖排，免得挤成一字一行
+        let header = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout())
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
+            header {
                 Text(spread.position(slot)).font(.caption.weight(.bold))
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(palette.accent.opacity(0.2), in: .capsule)
                 if let suit = card.suitKind {
-                    Image(systemName: suit.symbol)
-                        .font(.subheadline)
-                        .foregroundStyle(palette.ink(suit.colors[0]))
-                        .accessibilityHidden(true)
-                    Text(card.name).font(.headline)
+                    HStack(spacing: 6) {
+                        Image(systemName: suit.symbol)
+                            .font(.subheadline)
+                            .foregroundStyle(palette.ink(palette.identity(suit.colors[0])))
+                            .accessibilityHidden(true)
+                        Text(card.name).font(.headline)
+                    }
                 } else {
                     Text("\(card.roman) · \(card.name)").font(.headline)
                 }
                 Text(entry.reversed ? "逆位" : "正位")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(entry.reversed ? Color.negative(scheme) : Color.positive(scheme))
-                Spacer()
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             if let keywords = card.shownKeywords(isReversed: entry.reversed), !keywords.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(keywords, id: \.self) { TagChip(text: $0) }
+                // 超大字号下一行放不下就竖排
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) {
+                        ForEach(keywords, id: \.self) { TagChip(text: $0) }
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(keywords, id: \.self) { TagChip(text: $0) }
+                    }
                 }
             }
             Text(entry.reversed ? card.reversed : card.upright).font(.subheadline).lineSpacing(3)
@@ -694,6 +751,7 @@ struct FlipVisibility: ViewModifier, Animatable {
 struct TarotCardFace: View {
     let card: TarotCard
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.palette) private var palette
 
     var body: some View {
         GeometryReader { proxy in
@@ -703,99 +761,32 @@ struct TarotCardFace: View {
                 // 减弱动态效果时不读陀螺仪、不做视差，只留静态的镭射光泽
                 let tilt: CGSize = reduceMotion ? .zero : CGSize(width: MotionManager.shared.roll + sin(t * 0.7) * 0.35,
                                                                  height: MotionManager.shared.pitch + cos(t * 0.5) * 0.25)
-                TarotCardArt(card: card, width: w)
+                TarotCardArt(card: card)
                     .holoFoil(tilt: tilt, strength: 0.9)
+                    .clipShape(.rect(cornerRadius: w * 0.09))
                     .rotation3DEffect(.degrees(tilt.width * 6), axis: (0, 1, 0))
                     .rotation3DEffect(.degrees(-tilt.height * 6), axis: (1, 0, 0))
             }
         }
-        .shadow(color: card.colors[0].opacity(0.6), radius: 14)
+        .shadow(color: card.glowColor(palette).opacity(0.6), radius: 14)
     }
 }
 
-/// 静态的牌面图案。塔罗页在外面加镭射光泽和视差，分享卡直接用它（导出图片时不跑动画和着色器）。
-/// 小阿卡纳用花色主色和花色图标，牌号位置写 A、2…10、侍从、骑士、王后、国王
-struct TarotCardArt: View {
-    let card: TarotCard
-    /// 牌宽，字号、描边按它缩放
-    let width: CGFloat
-
-    var body: some View {
-        let w = width
-        let accent = card.accent
-        ZStack {
-            RoundedRectangle(cornerRadius: w * 0.09)
-                .fill(LinearGradient(colors: card.colors, startPoint: .top, endPoint: .bottom))
-            // 星点
-            Canvas { ctx, size in
-                var rng = SeededGenerator("tarot-face", card.id)
-                for _ in 0..<30 {
-                    let r = rng.double(0.4...1.4)
-                    ctx.fill(Path(ellipseIn: CGRect(x: rng.unit() * size.width, y: rng.unit() * size.height, width: r * 2, height: r * 2)),
-                             with: .color(.white.opacity(rng.double(0.3...0.9))))
-                }
-            }
-            if let suit = card.suitKind {
-                // 花色图标衬底
-                Image(systemName: suit.symbol)
-                    .font(.system(size: w * 0.62))
-                    .foregroundStyle(accent.opacity(0.1))
-            }
-            RoundedRectangle(cornerRadius: w * 0.07)
-                .strokeBorder(accent, lineWidth: max(1, w * 0.012))
-                .padding(w * 0.05)
-            VStack(spacing: w * 0.05) {
-                if let suit = card.suitKind {
-                    HStack(spacing: w * 0.03) {
-                        Image(systemName: suit.symbol)
-                        Spacer(minLength: 0)
-                        Text(card.rankText)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.6)
-                        Spacer(minLength: 0)
-                        Image(systemName: suit.symbol)
-                    }
-                    .font(.system(size: w * 0.09, weight: .semibold, design: .serif))
-                    .foregroundStyle(accent)
-                } else {
-                    Text(card.roman)
-                        .font(.system(size: w * 0.11, weight: .semibold, design: .serif))
-                        .foregroundStyle(accent)
-                }
-                Spacer()
-                Image(systemName: card.symbol)
-                    .font(.system(size: w * 0.36, weight: .light))
-                    .foregroundStyle(LinearGradient(colors: [.white, accent], startPoint: .top, endPoint: .bottom))
-                    .shadow(color: .white.opacity(0.6), radius: w * 0.06)
-                Spacer()
-                Text(card.name)
-                    .font(AppFont.serif(w * 0.13, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                Text(card.en.uppercased())
-                    .font(.system(size: w * 0.055, weight: .medium, design: .serif))
-                    .tracking(1)
-                    .foregroundStyle(accent.opacity(0.9))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-            }
-            .padding(.vertical, w * 0.12)
-            .padding(.horizontal, w * 0.08)
-        }
-    }
-}
-
+/// 牌背：和牌面同一套主题深空底色，金色同心圆、八芒星与上下两轮满月
 struct TarotCardBack: View {
+    @Environment(\.palette) private var palette
+
     var body: some View {
+        let p = palette.tarotCardPalette
+        let gold = TarotArtPalette.gold
         GeometryReader { proxy in
             let w = proxy.size.width
             ZStack {
                 RoundedRectangle(cornerRadius: w * 0.09)
-                    .fill(LinearGradient(colors: [Color(hex: 0x1E1B4B), Color(hex: 0x0B0720)], startPoint: .top, endPoint: .bottom))
+                    .fill(LinearGradient(colors: [p.backgroundBottom.mix(with: p.accent, by: 0.18), p.backgroundTop],
+                                         startPoint: .top, endPoint: .bottom))
                 Canvas { ctx, size in
                     let center = CGPoint(x: size.width / 2, y: size.height / 2)
-                    let gold = Color(hex: 0xF5D78E)
                     for i in 1...3 {
                         let r = size.width * 0.12 * CGFloat(i)
                         ctx.stroke(Path(ellipseIn: CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)),
@@ -819,10 +810,10 @@ struct TarotCardBack: View {
                     }
                 }
                 RoundedRectangle(cornerRadius: w * 0.07)
-                    .strokeBorder(Color(hex: 0xF5D78E).opacity(0.8), lineWidth: max(0.8, w * 0.012))
+                    .strokeBorder(gold.opacity(0.8), lineWidth: max(0.8, w * 0.012))
                     .padding(w * 0.05)
             }
-            .shadow(color: Color(hex: 0x6D28D9).opacity(0.5), radius: 6)
+            .shadow(color: p.accent.opacity(0.45), radius: 6)
         }
     }
 }
@@ -895,7 +886,7 @@ struct TarotShareContent: View {
                 if let keywords = card.shownKeywords(isReversed: entry.reversed), !keywords.isEmpty {
                     Text(keywords.prefix(3).joined(separator: " · "))
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(card.accent)
+                        .foregroundStyle(card.tint(style.palette))
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
@@ -933,11 +924,12 @@ struct TarotShareContent: View {
         }
     }
 
+    /// 分享卡里的牌面：和页面上同一套线稿（静态 Canvas，ImageRenderer 可以直接渲染），逆位整张倒转
     private func cardArt(_ entry: TarotView.DrawnCard, width: CGFloat) -> some View {
-        TarotCardArt(card: entry.card, width: width)
+        TarotCardArt(card: entry.card)
             .frame(width: width, height: width * 1.62)
             .rotationEffect(.degrees(entry.reversed ? 180 : 0))
-            .shadow(color: entry.card.colors[0].opacity(0.6), radius: 10)
+            .shadow(color: entry.card.glowColor(style.palette).opacity(0.6), radius: 10)
             .accessibilityHidden(true)
     }
 

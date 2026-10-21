@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -79,7 +78,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -96,8 +94,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -938,95 +936,6 @@ internal val TarotSuit.icon: androidx.compose.ui.graphics.vector.ImageVector
 /** 牌面的点缀色：小阿卡纳用花色色，大阿卡纳用金色 */
 internal fun tarotAccent(card: TarotCard): Color = card.tarotSuit?.accent ?: hex(0xF5D78E)
 
-/** 牌面渐变：小阿卡纳用花色主色，大阿卡纳限定在深蓝 → 紫 → 品红的「宝石色」区间 */
-private fun tarotColors(card: TarotCard): List<Color> {
-    card.tarotSuit?.let { return it.colors }
-    val hue = (card.hue % 1.0).toFloat() * 360f
-    return listOf(Color.hsv(hue, 0.7f, 0.5f), Color.hsv((hue + 21.6f) % 360f, 0.8f, 0.2f))
-}
-
-/** SF Symbol → 牌面图案 */
-private fun tarotEmoji(symbol: String): String = when (symbol) {
-    "figure.walk" -> "🚶"
-    "wand.and.stars" -> "🪄"
-    "moon.fill" -> "🌙"
-    "leaf.fill" -> "🌿"
-    "crown.fill" -> "👑"
-    "building.columns.fill" -> "🏛️"
-    "heart.circle.fill" -> "💞"
-    "shield.lefthalf.filled" -> "🛡️"
-    "flame.fill" -> "🔥"
-    "flashlight.on.fill" -> "🏮"
-    "arrow.triangle.2.circlepath" -> "☸️"
-    "scalemass.fill" -> "⚖️"
-    "hourglass" -> "⏳"
-    "leaf.arrow.triangle.circlepath" -> "🍂"
-    "drop.halffull" -> "💧"
-    "link" -> "⛓️"
-    "bolt.fill" -> "⚡"
-    "star.fill" -> "⭐"
-    "moon.stars.fill" -> "🌕"
-    "sun.max.fill" -> "☀️"
-    "megaphone.fill" -> "📯"
-    "globe.asia.australia.fill" -> "🌏"
-    // 小阿卡纳
-    "globe.europe.africa.fill" -> "🌍"
-    "sailboat.fill" -> "⛵"
-    "house.and.flag.fill" -> "🏡"
-    "flag.2.crossed.fill" -> "🎌"
-    "trophy.fill" -> "🏆"
-    "shield.fill" -> "🛡️"
-    "paperplane.fill" -> "✈️"
-    "bandage.fill" -> "🩹"
-    "figure.strengthtraining.traditional" -> "🏋️"
-    "lightbulb.fill" -> "💡"
-    "figure.equestrian.sports" -> "🏇"
-    "cat.fill" -> "🐈"
-    "flame.circle.fill" -> "☀️"
-    "drop.fill" -> "💧"
-    "heart.fill" -> "❤️"
-    "wineglass.fill" -> "🍷"
-    "cup.and.saucer.fill" -> "☕"
-    "cloud.rain.fill" -> "🌧️"
-    "teddybear.fill" -> "🧸"
-    "bubbles.and.sparkles.fill" -> "🫧"
-    "figure.hiking" -> "🥾"
-    "sparkles" -> "✨"
-    "rainbow" -> "🌈"
-    "fish.fill" -> "🐟"
-    "heart.text.square.fill" -> "💌"
-    "hands.and.sparkles.fill" -> "🙌"
-    "water.waves" -> "🌊"
-    "eye.slash.fill" -> "🙈"
-    "heart.slash.fill" -> "💔"
-    "bed.double.fill" -> "🛏️"
-    "figure.fencing" -> "🤺"
-    "ferry.fill" -> "⛴️"
-    "theatermasks.fill" -> "🎭"
-    "lock.fill" -> "🔒"
-    "cloud.moon.bolt.fill" -> "⛈️"
-    "arrow.down.to.line" -> "⚓"
-    "magnifyingglass" -> "🔍"
-    "wind" -> "🌬️"
-    "eyeglasses" -> "👓"
-    "brain.head.profile" -> "🧠"
-    "star.circle.fill" -> "🌟"
-    "infinity" -> "♾️"
-    "person.3.fill" -> "👥"
-    "archivebox.fill" -> "📦"
-    "snowflake" -> "❄️"
-    "gift.fill" -> "🎁"
-    "tree.fill" -> "🌳"
-    "hammer.fill" -> "🔨"
-    "bird.fill" -> "🐦"
-    "house.fill" -> "🏠"
-    "graduationcap.fill" -> "🎓"
-    "tortoise.fill" -> "🐢"
-    "hare.fill" -> "🐇"
-    "building.2.fill" -> "🏢"
-    else -> "✨"
-}
-
 @Composable
 fun TarotScreen() {
     val palette = LocalPalette.current
@@ -1321,64 +1230,18 @@ internal fun FlippableTarotCard(entry: DrawnCard, faceUp: Boolean, modifier: Mod
 }
 
 /**
- * 静态的牌面图案（塔罗页、塔罗手记和分享卡共用）。牌面上的字按牌宽缩放、不随系统字号变化。
- * 小阿卡纳用花色主色和花色图标，牌号位置写 A、2…10、侍从、骑士、王后、国王
+ * 静态的牌面（塔罗页、塔罗手记和分享卡共用）：主题深空底色、金框、牌号、牌名，中间是 tarot-art.json 的星空线稿（见 TarotArt.kt）。
+ * 牌面是一张画，字和线都按牌宽缩放、不随系统字号变化；小阿卡纳的牌号写 A、2…10、侍从、骑士、王后、国王，两边各一个花色小符号
  */
 @Composable
 internal fun TarotCardFace(card: TarotCard, modifier: Modifier) {
-    val colors = tarotColors(card)
-    val accent = tarotAccent(card)
-    val suit = card.tarotSuit
-    BoxWithConstraints(modifier) {
-        val w = maxWidth.value
-        val localDensity = LocalDensity.current
-        /** 牌宽的 fraction 倍，换成不随系统字号缩放的字号 */
-        fun font(fraction: Float) = with(localDensity) { (w * fraction).dp.toSp() }
-        Canvas(Modifier.fillMaxSize()) {
-            drawRoundRect(Brush.verticalGradient(colors), cornerRadius = CornerRadius(size.width * 0.09f))
-            val rng = SeededGenerator("tarot-face", card.id)
-            repeat(30) {
-                val r = rng.double(0.4, 1.4).toFloat() * density
-                drawCircle(Color.White.copy(alpha = rng.double(0.3, 0.9).toFloat()), r, Offset(rng.unit().toFloat() * size.width, rng.unit().toFloat() * size.height))
-            }
-            val inset = size.width * 0.05f
-            drawRoundRect(accent, Offset(inset, inset), Size(size.width - inset * 2, size.height - inset * 2), CornerRadius(size.width * 0.07f), style = Stroke(maxOf(density, size.width * 0.012f)))
-        }
-        if (suit != null) {
-            // 花色图标衬底
-            Icon(suit.icon, null, Modifier.align(Alignment.Center).size((w * 0.62f).dp), tint = accent.copy(alpha = 0.1f))
-        }
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(vertical = (w * 0.12f).dp, horizontal = (w * 0.08f).dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            if (suit != null) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(suit.icon, null, Modifier.size((w * 0.09f).dp), tint = accent)
-                    Text(
-                        card.rankText,
-                        style = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, fontSize = font(0.09f), color = accent, textAlign = TextAlign.Center),
-                        maxLines = 1,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Icon(suit.icon, null, Modifier.size((w * 0.09f).dp), tint = accent)
-                }
-            } else {
-                Text(card.roman, style = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, fontSize = font(0.11f), color = accent))
-            }
-            Spacer(Modifier.weight(1f))
-            Text(tarotEmoji(card.symbol), style = TextStyle(fontSize = font(0.3f)))
-            Spacer(Modifier.weight(1f))
-            Text(card.name, style = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, fontSize = font(0.13f), color = Color.White), maxLines = 1)
-            Text(
-                card.en.uppercase(),
-                style = TextStyle(fontFamily = FontFamily.Serif, fontSize = font(0.055f), letterSpacing = font(0.008f), color = accent.copy(alpha = 0.9f)),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+    val palette = LocalPalette.current
+    val colors = remember(palette) { TarotArtColors(palette) }
+    val background = remember(palette, card.id) { card.faceColors(palette) }
+    val measurer = rememberTextMeasurer()
+    Box(modifier) {
+        Canvas(Modifier.fillMaxSize()) { drawTarotCardFrame(card, background, colors, measurer) }
+        TarotArt(card.id.toString(), Modifier.fillMaxSize())
     }
 }
 

@@ -70,6 +70,9 @@ import com.tianaofeng.xingxia.ui.theme.readableForeground
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
+import androidx.compose.ui.graphics.lerp
+import com.tianaofeng.xingxia.ui.screens.divination.TAROT_GOLD
+import com.tianaofeng.xingxia.ui.screens.divination.tarotCardPalette
 
 val FortuneCategory.icon: ImageVector
     get() = when (this) {
@@ -268,11 +271,16 @@ fun StickTubeIllustration(size: Dp = 96.dp, shake: Float = 0f, modifier: Modifie
 /** 塔罗牌背面 */
 @Composable
 fun TarotCardBack(modifier: Modifier = Modifier) {
+    // 牌背跟随主题（浅色模式也用同一主题的深色配色），和 iOS 一致
+    val p = LocalPalette.current.tarotCardPalette
     Canvas(modifier) {
         val w = size.width
         val h = size.height
-        val gold = hex(0xF5D78E)
-        drawRoundRect(Brush.verticalGradient(listOf(hex(0x1E1B4B), hex(0x0B0720))), cornerRadius = CornerRadius(w * 0.09f))
+        val gold = TAROT_GOLD
+        drawRoundRect(
+            Brush.verticalGradient(listOf(lerp(p.backgroundBottom, p.accent, 0.18f), p.backgroundTop)),
+            cornerRadius = CornerRadius(w * 0.09f),
+        )
         val c = center
         for (i in 1..3) drawCircle(gold.copy(alpha = 0.55f), w * 0.12f * i, c, style = Stroke(0.8.dp.toPx()))
         translate(c.x, c.y) { drawPath(starPath(w * 0.18f, points = 8, innerRatio = 0.35f), gold.copy(alpha = 0.85f)) }

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.GridOn
 import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.People
 import androidx.compose.material.icons.rounded.PersonAddAlt1
@@ -664,6 +665,12 @@ fun BirthChartScreen() {
             Text(sun.profile, style = Fonts.subheadline, color = palette.text.copy(alpha = 0.85f))
         }
 
+        // 星盘：十二星座 + 等宫制十二宫，标出太阳、月亮和上升
+        GlassCard(spacing = 14.dp) {
+            SectionHeader("星盘", subtitle = if (birth.hasTime) "等宫制 · 第一宫从上升点起" else "太阳与月亮的位置", icon = Icons.Rounded.NightsStay)
+            NatalWheel(birth)
+        }
+
         GlassCard(spacing = 14.dp) {
             SectionHeader("四柱八字", subtitle = if (bazi.trueSolarApplied) "已按真太阳时校正" else "未填出生时间，仅排三柱", icon = Icons.Rounded.GridOn)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -708,7 +715,7 @@ fun BirthChartScreen() {
                 for (element in WuXing.entries) {
                     val value = counts.getValue(element)
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("$value", style = Fonts.caption.weight(FontWeight.Bold), color = element.color)
+                        Text("$value", style = Fonts.caption.weight(FontWeight.Bold), color = palette.ink(element.color))
                         Box(
                             Modifier
                                 .fillMaxWidth()
@@ -753,8 +760,8 @@ private fun Pillar(title: String, pillar: GanZhi, highlight: Boolean, modifier: 
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         SecondaryText(title, style = Fonts.caption)
-        Text(pillar.stem.name, style = Fonts.serif(30, bold = true), color = pillar.stem.element.color)
-        Text(pillar.branch.name, style = Fonts.serif(30, bold = true), color = pillar.branch.element.color)
+        Text(pillar.stem.name, style = Fonts.serif(30, bold = true), color = palette.ink(pillar.stem.element.color))
+        Text(pillar.branch.name, style = Fonts.serif(30, bold = true), color = palette.ink(pillar.branch.element.color))
         SecondaryText(pillar.nayin, style = Fonts.caption2)
     }
 }

@@ -8,6 +8,9 @@ struct BirthChartView: View {
     @Query(sort: \Profile.sortIndex) private var profiles: [Profile]
     @State private var selectedID: UUID?
     @Environment(\.palette) private var palette
+    // 头像 emoji 和「上升待补充」的问号跟随动态字体，最多放大 1.6 倍
+    @ScaledMetric(relativeTo: .largeTitle) private var avatarSize: CGFloat = 54
+    @ScaledMetric(relativeTo: .title) private var questionSize: CGFloat = 34
 
     var body: some View {
         let profile = profiles.first { $0.id == (selectedID ?? app.primary?.id) } ?? profiles.first
@@ -50,7 +53,7 @@ struct BirthChartView: View {
 
         VStack(spacing: 16) {
             VStack(spacing: 6) {
-                Text(profile.avatar).font(.system(size: 54))
+                Text(profile.avatar).font(.system(size: min(avatarSize, 54 * 1.6)))
                 Text(profile.name).font(.title2.bold())
                 Text("公历 \(DateText.full(birth.dayKey))\(profile.hasBirthTime ? String(format: " %02d:%02d", profile.birthHour, profile.birthMinute) : "")")
                     .font(.subheadline).foregroundStyle(.secondary)
@@ -69,7 +72,7 @@ struct BirthChartView: View {
                         BigThree(title: "上升星座", subtitle: "第一印象", sign: rising)
                     } else {
                         VStack(spacing: 8) {
-                            Image(systemName: "questionmark.circle").font(.system(size: 34)).foregroundStyle(.secondary)
+                            Image(systemName: "questionmark.circle").font(.system(size: min(questionSize, 34 * 1.6))).foregroundStyle(.secondary)
                             Text("上升星座").font(.caption.weight(.semibold))
                             Text("需要出生时间").font(.caption2).foregroundStyle(.secondary)
                         }
@@ -80,6 +83,13 @@ struct BirthChartView: View {
                     .font(.subheadline)
                     .foregroundStyle(.primary.opacity(0.85))
                     .lineSpacing(4)
+            }
+            .glassCard()
+
+            // 星盘：十二星座 + 等宫制十二宫，标出太阳、月亮和上升
+            VStack(alignment: .leading, spacing: 14) {
+                SectionHeader(title: "星盘", subtitle: birth.hasTime ? "等宫制 · 第一宫从上升点起" : "太阳与月亮的位置", symbol: "moon.stars.fill")
+                NatalWheel(birth: birth)
             }
             .glassCard()
 
@@ -209,6 +219,8 @@ struct CompatibilityView: View {
     @State private var right: PairSide = .sign(.leo)
     @State private var initialized = false
     @Environment(\.palette) private var palette
+    /// 两边头像的大小，跟随动态字体，最多放大 1.6 倍
+    @ScaledMetric(relativeTo: .largeTitle) private var avatarSize: CGFloat = 64
 
     enum PairSide: Hashable {
         case profile(UUID)
@@ -303,10 +315,11 @@ struct CompatibilityView: View {
             }
         } label: {
             VStack(spacing: 8) {
+                let badgeSize = min(avatarSize, 64 * 1.6)
                 if info.avatar.isEmpty {
-                    ZodiacBadge(sign: info.sign, size: 64)
+                    ZodiacBadge(sign: info.sign, size: badgeSize)
                 } else {
-                    Text(info.avatar).font(.system(size: 40)).frame(width: 64, height: 64)
+                    Text(info.avatar).font(.system(size: badgeSize * 0.62)).frame(width: badgeSize, height: badgeSize)
                         .background(Circle().fill(palette.accent.opacity(0.2)))
                 }
                 Text(info.title).font(.headline).foregroundStyle(.primary)
