@@ -119,6 +119,7 @@ struct ScoreRing: View {
     var label: String?
 
     @Environment(\.palette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var progress: Double = 0
 
     var body: some View {
@@ -146,10 +147,10 @@ struct ScoreRing: View {
         }
         .frame(width: size, height: size)
         .onAppear {
-            withAnimation(.spring(response: 1.4, dampingFraction: 0.85).delay(0.1)) { progress = Double(score) / 100 }
+            withAnimation(reduceMotion ? nil : Animation.spring(response: 1.4, dampingFraction: 0.85).delay(0.1)) { progress = Double(score) / 100 }
         }
         .onChange(of: score) { _, new in
-            withAnimation(.spring(response: 1, dampingFraction: 0.85)) { progress = Double(new) / 100 }
+            withAnimation(reduceMotion ? nil : Animation.spring(response: 1, dampingFraction: 0.85)) { progress = Double(new) / 100 }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label ?? "分数") \(score) 分")
@@ -201,8 +202,8 @@ struct MeterBar: View {
             }
         }
         .frame(height: height)
-        .onAppear { withAnimation(.easeOut(duration: 1).delay(0.2)) { shown = Double(value) / 100 } }
-        .onChange(of: value) { _, new in withAnimation(.easeOut(duration: 0.6)) { shown = Double(new) / 100 } }
+        .onAppear { withAnimation(reduceMotion ? nil : Animation.easeOut(duration: 1).delay(0.2)) { shown = Double(value) / 100 } }
+        .onChange(of: value) { _, new in withAnimation(reduceMotion ? nil : Animation.easeOut(duration: 0.6)) { shown = Double(new) / 100 } }
     }
 }
 

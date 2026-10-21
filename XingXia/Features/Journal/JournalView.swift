@@ -6,6 +6,7 @@ import Combine
 /// 12 月和 1 月顶部多一条年度回顾横幅
 struct JournalView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// 零点和回到前台时刷新
     @State private var today = DayKey.today
@@ -72,7 +73,7 @@ struct JournalView: View {
 
     private func setMonth(_ value: DayKey) {
         Haptics.selection()
-        withAnimation(.snappy) { month = value }
+        withAnimation(reduceMotion ? nil : Animation.snappy) { month = value }
     }
 
     private func refreshToday() {

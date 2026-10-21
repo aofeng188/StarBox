@@ -467,6 +467,8 @@ private struct RitualMoodPage: View {
     let mood: MoodLevel?
     let onSelect: (MoodLevel) -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         RitualPageScroll {
             Text(mood?.emoji ?? "🌙")
@@ -493,7 +495,7 @@ private struct RitualMoodPage: View {
                     .subtleForeground()
             }
         }
-        .animation(.easeOut(duration: 0.25), value: mood)
+        .animation(reduceMotion ? nil : Animation.easeOut(duration: 0.25), value: mood)
     }
 }
 
