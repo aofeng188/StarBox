@@ -100,6 +100,7 @@ import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.weight
 import com.tianaofeng.xingxia.ui.screens.ask.PrefillQuestion
 import com.tianaofeng.xingxia.ui.screens.ask.QuestionBanner
+import com.tianaofeng.xingxia.ui.screens.ask.keepClearOfDecisionPrompt
 import com.tianaofeng.xingxia.ui.screens.divination.GlassTextField
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.hex
@@ -212,7 +213,8 @@ fun CoinScreen() {
                 streak = 0
             }
         }
-        BigActionButton("抛硬币", Icons.Rounded.TouchApp, enabled = !flipping) { flip() }
+        // 连抛时「就这么办」浮层不盖住这个按钮
+        BigActionButton("抛硬币", Icons.Rounded.TouchApp, enabled = !flipping, modifier = Modifier.keepClearOfDecisionPrompt()) { flip() }
     }
 }
 
@@ -387,7 +389,7 @@ fun DiceScreen() {
         GlassCard(padding = 14.dp) {
             StepperRow("骰子 $count 颗", count, 1..6) { if (!rolling) count = it }
         }
-        BigActionButton("掷骰子", Icons.Rounded.Casino, enabled = !rolling) { roll() }
+        BigActionButton("掷骰子", Icons.Rounded.Casino, enabled = !rolling, modifier = Modifier.keepClearOfDecisionPrompt()) { roll() }
         if (history.isNotEmpty()) {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (values in history.reversed()) {

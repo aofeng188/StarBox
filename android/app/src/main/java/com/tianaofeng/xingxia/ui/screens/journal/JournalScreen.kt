@@ -51,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -144,7 +145,8 @@ fun JournalScreen() {
     val today = rememberToday()
     /** 正在看的月份（1 号） */
     var month by rememberSaveable(stateSaver = DayKeySaver) { mutableStateOf(firstDayOf(DayKey.today)) }
-    var shownToday by remember { mutableStateOf(today) }
+    // 和 month 一起保存：切 tab 回来时页面会重建，过了零点也要能认出「停在本月」
+    var shownToday by rememberSaveable(stateSaver = DayKeySaver) { mutableStateOf(today) }
     LaunchedEffect(today) {
         if (today != shownToday) {
             // 停在「本月」时跟着翻到新的月份
@@ -409,9 +411,11 @@ private fun JournalShortcuts(today: DayKey) {
         Shortcut("塔罗手记", Icons.Rounded.MenuBook, listOf(hex(0x8B5CF6), hex(0x3B82F6)), Routes.TAROT_JOURNAL),
         Shortcut("年度回顾", Icons.Rounded.BarChart, listOf(hex(0xF59E0B), hex(0xEF4444)), annualReviewRoute(reviewYear(today))),
     )
+    // 超大字号时一行放两个，名字不被截断（iOS 用随字号放大的自适应网格）
+    val columns = if (LocalDensity.current.fontScale >= 1.5f) 2 else 3
     GlassCard {
         SectionHeader("快捷入口", icon = Icons.Rounded.GridView)
-        for (row in shortcuts.chunked(3)) {
+        for (row in shortcuts.chunked(columns)) {
             Row(Modifier.fillMaxWidth()) {
                 for (shortcut in row) {
                     Column(

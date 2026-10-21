@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -333,6 +334,18 @@ object Store {
 
     /** 刚记下的那条决定（App 在前台时），根布局据此弹出「就这么办 / 再想想」；收起时置 null */
     var lastDecision by mutableStateOf<DecisionRecord?>(null)
+
+    /**
+     * 最近一次从深链接（小组件、通知、快捷方式）打开页面的时间（SystemClock.elapsedRealtime 毫秒）：
+     * 每日仪式这次不盖住用户点进来的页面（与 iOS 的 AppState.lastDeepLinkAt 一致）
+     */
+    var lastDeepLinkAt by mutableStateOf<Long?>(null)
+        private set
+
+    /** MainActivity 收到能识别的深链接时调用 */
+    fun markDeepLink() {
+        lastDeepLinkAt = SystemClock.elapsedRealtime()
+    }
 
     private var startedActivities = 0
     private var tracksForeground = false

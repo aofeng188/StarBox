@@ -14,6 +14,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -102,25 +103,35 @@ private fun FollowUpContent(record: DecisionRecord, today: DayKey) {
                 record.askedQuestion?.let { SecondaryText("当时问的是「$it」", style = Fonts.caption, maxLines = 2) }
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (option in DecisionSatisfaction.entries) {
-                Row(
-                    Modifier
-                        .weight(1f)
-                        .pressable { rate(option) }
-                        .glass(CircleShape)
-                        .clearAndSetSemantics {
-                            contentDescription = option.label
-                            role = Role.Button
-                        }
-                        .padding(vertical = 10.dp, horizontal = 6.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(option.emoji, style = Fonts.subheadline)
-                    Text(" ${option.label}", style = Fonts.subheadline.weight(FontWeight.SemiBold), color = palette.text, maxLines = 1)
-                }
+        // 一行放不下（超大字号）时竖排，与 iOS 的 ViewThatFits 一致
+        if (LocalDensity.current.fontScale >= 1.5f) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (option in DecisionSatisfaction.entries) SatisfactionButton(option, Modifier.fillMaxWidth()) { rate(option) }
+            }
+        } else {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (option in DecisionSatisfaction.entries) SatisfactionButton(option, Modifier.weight(1f)) { rate(option) }
             }
         }
+    }
+}
+
+/** 回访卡上的「满意 / 一般 / 后悔」按钮 */
+@Composable
+private fun SatisfactionButton(option: DecisionSatisfaction, modifier: Modifier, onClick: () -> Unit) {
+    Row(
+        modifier
+            .pressable(onClick = onClick)
+            .glass(CircleShape)
+            .clearAndSetSemantics {
+                contentDescription = option.label
+                role = Role.Button
+            }
+            .padding(vertical = 10.dp, horizontal = 6.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(option.emoji, style = Fonts.subheadline)
+        Text(" ${option.label}", style = Fonts.subheadline.weight(FontWeight.SemiBold), color = LocalPalette.current.text, maxLines = 1)
     }
 }

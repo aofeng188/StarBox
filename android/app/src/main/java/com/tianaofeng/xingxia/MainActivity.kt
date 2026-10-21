@@ -61,7 +61,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        if (savedInstanceState == null) pendingLink.value = Routes.fromUri(intent?.data)
+        // 从小组件、通知、快捷方式点进来的那次不弹每日仪式（Store.markDeepLink）
+        if (savedInstanceState == null) pendingLink.value = Routes.fromUri(intent?.data)?.also { Store.markDeepLink() }
         setContent { XingXiaRoot(pendingLink) }
     }
 
@@ -75,7 +76,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        Routes.fromUri(intent.data)?.let { pendingLink.value = it }
+        Routes.fromUri(intent.data)?.let {
+            Store.markDeepLink()
+            pendingLink.value = it
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

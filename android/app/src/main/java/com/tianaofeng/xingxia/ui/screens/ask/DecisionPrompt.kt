@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -23,15 +25,23 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -66,17 +76,42 @@ val DecisionPromptTools: Set<String> = setOf(
 /**
  * 刚记下一个决定时，底部浮出「工具：结果」和「再想想 / 就这么办」，选择写进 DecisionRecord.adopted。
  * 8 秒后（读屏打开时 20 秒）或切换 tab、页面时自动收起（由 AppNavigation 收起），收起不算表态。
- * tabBarVisible：底栏可见时浮在底栏上方，工具页等没有底栏时贴近底部安全区。
+ * tabBarVisible：底栏可见时浮在底栏上方，工具页等没有底栏时贴近底部安全区；
+ * 原位会盖住页面登记的主按钮（keepClearOfDecisionPrompt）时抬到按钮上方。
  */
 @Composable
 fun DecisionPrompt(tabBarVisible: Boolean, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val view = LocalView.current
+    val density = LocalDensity.current
     val latest = Store.lastDecision
     // 历史里已经删掉的（比如刚清空了历史）不再问
     val record = latest?.takeIf { r -> r.tool in DecisionPromptTools && Store.records.items.any { it.id == r.id } }
     var reduceMotion by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { reduceMotion = isReduceMotion() }
+
+    // 浮层区域的底边（窗口坐标，即根布局底边）和卡片高度，用来判断原位会不会盖住主按钮
+    var containerBottom by remember { mutableFloatStateOf(0f) }
+    var cardHeight by remember { mutableIntStateOf(0) }
+    val restingInset = if (tabBarVisible) 84.dp else 8.dp
+    // 收起的动画里也按同一个位置算，卡片不会在淡出时跳回原位
+    val action = PromptAnchor.bounds
+    val navigationBottom = WindowInsets.navigationBars.getBottom(density)
+    val bottomInset = if (action != null && containerBottom > 0f) {
+        with(density) {
+            val gap = 8.dp.toPx()
+            val restingBottom = containerBottom - navigationBottom - restingInset.toPx()
+            val height = if (cardHeight > 0) cardHeight.toFloat() else 56.dp.toPx() * fontScale
+            // 抛硬币、掷骰子页的主按钮随页面滚动，位置不固定：按它此刻的位置判断，挡住了才抬到它上方
+            if (action.top < restingBottom && action.bottom > restingBottom - height - gap) {
+                maxOf(restingInset, (containerBottom - navigationBottom - action.top + gap).toDp())
+            } else {
+                restingInset
+            }
+        }
+    } else {
+        restingInset
+    }
 
     LaunchedEffect(record?.id) {
         val id = record?.id ?: return@LaunchedEffect
@@ -93,8 +128,9 @@ fun DecisionPrompt(tabBarVisible: Boolean, modifier: Modifier = Modifier) {
     AnimatedContent(
         targetState = record,
         modifier = modifier
+            .onGloballyPositioned { containerBottom = it.boundsInWindow().bottom }
             .navigationBarsPadding()
-            .padding(bottom = if (tabBarVisible) 84.dp else 8.dp)
+            .padding(bottom = bottomInset)
             .padding(horizontal = 16.dp)
             .widthIn(max = 560.dp)
             .fillMaxWidth(),
@@ -107,7 +143,37 @@ fun DecisionPrompt(tabBarVisible: Boolean, modifier: Modifier = Modifier) {
         contentKey = { it?.id },
         label = "decisionPrompt",
     ) { shown ->
-        if (shown != null) PromptCard(shown) { adopted -> decide(shown, adopted, view) }
+        if (shown != null) {
+            Box(Modifier.onSizeChanged { cardHeight = it.height }) {
+                PromptCard(shown) { adopted -> decide(shown, adopted, view) }
+            }
+        }
+    }
+}
+
+/** 页面登记的主按钮在窗口里的位置（同一时间只认最后登记的那个） */
+private object PromptAnchor {
+    var owner: Any? = null
+    var bounds by mutableStateOf<Rect?>(null)
+}
+
+/**
+ * 给工具页最底下的主按钮用（抛硬币、掷骰子）：连抛、连掷时决策浮层不盖住它，
+ * 盖住时浮层抬到按钮上方（对应 iOS 的 AppRoute.promptLiftAboveAction）。页面离开时自动注销。
+ */
+fun Modifier.keepClearOfDecisionPrompt(): Modifier = composed {
+    val token = remember { Any() }
+    DisposableEffect(token) {
+        onDispose {
+            if (PromptAnchor.owner === token) {
+                PromptAnchor.owner = null
+                PromptAnchor.bounds = null
+            }
+        }
+    }
+    onGloballyPositioned { coordinates ->
+        PromptAnchor.owner = token
+        PromptAnchor.bounds = coordinates.boundsInWindow()
     }
 }
 

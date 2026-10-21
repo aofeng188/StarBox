@@ -375,7 +375,8 @@ private val widgetMoods = listOf(
 private val MoodValueKey = ActionParameters.Key<Int>("mood")
 
 class MoodWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Responsive(setOf(DpSize(120.dp, 120.dp), DpSize(260.dp, 120.dp)))
+    // 按实际尺寸排版：桌面格子窄时表情按钮跟着缩小，不被裁掉
+    override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         provideContent { MoodContent(context) }
@@ -403,7 +404,11 @@ private fun MoodContent(context: Context) {
     val today = DayKey.today.rawValue
     val mood = Store.moods.items.lastOrNull { it.dayKey == today }?.mood
     val chosen = widgetMoods.firstOrNull { it.value == mood }
-    val wide = LocalSize.current.width >= 240.dp
+    val widgetSize = LocalSize.current
+    val wide = widgetSize.width >= 240.dp
+    // 一行五个（带名称）或 3 + 2 两行，按钮按宽高缩放：边距 14×2、按钮间距 6、标题一行
+    val wideFace = minOf((widgetSize.width - 28.dp) / 5, widgetSize.height - 66.dp).coerceIn(30.dp, 46.dp)
+    val smallFace = minOf((widgetSize.width - 40.dp) / 3, (widgetSize.height - 56.dp) / 2).coerceIn(24.dp, 36.dp)
     WidgetFrame(context, "xingxia://mood") {
         Column(GlanceModifier.fillMaxSize()) {
             Text(
@@ -416,7 +421,7 @@ private fun MoodContent(context: Context) {
                 Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     for (face in widgetMoods) {
                         Box(GlanceModifier.defaultWeight(), contentAlignment = Alignment.Center) {
-                            MoodButton(face, mood, 46.dp, showsName = true)
+                            MoodButton(face, mood, wideFace, showsName = true)
                         }
                     }
                 }
@@ -426,14 +431,14 @@ private fun MoodContent(context: Context) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         widgetMoods.take(3).forEachIndexed { index, face ->
                             if (index > 0) Spacer(GlanceModifier.width(6.dp))
-                            MoodButton(face, mood, 36.dp, showsName = false)
+                            MoodButton(face, mood, smallFace, showsName = false)
                         }
                     }
                     Spacer(GlanceModifier.height(6.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         widgetMoods.drop(3).forEachIndexed { index, face ->
                             if (index > 0) Spacer(GlanceModifier.width(6.dp))
-                            MoodButton(face, mood, 36.dp, showsName = false)
+                            MoodButton(face, mood, smallFace, showsName = false)
                         }
                     }
                 }
@@ -476,7 +481,8 @@ private val coinCount by lazy { Prefs.int("widget.coin.count", 0) }
 private val coinHeads by lazy { Prefs.bool("widget.coin.heads", true) }
 
 class CoinWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Single
+    // 按实际尺寸排版：小组件矮时硬币跟着缩小，不被裁掉
+    override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         provideContent { CoinContent(context) }
@@ -513,6 +519,9 @@ private fun CoinContent(context: Context) {
     val flipped = coinDay.value == DayKey.today.rawValue && coinCount.value > 0
     val heads = coinHeads.value
     val ink = ColorProvider(hex(0x7A5A0E))
+    // 边距 14×2，上面一行标题、下面一行结果
+    val widgetSize = LocalSize.current
+    val coinSize = minOf(widgetSize.width - 28.dp, widgetSize.height - 70.dp).coerceIn(40.dp, 68.dp)
     WidgetFrame(context, "xingxia://tool/coin") {
         Column(GlanceModifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -524,9 +533,9 @@ private fun CoinContent(context: Context) {
             // 和 App 里的硬币一样：正面太阳，反面月亮；还没抛时显示问号
             Box(
                 GlanceModifier
-                    .size(68.dp)
+                    .size(coinSize)
                     .background(ColorProvider(hex(0xF2C94C)))
-                    .cornerRadius(34.dp)
+                    .cornerRadius(coinSize / 2)
                     .clickable(actionRunCallback<FlipCoinAction>())
                     .semantics { contentDescription = if (!flipped) "抛硬币" else if (heads) "抛硬币，这次是正面" else "抛硬币，这次是反面" },
                 contentAlignment = Alignment.Center,

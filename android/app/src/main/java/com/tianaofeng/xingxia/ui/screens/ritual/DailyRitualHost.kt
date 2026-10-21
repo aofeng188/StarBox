@@ -3,6 +3,7 @@ package com.tianaofeng.xingxia.ui.screens.ritual
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.os.SystemClock
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
@@ -162,9 +163,21 @@ fun DailyRitualHost() {
         if (session != null) return
         if (!AppSettings.dailyRitualEnabled || waitsForBackground) return
         if (!AppSettings.hasOnboarded && Store.primary == null) return
+        // 从小组件、通知、快捷方式点进来的那次不盖住要看的页面，等下次回到前台再判断（与 iOS 一致）
+        Store.lastDeepLinkAt?.let { if (SystemClock.elapsedRealtime() - it < 3_000L) return }
         val today = DayKey.today
         if (Store.hasRitual(today)) return
         session = today.rawValue
+    }
+
+    // 深链接和回到前台谁先到不一定：仪式已经弹出来了也收起，不记录，下次回到前台再弹
+    val deepLinkAt = Store.lastDeepLinkAt
+    var seenDeepLinkAt by remember { mutableStateOf(deepLinkAt) }
+    LaunchedEffect(deepLinkAt) {
+        if (deepLinkAt != seenDeepLinkAt) {
+            seenDeepLinkAt = deepLinkAt
+            session = null
+        }
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -208,7 +221,7 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 
 /**
  * 每日仪式：今天的月亮 → 运势揭晓 → 今日一签 → 心情 → 今日卡片。
- * 随时可以「跳过」（返回键也算跳过），跳过也记一条 RitualDay（skipped），今天就不再出现；
+ * 1–4 页随时可以「跳过」（返回键也算跳过），跳过也记一条 RitualDay（skipped），今天就不再出现；
  * 走完或点「去求签」记为完成，计入月相徽章。onFinish 的 route 不为 null 时，关闭后跳到那个页面
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -288,7 +301,8 @@ private fun RitualDialog(day: DayKey, onFinish: (String?) -> Unit) {
     }
 
     Dialog(
-        onDismissRequest = { finish(skipped = true) },
+        // 返回键：1–4 页算「跳过」；最后一页和 iOS 一样没有「跳过」，只能「开始今天」，按返回也算走完
+        onDismissRequest = { finish(skipped = pagerState.currentPage < pages.lastIndex) },
         properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false),
     ) {
         Box(Modifier.fillMaxSize()) {

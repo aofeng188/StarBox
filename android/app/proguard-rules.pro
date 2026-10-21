@@ -5,3 +5,6 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 -keep,includedescriptorclasses class com.tianaofeng.xingxia.**$$serializer { *; }
+
+# 可点的小组件（心情、抛硬币）：Glance 按类名反射创建 ActionCallback，保留无参构造
+-keep class * implements androidx.glance.appwidget.action.ActionCallback { <init>(); }
