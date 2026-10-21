@@ -24,7 +24,7 @@ struct FortuneHeroCard: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(fortune.isPersonalized ? "专属运势" : "今日运势")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .subtleForeground()
                         GradientText(text: fortune.levelName, font: .system(size: min(levelSize, 48), weight: .heavy, design: .rounded))
                         StarRatingView(stars: fortune.stars, size: 13)
                         Text(fortune.summary)
@@ -66,6 +66,7 @@ struct FortuneHeroCard: View {
                 }
             }
             .glassCard(interactive: true)
+            .zoomSource(.fortune)
         }
         .buttonStyle(.pressableCard)
     }
@@ -109,7 +110,7 @@ struct CategoryMeter: View {
                 Spacer()
                 Text("\(value)").font(.caption.weight(.semibold)).monospacedDigit()
             }
-            .foregroundStyle(.secondary)
+            .subtleForeground()
             MeterBar(value: value, height: 5)
         }
         .accessibilityElement(children: .ignore)
@@ -123,7 +124,7 @@ private struct LuckyItem<Content: View>: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            Text(title).font(.caption2).foregroundStyle(.secondary)
+            Text(title).font(.caption2).subtleForeground()
             content.font(.footnote.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)
@@ -190,14 +191,19 @@ private struct FamilyMemberTile: View {
     let isCurrent: Bool
     @Environment(\.palette) private var palette
     @Environment(\.colorScheme) private var scheme
+    /// 头像 emoji 跟着字号放大，底圈一起放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .title2) private var avatarSize: CGFloat = 46
 
     var body: some View {
         let color = palette.color(at: profile.colorIndex)
         let animal = profile.animal.animal
+        let avatar = min(avatarSize, 46 * 1.6)
         VStack(spacing: 6) {
             Text(profile.avatar)
                 .font(.title2)
-                .frame(width: 46, height: 46)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .frame(width: avatar, height: avatar)
                 .background(Circle().fill(color.opacity(0.2)))
                 .overlay(Circle().strokeBorder(isCurrent ? palette.accent : .clear, lineWidth: 2))
                 .overlay(alignment: .bottomTrailing) {
@@ -250,11 +256,15 @@ struct AlmanacCard: View {
     @Environment(AppSettings.self) private var settings
     @Environment(\.palette) private var palette
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         @Bindable var settings = settings
+        let isLarge = typeSize.isAccessibilitySize
+        // 超大字号时切换样式放到标题下面，标题和分段按钮都不被挤断
+        let header = isLarge ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout())
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
+            header {
                 SectionHeader(title: settings.almanacShowsTraditional ? "传统黄历" : "今日宜忌",
                               subtitle: settings.almanacShowsTraditional ? "\(almanac.jianChu.name) · \(almanac.deity.name)" : nil,
                               symbol: "book.closed.fill")
@@ -263,7 +273,7 @@ struct AlmanacCard: View {
                     Text("黄历").tag(true)
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 112)
+                .frame(width: isLarge ? nil : 112)
             }
 
             NavigationLink(value: AppRoute.almanac) {
@@ -288,7 +298,7 @@ struct AlmanacCard: View {
                             Label("财神\(almanac.wealthDirection)", systemImage: "location.north.fill")
                         }
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .subtleForeground()
                     }
                 }
                 .contentShape(.rect)
@@ -296,6 +306,7 @@ struct AlmanacCard: View {
             .buttonStyle(.plain)
         }
         .glassCard()
+        .zoomSource(.almanac)
         .animation(.snappy, value: settings.almanacShowsTraditional)
     }
 }
@@ -304,15 +315,20 @@ struct YiJiRow: View {
     let isYi: Bool
     let items: [String]
     @Environment(\.colorScheme) private var scheme
+    /// 徽章跟着字号放大（封顶 1.6 倍），字再大就在圈里缩小
+    @ScaledMetric(relativeTo: .body) private var badgeSize: CGFloat = 34
 
     var body: some View {
         // 语义色按深浅模式取色，徽章上的字按底色深浅选黑或白，保证对比度
         let color = isYi ? Color.positive(scheme) : Color.negative(scheme)
+        let badge = min(badgeSize, 34 * 1.6)
         HStack(alignment: .top, spacing: 12) {
             Text(isYi ? "宜" : "忌")
                 .font(AppFont.serif(18, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
                 .foregroundStyle(color.readableForeground)
-                .frame(width: 34, height: 34)
+                .frame(width: badge, height: badge)
                 .background(Circle().fill(color.gradient))
                 .shadow(color: color.opacity(0.6), radius: 6)
             FlowLayout(spacing: 8) {
@@ -337,19 +353,31 @@ struct HoroscopeMiniCard: View {
     @Environment(AppState.self) private var app
     @AppStorage("lastViewedSign", store: AppGroup.defaults) private var lastViewedSign = -1
     @Environment(\.palette) private var palette
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// 星座符号是展示用的大字，跟着字号放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .title) private var badgeSize: CGFloat = 64
 
     var body: some View {
         let sign = currentSign
         let horoscope = HoroscopeEngine.horoscope(sign, period: .today, reference: today)
+        let isLarge = typeSize.isAccessibilitySize
+        // 超大字号时徽章放上面、文字放下面，文字才有整行的宽度
+        let layout = isLarge ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(spacing: 16))
         NavigationLink(value: AppRoute.horoscope) {
-            HStack(spacing: 16) {
+            layout {
                 // 旁边已有星座名，徽章不再重复朗读
-                ZodiacBadge(sign: sign, size: 64)
+                ZodiacBadge(sign: sign, size: min(badgeSize, 64 * 1.6))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 5) {
-                    HStack {
-                        Text(sign.name).font(.headline)
-                        Text(sign.dateRange).font(.caption).foregroundStyle(.secondary)
+                    ViewThatFits(in: .horizontal) {
+                        HStack {
+                            Text(sign.name).font(.headline)
+                            Text(sign.dateRange).font(.caption).subtleForeground()
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(sign.name).font(.headline)
+                            Text(sign.dateRange).font(.caption).subtleForeground()
+                        }
                     }
                     StarRatingView(stars: horoscope.stars, size: 12)
                     Text(horoscope.comment)
@@ -358,10 +386,13 @@ struct HoroscopeMiniCard: View {
                     // 星座幸运色和运势卡的幸运色是两套算法，首页只留运势卡那个，避免两个幸运色打架
                     TagChip(text: "速配 \(horoscope.matchSign.shortName)", symbol: "heart.fill")
                 }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                if !isLarge {
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                }
             }
             .glassCard(interactive: true)
+            .zoomSource(.horoscope)
         }
         .buttonStyle(.pressableCard)
     }
@@ -404,27 +435,36 @@ struct StickMiniCard: View {
     @Environment(AppState.self) private var app
     @Query(sort: \StickDraw.date, order: .reverse) private var draws: [StickDraw]
     @Environment(\.palette) private var palette
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// 签筒图标跟着字号放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .title2) private var tubeWidth: CGFloat = 56
 
     var body: some View {
         // 只认当前档案今天的签：给家人朋友求的签记在他们自己的档案下
         let profileID = app.primary?.id
         let draw = draws.first { $0.dayKey == today.rawValue && $0.profileID == profileID }
+        let isLarge = typeSize.isAccessibilitySize
+        let tube = min(tubeWidth, 56 * 1.6)
+        // 超大字号时签筒放上面、文字放下面
+        let layout = isLarge ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(spacing: 16))
         NavigationLink(value: AppRoute.stick) {
-            HStack(spacing: 16) {
+            layout {
+                // 签筒是「物件」，保留传统红，但向主题色靠一点
                 ZStack {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(LinearGradient(colors: [Color(hex: 0xB91C1C), Color(hex: 0x7F1D1D)], startPoint: .top, endPoint: .bottom))
+                        .fill(LinearGradient(colors: palette.identity([Color(hex: 0xB91C1C), Color(hex: 0x7F1D1D)]), startPoint: .top, endPoint: .bottom))
                     Image(systemName: "flame.fill")
                         .font(.title2)
-                        .foregroundStyle(LinearGradient(colors: [Color(hex: 0xFFD166), Color(hex: 0xFF8A3D)], startPoint: .top, endPoint: .bottom))
+                        .foregroundStyle(LinearGradient(colors: palette.identity([Color(hex: 0xFFD166), Color(hex: 0xFF8A3D)]), startPoint: .top, endPoint: .bottom))
                 }
-                .frame(width: 56, height: 64)
-                .shadow(color: Color(hex: 0xE11D48).opacity(0.5), radius: 8)
+                .frame(width: tube, height: tube * 64 / 56)
+                .shadow(color: palette.identity(Color(hex: 0xE11D48)).opacity(0.5), radius: 8)
+                .accessibilityHidden(true)
 
                 if let draw {
                     let stick = StickLibrary.stick(draw.stickNumber)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("今日已求签").font(.caption).foregroundStyle(.secondary)
+                        Text("今日已求签").font(.caption).subtleForeground()
                         HStack(spacing: 8) {
                             Text(stick.numberText).font(AppFont.serif(17, weight: .bold))
                             Text(stick.levelInfo.displayName)
@@ -433,18 +473,21 @@ struct StickMiniCard: View {
                                 .background(stick.levelInfo.color.opacity(0.25), in: .capsule)
                                 .foregroundStyle(stick.levelInfo.ink(scheme))
                         }
-                        Text("「\(stick.title)」\(stick.poem[0])").font(.subheadline).lineLimit(1).foregroundStyle(.secondary)
+                        Text("「\(stick.title)」\(stick.poem[0])").font(.subheadline).lineLimit(isLarge ? 2 : 1).subtleForeground()
                     }
                 } else {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("今日一签").font(.headline)
-                        Text("心诚则灵，摇一摇签筒，看看今天的指引").font(.subheadline).foregroundStyle(.secondary)
+                        Text("心诚则灵，摇一摇签筒，看看今天的指引").font(.subheadline).subtleForeground()
                     }
                 }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                if !isLarge {
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                }
             }
             .glassCard(interactive: true)
+            .zoomSource(.stick)
         }
         .buttonStyle(.pressableCard)
     }
@@ -456,9 +499,14 @@ struct QuickToolsRow: View {
     @Environment(AppSettings.self) private var settings
     @Environment(\.palette) private var palette
     @State private var showEditor = false
+    /// 格子和图标跟着字号放大（封顶 1.6 倍），工具名不会被截成「今天…」
+    @ScaledMetric(relativeTo: .caption2) private var tileWidth: CGFloat = 66
+    @ScaledMetric(relativeTo: .caption2) private var iconSize: CGFloat = 54
 
     var body: some View {
         let tools = settings.favoriteTools.compactMap(FavoriteTool.init(id:))
+        let width = min(tileWidth, 66 * 1.6)
+        let icon = min(iconSize, 54 * 1.6)
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: "快捷工具", subtitle: "工具页右上角点星标收藏", symbol: "bolt.fill")
             CardHScroll {
@@ -466,13 +514,15 @@ struct QuickToolsRow: View {
                     ForEach(tools) { tool in
                         NavigationLink(value: tool.route) {
                             VStack(spacing: 6) {
-                                ToolIcon(symbol: tool.symbol, colors: tool.colors, size: 54)
+                                ToolIcon(symbol: tool.symbol, colors: palette.identity(tool.colors), size: icon)
+                                    .zoomSource(tool.route)
                                 Text(tool.name)
                                     .font(.caption2)
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
                             }
-                            .frame(width: 66)
+                            .frame(width: width)
                         }
                         .buttonStyle(.pressableCard)
                     }
@@ -480,9 +530,9 @@ struct QuickToolsRow: View {
                         showEditor = true
                     } label: {
                         VStack(spacing: 6) {
-                            RoundedRectangle(cornerRadius: 54 * 0.3, style: .continuous)
+                            RoundedRectangle(cornerRadius: icon * 0.3, style: .continuous)
                                 .strokeBorder(palette.accent.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
-                                .frame(width: 54, height: 54)
+                                .frame(width: icon, height: icon)
                                 .overlay {
                                     Image(systemName: "plus")
                                         .font(.title2.weight(.semibold))
@@ -493,7 +543,7 @@ struct QuickToolsRow: View {
                                 .subtleForeground()
                                 .lineLimit(1)
                         }
-                        .frame(width: 66)
+                        .frame(width: width)
                         .contentShape(.rect)
                     }
                     .buttonStyle(.pressableCard)
@@ -550,6 +600,7 @@ struct CountdownStrip: View {
             }
         }
         .glassCard(clipped: true)
+        .zoomSource(.countdowns)
     }
 }
 
@@ -571,12 +622,12 @@ struct CountdownChip: View {
                 if item.isFromProfile {
                     Image(systemName: "person.crop.circle")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .subtleForeground()
                         .accessibilityLabel("来自档案")
                 }
             }
             HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(status.prefix).font(.caption2).foregroundStyle(.secondary)
+                Text(status.prefix).font(.caption2).subtleForeground()
                 if status.isToday && item.kind != .anniversary {
                     Text(status.suffix).font(.title2.bold()).foregroundStyle(ink)
                 } else {
@@ -584,7 +635,7 @@ struct CountdownChip: View {
                         .font(.system(size: min(numberSize, 48), weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(ink)
-                    Text(status.suffix).font(.caption2).foregroundStyle(.secondary)
+                    Text(status.suffix).font(.caption2).subtleForeground()
                 }
             }
         }
@@ -627,6 +678,7 @@ struct MoodCheckInCard: View {
             }
         }
         .glassCard()
+        .zoomSource(.mood)
     }
 }
 
@@ -647,7 +699,7 @@ struct QuoteCard: View {
                 .lineSpacing(5)
             Text("— 星匣 · 每日一句")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .subtleForeground()
         }
         .frame(maxWidth: .infinity)
         .glassCard(padding: 22)
@@ -670,7 +722,7 @@ struct FlowLayout: Layout {
         var rowHeight: CGFloat = 0
         var maxX: CGFloat = 0
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let size = Self.size(of: subview, maxWidth: width)
             if x > 0 && x + size.width > width {
                 x = 0
                 y += rowHeight + spacing
@@ -688,7 +740,7 @@ struct FlowLayout: Layout {
         var y = bounds.minY
         var rowHeight: CGFloat = 0
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let size = Self.size(of: subview, maxWidth: bounds.width)
             if x > bounds.minX && x + size.width > bounds.maxX {
                 x = bounds.minX
                 y += rowHeight + spacing
@@ -698,5 +750,12 @@ struct FlowLayout: Layout {
             x += size.width + spacing
             rowHeight = max(rowHeight, size.height)
         }
+    }
+
+    /// 比一行还宽的标签（超大字号下）按整行宽度重新量，让它折行而不是撑出卡片
+    private static func size(of subview: LayoutSubview, maxWidth: CGFloat) -> CGSize {
+        let ideal = subview.sizeThatFits(.unspecified)
+        guard maxWidth.isFinite, ideal.width > maxWidth else { return ideal }
+        return subview.sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
     }
 }

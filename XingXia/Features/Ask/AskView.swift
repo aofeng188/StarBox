@@ -12,6 +12,9 @@ struct AskView: View {
     @State private var analyzedText = ""
     @State private var placeholderIndex = 0
     @FocusState private var focused: Bool
+    /// 问题框里的清空、提交按钮跟着字号放大（封顶 1.6 倍），图标不会撑出圆底
+    @ScaledMetric(relativeTo: .body) private var clearSize: CGFloat = 32
+    @ScaledMetric(relativeTo: .headline) private var sendSize: CGFloat = 36
 
     private static let examples = ["中午吃火锅还是烤肉？", "周末要不要去杭州？", "哪天搬家比较好？", "他是不是喜欢我？", "奶茶选哪一杯？"]
 
@@ -89,7 +92,7 @@ struct AskView: View {
                         Image(systemName: "xmark.circle.fill")
                             .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(.secondary)
-                            .frame(width: 32, height: 32)
+                            .frame(width: min(clearSize, 32 * 1.6), height: min(clearSize, 32 * 1.6))
                             .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
@@ -99,7 +102,7 @@ struct AskView: View {
                     Image(systemName: "arrow.up")
                         .font(.headline.weight(.bold))
                         .foregroundStyle(palette.onAccent)
-                        .frame(width: 36, height: 36)
+                        .frame(width: min(sendSize, 36 * 1.6), height: min(sendSize, 36 * 1.6))
                         .background(Circle().fill(palette.accentGradient))
                 }
                 .buttonStyle(.plain)
@@ -167,7 +170,7 @@ private struct AskSectionTitle: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.title2.bold())
-            Text(subtitle).font(.caption).foregroundStyle(.secondary)
+            Text(subtitle).font(.caption).subtleForeground()
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
@@ -216,12 +219,21 @@ private struct AskResultCard: View {
                         onPick(method)
                     } label: {
                         HStack(spacing: 12) {
-                            ToolIcon(symbol: method.symbol, colors: method.colors, size: 40)
+                            ToolIcon(symbol: method.symbol, colors: palette.identity(method.colors), size: 40)
                             VStack(alignment: .leading, spacing: 3) {
-                                HStack(spacing: 6) {
-                                    Text(method.name).font(.headline).foregroundStyle(.primary)
-                                    if index == 0 {
-                                        TagChip(text: "推荐", symbol: "hand.thumbsup.fill")
+                                // 一行放不下（超大字号）时「推荐」标签换到名字下面，名字不被挤断
+                                ViewThatFits(in: .horizontal) {
+                                    HStack(spacing: 6) {
+                                        Text(method.name).font(.headline).foregroundStyle(.primary)
+                                        if index == 0 {
+                                            TagChip(text: "推荐", symbol: "hand.thumbsup.fill")
+                                        }
+                                    }
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(method.name).font(.headline).foregroundStyle(.primary)
+                                        if index == 0 {
+                                            TagChip(text: "推荐", symbol: "hand.thumbsup.fill")
+                                        }
                                     }
                                 }
                                 Text(reason)

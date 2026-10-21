@@ -49,6 +49,9 @@ struct RPSView: View {
     @State private var history: [Hand] = []
     /// 读心模式：记录「上一手 → 下一手」的频率
     @State private var transitions: [Int: [Int]] = [:]
+    /// 比分和出拳按钮跟着字号放大，封顶 1.6 倍（中间的对战舞台是固定尺寸、整体缩放的，不跟着放大）
+    @ScaledMetric(relativeTo: .largeTitle) private var scoreSize: CGFloat = 40
+    @ScaledMetric(relativeTo: .largeTitle) private var handSize: CGFloat = 46
 
     var body: some View {
         StageScaffold {
@@ -99,16 +102,20 @@ struct RPSView: View {
                 .tint(palette.accent)
                 .controlSize(.large)
             } else {
+                // 三个出拳按钮按字号放大；一行放不下时等分宽度，不会挤出屏幕
+                let handScale = min(handSize, 46 * 1.6) / 46
                 HStack(spacing: 16) {
                     ForEach(Hand.allCases) { hand in
                         Button {
                             play(hand)
                         } label: {
                             VStack(spacing: 6) {
-                                Text(hand.emoji).font(.system(size: 46))
+                                Text(hand.emoji).font(.system(size: 46 * handScale))
                                 Text(hand.name).font(.caption.weight(.semibold)).foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
                             }
-                            .frame(width: 96, height: 110)
+                            .frame(maxWidth: 96 * handScale, minHeight: 110 * handScale)
                         }
                         .buttonStyle(.plain)
                         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 26))
@@ -154,7 +161,7 @@ struct RPSView: View {
 
     private func scoreColumn(title: String, score: Int) -> some View {
         VStack(spacing: 2) {
-            Text("\(score)").font(.system(size: 40, weight: .bold, design: .rounded)).monospacedDigit()
+            Text("\(score)").font(.system(size: min(scoreSize, 40 * 1.6), weight: .bold, design: .rounded)).monospacedDigit()
                 .contentTransition(.numericText(value: Double(score)))
             Text(title).font(.caption).foregroundStyle(.secondary)
         }

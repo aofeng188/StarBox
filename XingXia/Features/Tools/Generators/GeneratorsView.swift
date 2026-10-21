@@ -28,6 +28,7 @@ struct GeneratorsView: View {
             .pageContent()
             .padding(.bottom, 30)
         }
+        .contentMargins(.bottom, 24, for: .scrollContent)
         .cosmicBackground()
         .navigationTitle("灵感生成器")
     }
@@ -162,6 +163,7 @@ private struct PasswordGenerator: View {
     @State private var password = ""
     @State private var copied = false
     @Environment(\.palette) private var palette
+    @Environment(\.colorScheme) private var scheme
 
     private var charset: [Character] {
         var set = ""
@@ -230,7 +232,10 @@ private struct PasswordGenerator: View {
 
     private var strengthLevel: Int { entropy < 40 ? 1 : (entropy < 60 ? 2 : (entropy < 80 ? 3 : 4)) }
     private var strengthName: String { ["", "弱", "一般", "强", "非常强"][strengthLevel] }
-    private var strengthColor: Color { [.clear, .red, .orange, Color(hex: 0x34D399), Color(hex: 0x22D3EE)][strengthLevel] }
+    /// 弱、一般、强用语义的红、橙、绿，非常强用青色
+    private var strengthColor: Color {
+        [.clear, Color.negative(scheme), Color.caution(scheme), Color.positive(scheme), palette.identity(Color(hex: 0x22D3EE))][strengthLevel]
+    }
 
     private func generate() {
         let set = charset
@@ -348,11 +353,13 @@ private struct LetterGenerator: View {
     @State private var lowercase = false
     @State private var history: [String] = []
     @Environment(\.palette) private var palette
+    /// 大字母跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .largeTitle) private var letterSize: CGFloat = 140
 
     var body: some View {
         VStack(spacing: 16) {
             Text(letter)
-                .font(.system(size: 140, weight: .black, design: .rounded))
+                .font(.system(size: min(letterSize, 140 * 1.6), weight: .black, design: .rounded))
                 .foregroundStyle(palette.accentGradient)
                 .shadow(color: palette.accent.opacity(0.5), radius: 20)
                 .contentTransition(.numericText())

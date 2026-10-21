@@ -250,31 +250,40 @@ struct DiceView: View {
     @State private var isRolling = false
     @State private var history: [[Int]] = []
     @State private var revealCount = 0
+    /// 结果里的骰子图标和合计跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .title) private var resultSize: CGFloat = 34
 
     var body: some View {
         StageScaffold(spacing: 14) {
             QuestionBanner()
-            // 结果
-            HStack(spacing: 10) {
+            // 结果。大字号下一行放不下六颗骰子加合计时，合计换到下一行，再放不下就每行三颗
+            Group {
                 if results.isEmpty || isRolling {
                     Text(isRolling ? "骰子滚动中…" : "点按桌面或摇一摇掷骰子")
                         .font(.headline)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 } else {
-                    ForEach(Array(results.enumerated()), id: \.offset) { _, value in
-                        Image(systemName: "die.face.\(value).fill")
-                            .font(.system(size: 34))
-                            .foregroundStyle(value == 1 || value == 4 ? Color(hex: 0xEF4444) : .primary)
-                    }
-                    if results.count > 1 {
-                        Text("= \(results.reduce(0, +))")
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
-                            .foregroundStyle(palette.accentGradient)
-                            .contentTransition(.numericText())
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 10) {
+                            dice(results)
+                            total
+                        }
+                        VStack(spacing: 4) {
+                            HStack(spacing: 10) { dice(results) }
+                            total
+                        }
+                        VStack(spacing: 4) {
+                            HStack(spacing: 10) { dice(Array(results.prefix(3))) }
+                            if results.count > 3 {
+                                HStack(spacing: 10) { dice(Array(results.dropFirst(3))) }
+                            }
+                            total
+                        }
                     }
                 }
             }
-            .frame(height: 50)
+            .frame(minHeight: 50)
             .keyframeAnimator(initialValue: 1.0, trigger: revealCount) { view, scale in
                 view.scaleEffect(scale)
             } keyframes: { _ in
@@ -320,14 +329,8 @@ struct DiceView: View {
                     }
                     .padding(.horizontal, 16)
                 }
-                // 横条铺到屏幕边缘，两端渐隐，提示还能滑动
-                .mask {
-                    HStack(spacing: 0) {
-                        LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing).frame(width: 16)
-                        Rectangle()
-                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 16)
-                    }
-                }
+                // 横条铺到屏幕边缘，还有内容的那端渐隐，提示还能滑动
+                .fadingScrollEdges(16)
                 .pageBleed()
             }
         }
@@ -336,6 +339,28 @@ struct DiceView: View {
         .navigationTitle("3D 骰子")
         .navigationBarTitleDisplayMode(.inline)
         .onShake { roll() }
+    }
+
+    private var resultIconSize: CGFloat { min(resultSize, 34 * 1.6) }
+
+    /// 结果里的骰子图标：一点和四点用（向主题色靠过的）传统红
+    @ViewBuilder
+    private func dice(_ values: [Int]) -> some View {
+        ForEach(Array(values.enumerated()), id: \.offset) { _, value in
+            Image(systemName: "die.face.\(value).fill")
+                .font(.system(size: resultIconSize))
+                .foregroundStyle(value == 1 || value == 4 ? palette.identity(Color(hex: 0xEF4444)) : .primary)
+        }
+    }
+
+    @ViewBuilder
+    private var total: some View {
+        if results.count > 1 {
+            Text("= \(results.reduce(0, +))")
+                .font(.system(size: resultIconSize, weight: .bold, design: .rounded))
+                .foregroundStyle(palette.accentGradient)
+                .contentTransition(.numericText())
+        }
     }
 
     private func roll() {

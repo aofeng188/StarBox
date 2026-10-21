@@ -77,6 +77,7 @@ struct DecisionEditSheet: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.palette) private var palette
 
     var body: some View {
         let info = HistoryLog.info(for: record.tool)
@@ -88,7 +89,7 @@ struct DecisionEditSheet: View {
                 VStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(spacing: 12) {
-                            ToolIcon(symbol: info.symbol, colors: info.colors, size: 40)
+                            ToolIcon(symbol: info.symbol, colors: palette.identity(info.colors), size: 40)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(info.name).font(.headline)
                                 Text("\(DateText.full(DayKey(record.date))) \(DateText.time(record.date))")

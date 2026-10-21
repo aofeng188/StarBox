@@ -15,6 +15,8 @@ struct AuspiciousDaysView: View {
     @State private var weekendsOnly = false
     @State private var today = DayKey.today
     @State private var found: SearchResult?
+    /// 事项格子的最小宽度跟着字号放大（和格子里的图标一起，封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .body) private var tileMinWidth: CGFloat = 58
 
     private var event: AuspiciousEvent { AuspiciousEvent(rawValue: eventID) ?? .moving }
 
@@ -38,6 +40,8 @@ struct AuspiciousDaysView: View {
             .pageContent()
             .padding(.bottom, 30)
         }
+        // 悬浮 tab 栏下，最底下的说明文字也能完整滚出来
+        .contentMargins(.bottom, 24, for: .scrollContent)
         .cosmicBackground()
         .navigationTitle("择吉日")
         .task(id: key) { await search(key) }
@@ -55,7 +59,8 @@ struct AuspiciousDaysView: View {
     private var eventPicker: some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionHeader(title: "想办什么事", subtitle: event.subtitle, symbol: "calendar.badge.checkmark")
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 58, maximum: 96), spacing: 8)], spacing: 14) {
+            let minimum = min(tileMinWidth, 58 * 1.6)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: minimum, maximum: max(96, minimum)), spacing: 8)], spacing: 14) {
                 ForEach(AuspiciousEvent.allCases) { item in
                     EventTile(event: item, isSelected: item == event) {
                         guard item != event else { return }
@@ -186,14 +191,18 @@ private struct EventTile: View {
     let isSelected: Bool
     let action: () -> Void
     @Environment(\.palette) private var palette
+    /// 图标和圆底跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = 19
 
     var body: some View {
+        let icon = min(iconSize, 19 * 1.6)
+        let circle = 46 * icon / 19
         Button(action: action) {
             VStack(spacing: 6) {
                 Image(systemName: event.symbol)
-                    .font(.system(size: 19, weight: .semibold))
+                    .font(.system(size: icon, weight: .semibold))
                     .foregroundStyle(isSelected ? palette.onAccent : palette.ink(palette.accent))
-                    .frame(width: 46, height: 46)
+                    .frame(width: circle, height: circle)
                     .background {
                         if isSelected {
                             Circle().fill(palette.accentGradient)

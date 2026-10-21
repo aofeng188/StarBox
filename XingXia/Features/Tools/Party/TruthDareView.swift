@@ -7,6 +7,19 @@ private struct TruthDareContent: Decodable {
     static let shared: TruthDareContent = ContentLibrary.load("truthdare")
 }
 
+/// 真心话、大冒险的身份色（界面上经过 palette.identity 再用）
+private enum TruthDareColors {
+    static func colors(isDare: Bool) -> [Color] {
+        isDare ? [Color(hex: 0xFB7185), Color(hex: 0xF59E0B)] : [Color(hex: 0x60A5FA), Color(hex: 0x8B5CF6)]
+    }
+
+    /// 压在这组渐变上的文字色：按渐变中间色的亮度选深字或白字。
+    /// 用混主题色之前的中间色算（两组都明显偏亮，混 20% 主题色后结论不变）
+    static func foreground(isDare: Bool) -> Color {
+        Color(hex: isDare ? 0xF8884C : 0x7681F8).readableForeground
+    }
+}
+
 struct TruthDareView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.palette) private var palette
@@ -65,8 +78,8 @@ struct TruthDareView: View {
                 .accessibilityLabel(isFaceUp ? "\(kind == "dare" ? "大冒险" : "真心话")：\(prompt)" : "卡片背面")
 
                 HStack(spacing: 12) {
-                    choiceButton(title: "真心话", symbol: "bubble.left.and.text.bubble.right.fill", colors: [Color(hex: 0x60A5FA), Color(hex: 0x8B5CF6)]) { draw("truth") }
-                    choiceButton(title: "大冒险", symbol: "flame.fill", colors: [Color(hex: 0xFB7185), Color(hex: 0xF59E0B)]) { draw("dare") }
+                    choiceButton(title: "真心话", symbol: "bubble.left.and.text.bubble.right.fill", isDare: false) { draw("truth") }
+                    choiceButton(title: "大冒险", symbol: "flame.fill", isDare: true) { draw("dare") }
                 }
                 Button("随机来一个", systemImage: "shuffle") { draw(Bool.random() ? "truth" : "dare") }
                     .buttonStyle(.glass)
@@ -86,13 +99,14 @@ struct TruthDareView: View {
         .onShake(isEnabled: !showCustom && !editingPlayers) { draw(Bool.random() ? "truth" : "dare") }
     }
 
-    private func choiceButton(title: String, symbol: String, colors: [Color], action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+    private func choiceButton(title: String, symbol: String, isDare: Bool, action: @escaping () -> Void) -> some View {
+        let colors = palette.identity(TruthDareColors.colors(isDare: isDare))
+        return Button(action: action) {
             VStack(spacing: 8) {
                 Image(systemName: symbol).font(.title)
                 Text(title).font(.headline)
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(TruthDareColors.foreground(isDare: isDare))
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
             .background(RoundedRectangle(cornerRadius: 22).fill(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)))
@@ -150,13 +164,15 @@ struct TruthDareView: View {
 
 private struct PromptCardBack: View {
     @Environment(\.palette) private var palette
+    /// 背面的大问号跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .largeTitle) private var markSize: CGFloat = 90
 
     var body: some View {
         RoundedRectangle(cornerRadius: 30)
             .fill(LinearGradient(colors: [palette.accent.opacity(0.9), palette.accentSecondary.opacity(0.9)], startPoint: .topLeading, endPoint: .bottomTrailing))
             .overlay {
                 VStack(spacing: 14) {
-                    Text("?").font(.system(size: 90, weight: .black, design: .rounded)).foregroundStyle(palette.onAccent.opacity(0.9))
+                    Text("?").font(.system(size: min(markSize, 90 * 1.6), weight: .black, design: .rounded)).foregroundStyle(palette.onAccent.opacity(0.9))
                     Text("真心话 or 大冒险").font(.headline).foregroundStyle(palette.onAccent.opacity(0.85))
                 }
             }
@@ -169,16 +185,18 @@ private struct PromptCardFront: View {
     let kind: String
     let prompt: String
 
+    @Environment(\.palette) private var palette
+
     var body: some View {
         let isDare = kind == "dare"
-        let colors = isDare ? [Color(hex: 0xFB7185), Color(hex: 0xF59E0B)] : [Color(hex: 0x60A5FA), Color(hex: 0x8B5CF6)]
+        let colors = palette.identity(TruthDareColors.colors(isDare: isDare))
         RoundedRectangle(cornerRadius: 30)
             .fill(.regularMaterial)
             .overlay {
                 VStack(spacing: 18) {
                     Label(isDare ? "大冒险" : "真心话", systemImage: isDare ? "flame.fill" : "bubble.left.and.text.bubble.right.fill")
                         .font(.headline)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(TruthDareColors.foreground(isDare: isDare))
                         .padding(.horizontal, 14).padding(.vertical, 7)
                         .background(Capsule().fill(LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing)))
                     Text(prompt)

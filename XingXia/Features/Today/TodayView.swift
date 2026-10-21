@@ -111,23 +111,22 @@ private struct TodayHeader: View {
             .foregroundStyle(palette.accentGradient)
         let weekdayText = Text(DateText.weekday(day))
             .font(.title3.weight(.semibold))
-            .foregroundStyle(.secondary)
         let lunarText = "农历\(almanac.lunar.text)"
         let yearText = "\(almanac.lunar.yearGanZhi.name)\(almanac.lunar.yearGanZhi.branch.animal)年"
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(greeting)
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .subtleForeground()
                 // 一行放不下（超大字号）时星期换到日期下面
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         dateText
-                        weekdayText
+                        weekdayText.subtleForeground()
                     }
                     VStack(alignment: .leading, spacing: 2) {
                         dateText
-                        weekdayText
+                        weekdayText.subtleForeground()
                     }
                 }
                 // 农历一行放不下时改成竖排，而不是被挤成几列
@@ -146,7 +145,7 @@ private struct TodayHeader: View {
                     }
                 }
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .subtleForeground()
                 if !almanac.festivals.isEmpty {
                     FlowLayout(spacing: 6) {
                         ForEach(almanac.festivals, id: \.self) { TagChip(text: $0, symbol: "party.popper.fill") }
@@ -167,20 +166,38 @@ private struct TodayHeader: View {
 private struct MoonPhaseCapsule: View {
     let day: DayKey
     @Environment(\.palette) private var palette
+    /// 月亮跟着旁边的字一起放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .footnote) private var moonSize: CGFloat = 18
 
     var body: some View {
         let moon = MoonInfo.on(day)
+        let disc = MoonDisc(phase: moon.phase, size: min(moonSize, 18 * 1.6))
+        let name = Text(moon.name.name).font(.footnote.weight(.semibold))
+        let percent = Text("亮 \(moon.percent)%").font(.footnote).monospacedDigit()
+        let chevron = Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
         NavigationLink(value: AppRoute.skyCalendar) {
-            HStack(spacing: 6) {
-                MoonDisc(phase: moon.phase, size: 18)
-                Text(moon.name.name).font(.footnote.weight(.semibold))
-                Text("亮 \(moon.percent)%").font(.footnote).monospacedDigit().subtleForeground()
-                Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+            // 超大字号下一行放不下时，亮面比例换到月相名下面，不被截断
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) {
+                    disc
+                    name
+                    percent.subtleForeground()
+                    chevron
+                }
+                HStack(spacing: 6) {
+                    disc
+                    VStack(alignment: .leading, spacing: 0) {
+                        name
+                        percent.subtleForeground()
+                    }
+                    chevron
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .contentShape(.capsule)
             .glassEffect(.regular.tint(palette.glassTint).interactive(), in: .capsule)
+            .zoomSource(.skyCalendar)
         }
         .buttonStyle(.pressableCard)
         .accessibilityLabel("今晚\(moon.name.name)，亮面 \(moon.percent)%")
@@ -200,7 +217,7 @@ private struct SetupProfileBanner: View {
                     Text("填写生日，解锁专属运势").font(.headline)
                     Text("根据你的八字与星座，每天计算只属于你的运势")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .subtleForeground()
                 }
                 Spacer()
                 Image(systemName: "chevron.right").foregroundStyle(.tertiary)

@@ -38,6 +38,8 @@ struct FortuneStickView: View {
     @State private var extraDay: Int?
     /// 被神明否定的那一支，重新求签时避开
     @State private var deniedNumber: Int?
+    /// 所求 chip 行的选中态在 chip 之间流动
+    @Namespace private var glassNamespace
 
     private let wishes = ["综合", "事业", "感情", "财运", "健康", "学业", "出行"]
 
@@ -143,30 +145,32 @@ struct FortuneStickView: View {
 
             if phase == .idle {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(wishes, id: \.self) { item in
-                            Button(item) {
-                                wish = item
-                                Haptics.selection()
+                    // 一排玻璃胶囊：换所求时选中的强调色像水滴一样流到新的 chip 上
+                    GlassEffectContainer(spacing: GlassChipMetrics.containerSpacing) {
+                        HStack(spacing: GlassChipMetrics.spacing) {
+                            ForEach(wishes, id: \.self) { item in
+                                Button {
+                                    withAnimation(reduceMotion ? nil : .bouncy) { wish = item }
+                                    Haptics.selection()
+                                } label: {
+                                    Text(item)
+                                        .font(.subheadline.weight(.medium))
+                                        .lineLimit(1)
+                                        .fixedSize()
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                        .glassChip(isOn: wish == item, id: item, flows: true, in: glassNamespace)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityAddTraits(wish == item ? .isSelected : [])
                             }
-                            .font(.subheadline.weight(.medium))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .foregroundStyle(wish == item ? palette.onAccent : .primary)
-                            .background(Capsule().fill(wish == item ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.primary.opacity(0.08))))
-                            .accessibilityAddTraits(wish == item ? .isSelected : [])
                         }
-                    }
-                    .padding(.horizontal, 16)
-                }
-                // 横条铺到屏幕边缘，两端渐隐，提示还能滑动
-                .mask {
-                    HStack(spacing: 0) {
-                        LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing).frame(width: 16)
-                        Rectangle()
-                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 16)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 2)
                     }
                 }
+                // 横条铺到屏幕边缘，还有内容的那端渐隐，提示还能滑动
+                .fadingScrollEdges(16)
                 .pageBleed()
                 .transition(.opacity)
             }
@@ -175,7 +179,7 @@ struct FortuneStickView: View {
                 ZStack {
                     // 光晕
                     Circle()
-                        .fill(RadialGradient(colors: [Color(hex: 0xFFB347).opacity(0.45 + energy * 0.4), .clear], center: .center, startRadius: 0, endRadius: 190))
+                        .fill(RadialGradient(colors: [palette.identity(Color(hex: 0xFFB347)).opacity(0.45 + energy * 0.4), .clear], center: .center, startRadius: 0, endRadius: 190))
                         .frame(width: 380, height: 380)
                         .scaleEffect(1 + energy * 0.15)
                         .blur(radius: 10)
@@ -207,21 +211,27 @@ struct FortuneStickView: View {
                     ZStack(alignment: .leading) {
                         Capsule().fill(.primary.opacity(0.1))
                         Capsule()
-                            .fill(LinearGradient(colors: [Color(hex: 0xFFD166), Color(hex: 0xFF6B35)], startPoint: .leading, endPoint: .trailing))
+                            .fill(LinearGradient(colors: [palette.accent, palette.accentSecondary], startPoint: .leading, endPoint: .trailing))
                             .frame(width: max(0, CGFloat(min(1, energy)) * 260))
-                            .shadow(color: Color(hex: 0xFF6B35).opacity(0.7), radius: 6)
+                            .shadow(color: palette.accent.opacity(0.7), radius: 6)
                     }
                     .frame(width: 260, height: 8)
                     .accessibilityLabel("摇签进度 \(Int(min(1, energy) * 100))%")
 
+                    // 主按钮用主题强调色（和其他页面的大按钮一致），不再是写死的红橙渐变
                     Text("按住摇签")
                         .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(width: 220, height: 56)
-                        .background(Capsule().fill(LinearGradient(colors: [Color(hex: 0xE11D48), Color(hex: 0xF59E0B)], startPoint: .leading, endPoint: .trailing)))
+                        .foregroundStyle(palette.onAccent)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        // 默认字号下仍是 220 × 56；字号放大时胶囊跟着撑开
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .frame(minWidth: 220, minHeight: 56)
+                        .background(Capsule().fill(LinearGradient(colors: [palette.accent, palette.accentSecondary], startPoint: .leading, endPoint: .trailing)))
                         .glassEffect(.regular.interactive(), in: .capsule)
                         .scaleEffect(isHolding ? 0.95 : 1)
-                        .shadow(color: Color(hex: 0xE11D48).opacity(0.5), radius: 12)
+                        .shadow(color: palette.accent.opacity(0.5), radius: 12)
                         .onLongPressGesture(minimumDuration: 10, maximumDistance: 60, pressing: { pressing in
                             withAnimation(.spring(response: 0.25)) { isHolding = pressing }
                         }, perform: {})
@@ -231,11 +241,14 @@ struct FortuneStickView: View {
                 }
                 .padding(.bottom, 30)
             } else {
-                Button("解签") { reveal() }
-                    .buttonStyle(.glassProminent)
-                    .controlSize(.large)
-                    .tint(Color(hex: 0xE11D48))
-                    .padding(.bottom, 30)
+                Button { reveal() } label: {
+                    // 文字色写在 label 里（同 BigActionButton），深色主题的亮强调色上用深字
+                    Text("解签").foregroundStyle(palette.onAccent)
+                }
+                .buttonStyle(.glassProminent)
+                .controlSize(.large)
+                .tint(palette.accent)
+                .padding(.bottom, 30)
             }
         }
     }
@@ -501,26 +514,30 @@ private struct StickProfilePicker: View {
     }
 }
 
-/// 掉出来的一支签
+/// 掉出来的一支签。签条保留传统红和木色，但向主题强调色靠一点
 private struct SingleStick: View {
     let number: Int
     var glowing = false
 
+    @Environment(\.palette) private var palette
+
     var body: some View {
         VStack(spacing: 0) {
-            RoundedRectangle(cornerRadius: 4).fill(Color(hex: 0xC0392B)).frame(width: 34, height: 26)
+            RoundedRectangle(cornerRadius: 4).fill(palette.identity(Color(hex: 0xC0392B))).frame(width: 34, height: 26)
             ZStack {
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(LinearGradient(colors: [Color(hex: 0xF7E1B5), Color(hex: 0xD9AE6D)], startPoint: .leading, endPoint: .trailing))
+                    .fill(LinearGradient(colors: palette.identity([Color(hex: 0xF7E1B5), Color(hex: 0xD9AE6D)]), startPoint: .leading, endPoint: .trailing))
                 VStack(spacing: 4) {
                     ForEach(Array(Array("第\(StickLibrary.chineseNumber(number))签").enumerated()), id: \.offset) { _, char in
                         Text(String(char)).font(AppFont.serif(17, weight: .bold)).foregroundStyle(Color(hex: 0x7B1E1E))
                     }
                 }
+                // 签条是 34pt 宽的固定物件，字不跟系统字号放大（签号另有读屏标签和解签页）
+                .dynamicTypeSize(.large)
             }
             .frame(width: 34, height: 210)
         }
-        .shadow(color: glowing ? Color(hex: 0xFFD166).opacity(0.9) : .clear, radius: 18)
+        .shadow(color: glowing ? palette.identity(Color(hex: 0xFFD166)).opacity(0.9) : .clear, radius: 18)
     }
 }
 
@@ -546,6 +563,8 @@ struct StickResultView: View {
     @Environment(\.palette) private var palette
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 等级印章跟着字号放大，封顶 1.6 倍；印章里的字放不下时缩小
+    @ScaledMetric(relativeTo: .title) private var sealSize: CGFloat = 74
     @State private var stamped = false
     /// 已掷筊确认（连得三次圣杯）
     @State private var confirmed: Bool
@@ -571,6 +590,11 @@ struct StickResultView: View {
     }
 
     var body: some View {
+        // 印章、签诗框是「物件」，保留传统红和金，但向主题强调色靠一点；签等的颜色同样处理
+        let sealRed = palette.identity(Color(hex: 0xE53935))
+        let gold = palette.identity(Color(hex: 0xFFD166))
+        let levelColor = palette.identity(stick.levelInfo.color)
+        let seal = min(sealSize, 74 * 1.6)
         ScrollView {
             VStack(spacing: 18) {
                 if let target {
@@ -602,16 +626,19 @@ struct StickResultView: View {
                         // 印章
                         Text(stick.levelInfo.sealText)
                             .font(AppFont.serif(stick.levelInfo.rawValue.count > 1 ? 22 : 26, weight: .bold))
-                            .foregroundStyle(Color(hex: 0xE53935))
-                            .frame(width: 74, height: 74)
-                            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color(hex: 0xE53935), lineWidth: 3))
+                            .foregroundStyle(sealRed)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.5)
+                            .padding(.horizontal, 6)
+                            .frame(width: seal, height: seal)
+                            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(sealRed, lineWidth: 3))
                             // 减弱动态效果时不从大号斜着砸下来，只淡入
                             .rotationEffect(.degrees(stamped || reduceMotion ? -12 : -30))
                             .scaleEffect(stamped || reduceMotion ? 1 : 2.4)
                             .opacity(stamped ? 0.92 : 0)
                     }
 
-                    // 竖排签诗（从右往左）
+                    // 竖排签诗（从右往左）。四行竖排在超大字号下会撑出卡片，字号封顶约 1.6 倍（整首诗另有读屏标签）
                     HStack(alignment: .top, spacing: 18) {
                         ForEach(Array(stick.poem.enumerated().reversed()), id: \.offset) { _, line in
                             VStack(spacing: 6) {
@@ -621,13 +648,14 @@ struct StickResultView: View {
                             }
                         }
                     }
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                     .padding(.vertical, 18)
                     .frame(maxWidth: .infinity)
                     .background(
                         RoundedRectangle(cornerRadius: 18)
-                            .fill(LinearGradient(colors: [Color(hex: 0xFFF6E0).opacity(0.12), Color(hex: 0xFFD166).opacity(0.06)], startPoint: .top, endPoint: .bottom))
+                            .fill(LinearGradient(colors: [palette.identity(Color(hex: 0xFFF6E0)).opacity(0.12), gold.opacity(0.06)], startPoint: .top, endPoint: .bottom))
                     )
-                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color(hex: 0xFFD166).opacity(0.35), lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(gold.opacity(0.35), lineWidth: 1))
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(stick.poem.joined(separator: "，"))
                     // 掷筊连得三次圣杯后盖的小印
@@ -648,7 +676,7 @@ struct StickResultView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .glassCard(padding: 22, tint: stick.levelInfo.color.opacity(0.08))
+                .glassCard(padding: 22, tint: levelColor.opacity(0.08))
 
                 // 掷筊确认
                 VStack(spacing: 8) {
@@ -658,12 +686,15 @@ struct StickResultView: View {
                             .foregroundStyle(Color.positive(scheme))
                             .multilineTextAlignment(.center)
                     } else {
-                        Button("掷筊确认", systemImage: "moon.fill") {
+                        Button {
                             Haptics.tap()
                             showingJiaobei = true
+                        } label: {
+                            // 主按钮用主题强调色，文字色写在 label 里（同 BigActionButton）
+                            Label("掷筊确认", systemImage: "moon.fill").foregroundStyle(palette.onAccent)
                         }
                         .buttonStyle(.glassProminent)
-                        .tint(Color(hex: 0xE11D48))
+                        .tint(palette.accent)
                         .controlSize(.large)
                         Text("传统求签后要掷筊，连得三次圣杯才算数")
                             .font(.footnote)
@@ -684,9 +715,9 @@ struct StickResultView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
-                            .background(highlighted ? stick.levelInfo.color.opacity(0.18) : .primary.opacity(0.05), in: .rect(cornerRadius: 14))
+                            .background(highlighted ? levelColor.opacity(0.18) : .primary.opacity(0.05), in: .rect(cornerRadius: 14))
                             .overlay {
-                                if highlighted { RoundedRectangle(cornerRadius: 14).strokeBorder(stick.levelInfo.color.opacity(0.6)) }
+                                if highlighted { RoundedRectangle(cornerRadius: 14).strokeBorder(levelColor.opacity(0.6)) }
                             }
                         }
                     }
@@ -695,16 +726,21 @@ struct StickResultView: View {
 
                 VStack(spacing: 10) {
                     Text("心诚则灵 · 一日一签")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    if isExtra {
-                        Button(target.map { "回到\($0.name)的今日一签" } ?? "回到今日一签", systemImage: "arrow.uturn.backward") { onLeaveExtra() }
-                            .buttonStyle(.glass)
-                    }
-                    Button("为家人朋友再求一签", systemImage: "person.2") { onAgain() }
-                        .buttonStyle(.glass)
-                    if target != nil {
-                        Button("看我的今日一签", systemImage: "arrow.uturn.backward") { onMine() }
-                            .buttonStyle(.glass)
+                        .font(.footnote).subtleForeground()
+                    // 结果下的一排玻璃按钮放进同一个容器，按下、增减时一起融合变形
+                    GlassEffectContainer(spacing: 10) {
+                        VStack(spacing: 10) {
+                            if isExtra {
+                                Button(target.map { "回到\($0.name)的今日一签" } ?? "回到今日一签", systemImage: "arrow.uturn.backward") { onLeaveExtra() }
+                                    .buttonStyle(.glass)
+                            }
+                            Button("为家人朋友再求一签", systemImage: "person.2") { onAgain() }
+                                .buttonStyle(.glass)
+                            if target != nil {
+                                Button("看我的今日一签", systemImage: "arrow.uturn.backward") { onMine() }
+                                    .buttonStyle(.glass)
+                            }
+                        }
                     }
                 }
                 .padding(.bottom, 30)
@@ -774,8 +810,12 @@ struct StickShareContent: View {
     var confirmed = false
     let style: ShareCardStyle
 
-    private static let red = Color(hex: 0xF05A4F)
-    private static let gold = Color(hex: 0xFFD166)
+    /// ShareCardFrame 注入的是分享卡用的主题深色版
+    @Environment(\.palette) private var palette
+
+    /// 印章红和金色跟着主题走一点（和签面一致）
+    private var red: Color { palette.identity(Color(hex: 0xF05A4F)) }
+    private var gold: Color { palette.identity(Color(hex: 0xFFD166)) }
 
     var body: some View {
         let tall = style.isTall
@@ -817,9 +857,9 @@ struct StickShareContent: View {
             .padding(.horizontal, tall ? 26 : 20)
             .background(
                 RoundedRectangle(cornerRadius: 16)
-                    .fill(LinearGradient(colors: [Color(hex: 0xFFF6E0).opacity(0.12), Self.gold.opacity(0.05)], startPoint: .top, endPoint: .bottom))
+                    .fill(LinearGradient(colors: [Color(hex: 0xFFF6E0).opacity(0.12), gold.opacity(0.05)], startPoint: .top, endPoint: .bottom))
             )
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Self.gold.opacity(0.4), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(gold.opacity(0.4), lineWidth: 1))
             .overlay(alignment: .topTrailing) {
                 levelSeal(size: tall ? 64 : 54)
                     .offset(x: tall ? 34 : 30, y: tall ? -24 : -20)
@@ -838,7 +878,7 @@ struct StickShareContent: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text("解曰")
                         .font(AppFont.serif(tall ? 15 : 13, weight: .bold))
-                        .foregroundStyle(Self.gold)
+                        .foregroundStyle(gold)
                     Text(stick.meaning)
                         .font(.system(size: tall ? 14 : 12))
                         .lineSpacing(3)
@@ -863,10 +903,10 @@ struct StickShareContent: View {
     private func levelSeal(size: CGFloat) -> some View {
         Text(stick.levelInfo.sealText)
             .font(AppFont.serif(size * 0.32, weight: .bold))
-            .foregroundStyle(Self.red)
+            .foregroundStyle(red)
             .frame(width: size, height: size)
-            .background(Self.red.opacity(0.12), in: .rect(cornerRadius: size * 0.14))
-            .overlay(RoundedRectangle(cornerRadius: size * 0.14).strokeBorder(Self.red, lineWidth: size * 0.045))
+            .background(red.opacity(0.12), in: .rect(cornerRadius: size * 0.14))
+            .overlay(RoundedRectangle(cornerRadius: size * 0.14).strokeBorder(red, lineWidth: size * 0.045))
             .rotationEffect(.degrees(-12))
             .opacity(0.88)
     }

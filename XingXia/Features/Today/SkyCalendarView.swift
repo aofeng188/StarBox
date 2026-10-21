@@ -6,7 +6,12 @@ struct SkyCalendarView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .caption) private var cellHeight: CGFloat = 66
+    /// 月份切换按钮跟着字号放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .body) private var switcherSize: CGFloat = 34
+    /// 选中那天的大月亮跟着字号放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .title2) private var detailMoonSize: CGFloat = 64
 
     @State private var today = DayKey.today
     @State private var month = DayKey(year: DayKey.today.year, month: DayKey.today.month, day: 1)
@@ -69,15 +74,17 @@ struct SkyCalendarView: View {
     // MARK: - 月份切换
 
     private var monthSwitcher: some View {
-        HStack {
-            Button { shift(-1) } label: { Image(systemName: "chevron.left").frame(width: 34, height: 34) }
+        let size = min(switcherSize, 34 * 1.6)
+        return HStack {
+            Button { shift(-1) } label: { Image(systemName: "chevron.left").frame(width: size, height: size) }
                 .buttonStyle(.glass)
                 .accessibilityLabel("上个月")
             Spacer()
             Text("\(String(month.year))年\(month.month)月").font(.title3.bold())
+                .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
             Spacer()
-            Button { shift(1) } label: { Image(systemName: "chevron.right").frame(width: 34, height: 34) }
+            Button { shift(1) } label: { Image(systemName: "chevron.right").frame(width: size, height: size) }
                 .buttonStyle(.glass)
                 .accessibilityLabel("下个月")
         }
@@ -150,24 +157,39 @@ struct SkyCalendarView: View {
         let lunar = LunarDate(day)
         let nextFull = SkyEvents.nextFullMoon(after: day)
         let nextNew = SkyEvents.nextNewMoon(after: day)
+        let fullText = "下次满月 \(DateText.monthDay(nextFull)) · \(Self.relative(nextFull, from: day))"
+        let newText = "下次新月 \(DateText.monthDay(nextNew)) · \(Self.relative(nextNew, from: day))"
+        let isLarge = typeSize.isAccessibilitySize
+        // 超大字号时月亮放上面、文字放下面，文字才有整行的宽度
+        let header = isLarge ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(spacing: 16))
         return VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 16) {
-                MoonDisc(phase: moon.phase, size: 64)
+            header {
+                MoonDisc(phase: moon.phase, size: min(detailMoonSize, 64 * 1.6))
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(DateText.monthDay(day)) \(DateText.weekday(day)) · 农历\(lunar.text)")
                         .font(.subheadline.weight(.semibold))
                     Text(moon.name.name).font(.title2.bold())
                     Text("亮面 \(moon.percent)% · 月龄 \(String(format: "%.1f", moon.age)) 天")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .subtleForeground()
                 }
-                Spacer(minLength: 0)
+                if !isLarge { Spacer(minLength: 0) }
             }
             .accessibilityElement(children: .combine)
 
-            FlowLayout(spacing: 8) {
-                TagChip(text: "下次满月 \(DateText.monthDay(nextFull)) · \(Self.relative(nextFull, from: day))", symbol: "moonphase.full.moon")
-                TagChip(text: "下次新月 \(DateText.monthDay(nextNew)) · \(Self.relative(nextNew, from: day))", symbol: "moonphase.new.moon")
+            if isLarge {
+                // 标签不换行，超大字号下会撑出卡片，改成能换行的两行文字
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(fullText, systemImage: "moonphase.full.moon")
+                    Label(newText, systemImage: "moonphase.new.moon")
+                }
+                .font(.caption.weight(.medium))
+                .fixedSize(horizontal: false, vertical: true)
+            } else {
+                FlowLayout(spacing: 8) {
+                    TagChip(text: fullText, symbol: "moonphase.full.moon")
+                    TagChip(text: newText, symbol: "moonphase.new.moon")
+                }
             }
 
             ForEach(events) { event in
@@ -184,7 +206,7 @@ struct SkyCalendarView: View {
             if events.isEmpty {
                 Text("月相按当晚 21:00（北京时间）计算。")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .subtleForeground()
             }
         }
         .glassCard()
@@ -244,7 +266,7 @@ struct SkyCalendarView: View {
                 .accessibilityHint("在日历中查看这一天")
             }
             if events.isEmpty {
-                Text("最近没有特别的天象。").font(.subheadline).foregroundStyle(.secondary)
+                Text("最近没有特别的天象。").font(.subheadline).subtleForeground()
             }
         }
         .glassCard()
@@ -296,17 +318,25 @@ private struct SkyDayCell: View {
 private struct SkyEventRow: View {
     let event: SkyEvent
     let today: DayKey
+    @Environment(\.palette) private var palette
 
     var body: some View {
         let diff = today.days(to: event.day)
         let when = diff == 0 ? "今天" : diff == 1 ? "明天" : "\(diff) 天后"
         HStack(alignment: .top, spacing: 12) {
-            ToolIcon(symbol: SkyEventStyle.symbol(event.kind), colors: SkyEventStyle.colors(event.kind), size: 40)
+            ToolIcon(symbol: SkyEventStyle.symbol(event.kind), colors: palette.identity(SkyEventStyle.colors(event.kind)), size: 40)
             VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(event.title).font(.headline)
-                    Spacer(minLength: 0)
-                    Text(when).font(.caption.weight(.semibold)).subtleForeground()
+                // 超大字号下标题和「几天后」放不进一行时上下排
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(event.title).font(.headline)
+                        Spacer(minLength: 0)
+                        Text(when).font(.caption.weight(.semibold)).subtleForeground()
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(event.title).font(.headline)
+                        Text(when).font(.caption.weight(.semibold)).subtleForeground()
+                    }
                 }
                 Text("\(DateText.monthDay(event.day)) \(DateText.weekday(event.day))")
                     .font(.caption)

@@ -102,6 +102,7 @@ struct JiaobeiView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppSettings.self) private var settings
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.palette) private var palette
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// 一开始左凸右平，摆成圣杯的样子
@@ -184,7 +185,7 @@ struct JiaobeiView: View {
             HStack(spacing: 6) {
                 ForEach(0..<Self.needed, id: \.self) { index in
                     JiaobeiShape()
-                        .fill(index < streak ? AnyShapeStyle(Color(hex: 0xE53935)) : AnyShapeStyle(.primary.opacity(0.15)))
+                        .fill(index < streak ? AnyShapeStyle(palette.identity(Color(hex: 0xE53935))) : AnyShapeStyle(.primary.opacity(0.15)))
                         .frame(width: 26, height: 16)
                 }
             }
@@ -507,9 +508,12 @@ private struct JiaobeiSideVisibility: ViewModifier, Animatable {
     }
 }
 
-/// 筊杯的一面：凸面漆色深、带一道高光；平面颜色平匀，带一圈浅色描边
+/// 筊杯的一面：凸面漆色深、带一道高光；平面颜色平匀，带一圈浅色描边。
+/// 筊杯保留传统朱漆红，但向主题强调色靠一点
 private struct JiaobeiFace: View {
     let flat: Bool
+
+    @Environment(\.palette) private var palette
 
     var body: some View {
         GeometryReader { proxy in
@@ -518,14 +522,14 @@ private struct JiaobeiFace: View {
             ZStack {
                 if flat {
                     JiaobeiShape()
-                        .fill(LinearGradient(colors: [Color(hex: 0xDB4A3E), Color(hex: 0xB3261E)], startPoint: .top, endPoint: .bottom))
+                        .fill(LinearGradient(colors: palette.identity([Color(hex: 0xDB4A3E), Color(hex: 0xB3261E)]), startPoint: .top, endPoint: .bottom))
                     JiaobeiShape()
-                        .stroke(Color(hex: 0xFFD6C9).opacity(0.55), lineWidth: max(1, w * 0.012))
+                        .stroke(palette.identity(Color(hex: 0xFFD6C9)).opacity(0.55), lineWidth: max(1, w * 0.012))
                         .scaleEffect(0.82)
                         .offset(y: h * 0.05)
                 } else {
                     JiaobeiShape()
-                        .fill(LinearGradient(colors: [Color(hex: 0xF0564A), Color(hex: 0xB71C1C), Color(hex: 0x6B0F0F)], startPoint: .top, endPoint: .bottom))
+                        .fill(LinearGradient(colors: palette.identity([Color(hex: 0xF0564A), Color(hex: 0xB71C1C), Color(hex: 0x6B0F0F)]), startPoint: .top, endPoint: .bottom))
                     Ellipse()
                         .fill(.white.opacity(0.42))
                         .frame(width: w * 0.42, height: h * 0.13)
@@ -533,27 +537,28 @@ private struct JiaobeiFace: View {
                         .position(x: w * 0.5, y: h * 0.6)
                 }
                 JiaobeiShape()
-                    .stroke(Color(hex: 0x5A0B0B).opacity(0.7), lineWidth: max(1, w * 0.012))
+                    .stroke(palette.identity(Color(hex: 0x5A0B0B)).opacity(0.7), lineWidth: max(1, w * 0.012))
             }
             .clipShape(JiaobeiShape())
         }
     }
 }
 
-/// 掷筊连得三次圣杯后盖在签上的「已确认」小印
+/// 掷筊连得三次圣杯后盖在签上的「已确认」小印（印章红向主题强调色靠一点；在分享卡里跟分享卡的主题走）
 struct JiaobeiSeal: View {
     var size: CGFloat = 13
 
-    private static let red = Color(hex: 0xE53935)
+    @Environment(\.palette) private var palette
 
     var body: some View {
+        let red = palette.identity(Color(hex: 0xE53935))
         Text("已确认")
             .font(AppFont.serif(size, weight: .bold))
-            .foregroundStyle(Self.red)
+            .foregroundStyle(red)
             .padding(.horizontal, size * 0.55)
             .padding(.vertical, size * 0.3)
-            .background(Self.red.opacity(0.1), in: .rect(cornerRadius: size * 0.35))
-            .overlay(RoundedRectangle(cornerRadius: size * 0.35).strokeBorder(Self.red, lineWidth: max(1.2, size * 0.11)))
+            .background(red.opacity(0.1), in: .rect(cornerRadius: size * 0.35))
+            .overlay(RoundedRectangle(cornerRadius: size * 0.35).strokeBorder(red, lineWidth: max(1.2, size * 0.11)))
             .opacity(0.9)
             .accessibilityLabel("已掷筊确认")
     }

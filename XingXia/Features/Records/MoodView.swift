@@ -19,6 +19,8 @@ struct MoodView: View {
     @State private var editingDay: EditingDay?
     /// 刚删除的记录，几秒内可以撤销
     @State private var deleted: DeletedMood?
+    /// 月历格子跟着字号变高（封顶 1.6 倍），日期数字不被挤掉
+    @ScaledMetric(relativeTo: .caption) private var cellHeight: CGFloat = 34
 
     private static let editorAnchor = "moodEditor"
     private static let weekdayHeaders = ["一", "二", "三", "四", "五", "六", "日"]
@@ -99,6 +101,7 @@ struct MoodView: View {
         let map = Dictionary(entries.map { ($0.dayKey, $0.mood) }, uniquingKeysWith: { a, _ in a })
         let isCurrentMonth = month.year == today.year && month.month == today.month
         let title = month.year == today.year ? "\(month.month)月心情" : "\(String(month.year))年\(month.month)月心情"
+        let height = min(cellHeight, 34 * 1.6)
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 4) {
                 SectionHeader(title: title, subtitle: averageText, symbol: "square.grid.3x3.fill")
@@ -111,18 +114,21 @@ struct MoodView: View {
             .font(.subheadline.weight(.semibold))
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 6) {
                 // 三段的 id 类型各不相同（字符串 / 负数 / DayKey），不会互相撞 id 导致格子空白
-                ForEach(Self.weekdayHeaders, id: \.self) { Text($0).font(.caption2).foregroundStyle(.primary.opacity(0.7)) }
-                ForEach((0..<leading).map { -1 - $0 }, id: \.self) { _ in Color.clear.frame(height: 34) }
+                ForEach(Self.weekdayHeaders, id: \.self) { Text($0).font(.caption2).foregroundStyle(.primary.opacity(labelOpacity)) }
+                ForEach((0..<leading).map { -1 - $0 }, id: \.self) { _ in Color.clear.frame(height: height) }
                 ForEach(monthDays, id: \.self) { key in
-                    dayCell(key, mood: map[key.rawValue].flatMap(MoodLevel.init(rawValue:)), proxy: proxy)
+                    dayCell(key, mood: map[key.rawValue].flatMap(MoodLevel.init(rawValue:)), height: height, proxy: proxy)
                 }
             }
-            Text("点过去的日子可以补记心情").font(.caption2).foregroundStyle(.primary.opacity(0.7))
+            Text("点过去的日子可以补记心情").font(.caption2).foregroundStyle(.primary.opacity(labelOpacity))
         }
         .glassCard()
     }
 
-    private func dayCell(_ key: DayKey, mood: MoodLevel?, proxy: ScrollViewProxy) -> some View {
+    /// 星期、提示这类小字：浅色模式下比深色再深一档，玻璃上读得清
+    private var labelOpacity: Double { palette.isDark ? 0.7 : 0.85 }
+
+    private func dayCell(_ key: DayKey, mood: MoodLevel?, height: CGFloat, proxy: ScrollViewProxy) -> some View {
         let isFuture = key > today
         return Button {
             Haptics.selection()
@@ -134,10 +140,14 @@ struct MoodView: View {
                 if let mood {
                     Text(mood.emoji).font(.caption)
                 } else {
-                    Text("\(key.day)").font(.caption2).foregroundStyle(.primary.opacity(isFuture ? 0.35 : 0.7))
+                    Text("\(key.day)")
+                        .font(.caption2)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .foregroundStyle(.primary.opacity(isFuture ? 0.35 : labelOpacity))
                 }
             }
-            .frame(height: 34)
+            .frame(height: height)
             .overlay {
                 if key == today { RoundedRectangle(cornerRadius: 8).strokeBorder(palette.accent, lineWidth: 1.5) }
             }
@@ -152,7 +162,7 @@ struct MoodView: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "心情日记", subtitle: entries.isEmpty ? nil : "长按可修改或删除", symbol: "book")
             if entries.isEmpty {
-                Text("还没有记录，从今天开始吧").font(.subheadline).foregroundStyle(.primary.opacity(0.7))
+                Text("还没有记录，从今天开始吧").font(.subheadline).foregroundStyle(.primary.opacity(labelOpacity))
             }
             ForEach(entries.prefix(30)) { entry in
                 if let mood = MoodLevel(rawValue: entry.mood), let key = DayKey(rawValue: entry.dayKey) {
@@ -160,7 +170,7 @@ struct MoodView: View {
                         Text(mood.emoji).font(.title2)
                         VStack(alignment: .leading, spacing: 3) {
                             Text("\(DateText.monthDay(key)) \(DateText.weekday(key)) · \(mood.name)").font(.subheadline.weight(.semibold))
-                            if !entry.note.isEmpty { Text(entry.note).font(.subheadline).foregroundStyle(.primary.opacity(0.75)) }
+                            if !entry.note.isEmpty { Text(entry.note).font(.subheadline).foregroundStyle(.primary.opacity(palette.isDark ? 0.75 : 0.85)) }
                             if !entry.tags.isEmpty { Text(entry.tags.map { "#" + $0 }.joined(separator: " ")).font(.caption).foregroundStyle(.tint) }
                         }
                         Spacer()
@@ -330,7 +340,7 @@ private struct MoodDayEditor: View {
                 // 深色玻璃上底色几乎看不出，加一道细边标出输入框
                 .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.primary.opacity(noteFocused ? 0.25 : 0.12), lineWidth: 1))
             if entry == nil && !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text("选一个心情后，这句话会一起保存").font(.caption).foregroundStyle(.primary.opacity(0.7))
+                Text("选一个心情后，这句话会一起保存").font(.caption).subtleForeground()
             }
             FlowLayout(spacing: 6) {
                 ForEach(MoodLevel.tagOptions, id: \.self) { tag in

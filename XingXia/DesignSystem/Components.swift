@@ -54,6 +54,7 @@ extension View {
 
 /// 卡片内的横向滚动：内容一直铺到卡片左右边缘，再由卡片圆角裁剪，
 /// 既不会在卡片内被生硬截断，也不会溢出到卡片外面。配合 `glassCard(clipped: true)` 使用。
+/// 哪一端还有内容没露出来，哪一端就渐隐（调用的地方不用再加 fadingScrollEdges）。
 struct CardHScroll<Content: View>: View {
     var inset: CGFloat = 18
     @ViewBuilder var content: Content
@@ -63,6 +64,7 @@ struct CardHScroll<Content: View>: View {
             content.padding(.horizontal, inset)
         }
         .scrollClipDisabled()
+        .fadingScrollEdges(inset)
         .padding(.horizontal, -inset)
     }
 }
@@ -88,6 +90,7 @@ struct SectionHeader: View {
     var symbol: String?
 
     @Environment(\.palette) private var palette
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -96,17 +99,27 @@ struct SectionHeader: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(palette.accentGradient)
             }
-            Text(title)
-                .font(.headline)
-            if let subtitle {
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            // 超大字号时副标题换到标题下面，不和标题挤在一行
+            if typeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 2) { texts }
+            } else {
+                texts
             }
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
+    }
+
+    @ViewBuilder
+    private var texts: some View {
+        Text(title)
+            .font(.headline)
+        if let subtitle {
+            Text(subtitle)
+                .font(.caption)
+                .subtleForeground()
+        }
     }
 }
 
@@ -165,13 +178,16 @@ struct StarRatingView: View {
     var color: Color?
 
     @Environment(\.palette) private var palette
+    /// 星星跟着字号放大（封顶 1.6 倍）；分享卡固定了字号，不受影响
+    @ScaledMetric(relativeTo: .footnote) private var scale: CGFloat = 1
 
     var body: some View {
+        let starSize = size * min(max(scale, 1), 1.6)
         HStack(spacing: 2) {
             ForEach(0..<5, id: \.self) { index in
                 let value = stars - Double(index)
                 Image(systemName: value >= 1 ? "star.fill" : (value >= 0.5 ? "star.leadinghalf.filled" : "star"))
-                    .font(.system(size: size))
+                    .font(.system(size: starSize))
                     .foregroundStyle(color ?? palette.accent)
             }
         }
@@ -188,6 +204,7 @@ struct MeterBar: View {
     var height: CGFloat = 6
 
     @Environment(\.palette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown: Double = 0
 
     var body: some View {
@@ -215,17 +232,44 @@ struct TagChip: View {
     var symbol: String?
 
     @Environment(\.palette) private var palette
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
+        let base = color ?? palette.accent
+        // 超大字号时长标签可以折成两行，不把卡片撑破；平时保持一行、按内容定宽
+        let isLarge = typeSize.isAccessibilitySize
         HStack(spacing: 4) {
             if let symbol { Image(systemName: symbol).font(.caption2) }
-            Text(text).font(.caption.weight(.medium)).lineLimit(1)
+            Text(text).font(.caption.weight(.medium)).lineLimit(isLarge ? 2 : 1)
         }
-        .fixedSize()
+        .fixedSize(horizontal: !isLarge, vertical: true)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .foregroundStyle(palette.ink(color ?? palette.accent))
-        .background((color ?? palette.accent).opacity(palette.isDark ? 0.14 : 0.16), in: .capsule)
+        .foregroundStyle(foreground(base))
+        .background(base.opacity(palette.isDark ? 0.14 : 0.16), in: .capsule)
+    }
+
+    /// 文字比底色深两档：深色模式用 ink；浅色模式在 ink 的基础上继续压暗同色系，
+    /// 直到相对亮度不超过 0.1（压在同色浅底上约 6:1），粉彩色、浅红这类标签也读得清
+    private func foreground(_ color: Color) -> Color {
+        let ink = palette.ink(color)
+        return palette.isDark ? ink : ink.darkened(toLuminance: 0.1)
+    }
+}
+
+private extension Color {
+    /// 按比例缩小 sRGB 分量（色相不变）直到相对亮度不超过 target；本来就够深时原样返回
+    func darkened(toLuminance target: Double) -> Color {
+        let resolved = resolve(in: EnvironmentValues())
+        let r = Double(min(max(resolved.red, 0), 1))
+        let g = Double(min(max(resolved.green, 0), 1))
+        let b = Double(min(max(resolved.blue, 0), 1))
+        func linear(_ c: Double) -> Double { c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
+        func luminance(_ f: Double) -> Double { 0.2126 * linear(r * f) + 0.7152 * linear(g * f) + 0.0722 * linear(b * f) }
+        guard luminance(1) > target else { return self }
+        var factor = 1.0
+        while factor > 0.3 && luminance(factor) > target { factor -= 0.05 }
+        return Color(.sRGB, red: r * factor, green: g * factor, blue: b * factor, opacity: Double(resolved.opacity))
     }
 }
 
@@ -324,10 +368,12 @@ struct EmptyHint: View {
     let title: String
     var message: String?
 
+    @ScaledMetric(relativeTo: .largeTitle) private var symbolSize: CGFloat = 36
+
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: symbol)
-                .font(.system(size: 36))
+                .font(.system(size: min(symbolSize, 36 * 1.6)))
                 .foregroundStyle(.secondary)
             Text(title).font(.headline)
             if let message {
@@ -412,6 +458,8 @@ private struct FadingScrollEdgesModifier: ViewModifier {
                     LinearGradient(colors: [.black, edges.trailing ? .clear : .black], startPoint: .leading, endPoint: .trailing)
                         .frame(width: length)
                 }
+                // 只在左右渐隐；上下放宽，scrollClipDisabled 的行里阴影和按下的缩放不被遮罩切掉
+                .padding(.vertical, -24)
             }
     }
 }

@@ -33,6 +33,8 @@ struct RandomNumberView: View {
     @State private var isRolling = false
     @State private var history: [String] = []
     @FocusState private var focused: Bool
+    /// 单个结果的大数字跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .largeTitle) private var numberSize: CGFloat = 110
 
     var body: some View {
         ScrollView {
@@ -48,11 +50,11 @@ struct RandomNumberView: View {
                 VStack(spacing: 16) {
                     if balls.isEmpty {
                         Text("?")
-                            .font(.system(size: 96, weight: .heavy, design: .rounded))
+                            .font(.system(size: min(numberSize, 110 * 1.6) * 96 / 110, weight: .heavy, design: .rounded))
                             .foregroundStyle(palette.accentGradient.opacity(0.5))
                     } else if balls.count == 1 {
                         Text("\(balls[0].value)")
-                            .font(.system(size: 110, weight: .heavy, design: .rounded))
+                            .font(.system(size: min(numberSize, 110 * 1.6), weight: .heavy, design: .rounded))
                             .monospacedDigit()
                             .foregroundStyle(palette.accentGradient)
                             .contentTransition(.numericText(value: Double(balls[0].value)))
@@ -106,6 +108,7 @@ struct RandomNumberView: View {
             .pageContent()
             .padding(.bottom, 30)
         }
+        .contentMargins(.bottom, 24, for: .scrollContent)
         .scrollDismissesKeyboard(.immediately)
         .cosmicBackground()
         .navigationTitle("随机数字")

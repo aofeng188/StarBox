@@ -75,6 +75,8 @@ struct TimelineDayCard: View {
     let primaryID: UUID?
     let onEdit: (DecisionRecord) -> Void
 
+    @Environment(\.palette) private var palette
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
@@ -114,9 +116,10 @@ struct TimelineDayCard: View {
         return HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.headline)
+                // 星期和农历在浅色玻璃上要比一般次要文字再深一档
                 Text("\(DateText.weekday(entry.day)) · 农历\(lunar.text)")
                     .font(.caption)
-                    .subtleForeground()
+                    .foregroundStyle(.primary.opacity(palette.isDark ? 0.7 : 0.85))
             }
             Spacer(minLength: 4)
             if let mood {
@@ -179,6 +182,8 @@ private struct DecisionLine: View {
     let record: DecisionRecord
     let onEdit: (DecisionRecord) -> Void
 
+    @Environment(\.palette) private var palette
+
     var body: some View {
         // 决定可以点开补记；猜拳、刮刮乐、掷筊只是记一笔
         if JournalStats.isDecision(record.tool) {
@@ -193,7 +198,7 @@ private struct DecisionLine: View {
     private func content(editable: Bool) -> some View {
         let info = HistoryLog.info(for: record.tool)
         return HStack(alignment: .top, spacing: 12) {
-            ToolIcon(symbol: info.symbol, colors: info.colors, size: 30)
+            ToolIcon(symbol: info.symbol, colors: palette.identity(info.colors), size: 30)
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(DateText.time(record.date)) · \(info.name)").font(.caption).subtleForeground()
                 Text(record.result)
@@ -225,12 +230,14 @@ private struct StickLine: View {
     let forName: String?
 
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.palette) private var palette
 
     var body: some View {
         let stick = StickLibrary.stick(draw.stickNumber)
         let level = stick.levelInfo
+        let info = HistoryLog.info(for: "stick")
         HStack(alignment: .top, spacing: 12) {
-            ToolIcon(symbol: "flame.fill", colors: [Color(hex: 0xFF8A3D), Color(hex: 0xE11D48)], size: 30)
+            ToolIcon(symbol: info.symbol, colors: palette.identity(info.colors), size: 30)
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(DateText.time(draw.date)) · 今日一签" + (forName.map { " · 为\($0)" } ?? ""))
                     .font(.caption)
@@ -256,11 +263,14 @@ private struct StickLine: View {
 private struct TarotLine: View {
     let reading: TarotReading
 
+    @Environment(\.palette) private var palette
+
     var body: some View {
         let spread = reading.spreadKind
         let cards = reading.drawnCards
+        let info = HistoryLog.info(for: "tarot")
         HStack(alignment: .top, spacing: 12) {
-            ToolIcon(symbol: "suit.diamond.fill", colors: [Color(hex: 0x8B5CF6), Color(hex: 0x3B82F6)], size: 30)
+            ToolIcon(symbol: info.symbol, colors: palette.identity(info.colors), size: 30)
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(DateText.time(reading.date)) · 塔罗 · \(spread.name)").font(.caption).subtleForeground()
                 Text(cards.map { "\($0.card.name)\($0.reversed ? "（逆位）" : "（正位）")" }.joined(separator: " · "))

@@ -15,36 +15,43 @@ struct DivinationSection: View {
     @State private var teaser: AuspiciousTeaser?
     /// 占卜首页常驻不销毁，隔天回来要换成新的「今天」，否则推荐的可能是已经过去的日子
     @State private var today = DayKey.today
+    /// 答案之书卡片上的书本图标跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .largeTitle) private var bookIconSize: CGFloat = 44
 
     var body: some View {
         let teaserKey = AuspiciousTeaserKey(event: AuspiciousEvent(rawValue: auspiciousEventID) ?? .moving, today: today,
                                             animal: app.primary.map { BaZi($0.birth).zodiacAnimal })
+        // 签、塔罗、答案之书的身份色向主题强调色靠一点，换主题时不和强调色打架
+        let bookGold = palette.identity([Color(hex: 0xF5B83D), Color(hex: 0xB45309)])
         // 宽屏（Duo 展开横持）左右两栏，其余上下排
         ColumnsLayout(columns: isWide ? 2 : 1, spacing: 14, fold: fold) {
             VStack(spacing: 14) {
                 NavigationLink(value: AppRoute.stick) {
                     HeroCard(title: "摇签筒", subtitle: "心诚则灵 · 一日一签", detail: "默念心中所求，摇动手机，抽出今天的指引",
-                             colors: [Color(hex: 0xB91C1C), Color(hex: 0xF59E0B)]) {
+                             colors: palette.identity([Color(hex: 0xB91C1C), Color(hex: 0xF59E0B)])) {
                         StickTubeIllustration(size: 96)
                     }
+                    .zoomSource(.stick)
                 }
                 .buttonStyle(.pressableCard)
 
                 HStack(spacing: 14) {
                     NavigationLink(value: AppRoute.tarot) {
-                        SmallHeroCard(title: "塔罗占卜", subtitle: settings.tarotFullDeck ? "78 张 · 四种牌阵" : "大阿卡纳 · 四种牌阵", colors: [Color(hex: 0x6D28D9), Color(hex: 0x2563EB)]) {
+                        SmallHeroCard(title: "塔罗占卜", subtitle: settings.tarotFullDeck ? "78 张 · 四种牌阵" : "大阿卡纳 · 四种牌阵", colors: palette.identity([Color(hex: 0x6D28D9), Color(hex: 0x2563EB)])) {
                             TarotBackMini()
                         }
+                        .zoomSource(.tarot)
                     }
                     .buttonStyle(.pressableCard)
                     NavigationLink(value: AppRoute.answers) {
-                        SmallHeroCard(title: "答案之书", subtitle: "默念问题 · 翻开一页", colors: [Color(hex: 0xD97706), Color(hex: 0x92400E)]) {
+                        SmallHeroCard(title: "答案之书", subtitle: "默念问题 · 翻开一页", colors: palette.identity([Color(hex: 0xD97706), Color(hex: 0x92400E)])) {
                             Image(systemName: "book.closed.fill")
-                                .font(.system(size: 44))
-                                .foregroundStyle(LinearGradient(colors: [Color(hex: 0xF5B83D), Color(hex: 0xB45309)], startPoint: .top, endPoint: .bottom))
-                                .shadow(color: Color(hex: 0xF5B83D).opacity(0.7), radius: 12)
+                                .font(.system(size: min(bookIconSize, 44 * 1.6)))
+                                .foregroundStyle(LinearGradient(colors: bookGold, startPoint: .top, endPoint: .bottom))
+                                .shadow(color: bookGold[0].opacity(0.7), radius: 12)
                                 .accessibilityHidden(true)
                         }
+                        .zoomSource(.answers)
                     }
                     .buttonStyle(.pressableCard)
                 }
@@ -73,6 +80,7 @@ struct DivinationSection: View {
                         .accessibilityHidden(true)
                     }
                     .glassCard(interactive: true)
+                    .zoomSource(.horoscope)
                 }
                 .buttonStyle(.pressableCard)
                 .accessibilityLabel("星座运势")
@@ -80,9 +88,9 @@ struct DivinationSection: View {
 
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
                     MiniTile(route: .fortune, symbol: "sparkles", title: "运势详解", subtitle: "五维运势与幸运指南", colors: [palette.accent, palette.accentSecondary], symbolColor: palette.onAccent)
-                    MiniTile(route: .almanac, symbol: "calendar.badge.clock", title: "黄历", subtitle: "农历 · 节气 · 宜忌", colors: [Color(hex: 0xEF4444), Color(hex: 0xF59E0B)])
-                    MiniTile(route: .compatibility, symbol: "heart.circle.fill", title: "缘分配对", subtitle: "星座 + 生肖", colors: [Color(hex: 0xFB7185), Color(hex: 0xF43F5E)])
-                    MiniTile(route: .tarotJournal, symbol: "book.closed.fill", title: "塔罗手记", subtitle: "回看抽过的牌", colors: [Color(hex: 0x8B5CF6), Color(hex: 0x3B82F6)])
+                    MiniTile(route: .almanac, symbol: "calendar.badge.clock", title: "黄历", subtitle: "农历 · 节气 · 宜忌", colors: palette.identity([Color(hex: 0xEF4444), Color(hex: 0xF59E0B)]))
+                    MiniTile(route: .compatibility, symbol: "heart.circle.fill", title: "缘分配对", subtitle: "星座 + 生肖", colors: palette.identity([Color(hex: 0xFB7185), Color(hex: 0xF43F5E)]))
+                    MiniTile(route: .tarotJournal, symbol: "book.closed.fill", title: "塔罗手记", subtitle: "回看抽过的牌", colors: palette.identity([Color(hex: 0x8B5CF6), Color(hex: 0x3B82F6)]))
                 }
 
                 auspiciousCard
@@ -134,6 +142,7 @@ struct DivinationSection: View {
                 }
             }
             .glassCard(interactive: true)
+            .zoomSource(.auspicious)
         }
         .buttonStyle(.pressableCard)
         .accessibilityLabel("择吉日")
@@ -174,13 +183,17 @@ struct HeroCard<Art: View>: View {
 
     @Environment(\.palette) private var palette
 
+    /// 小标题的文字色比卡片底色深两档：浅色模式下不管卡片主色多亮都压暗一半，免得橙字融进浅粉底；深色模式用 ink
+    private var subtitleColor: Color {
+        palette.isDark ? palette.ink(colors[1]) : colors[1].mix(with: .black, by: 0.55)
+    }
+
     var body: some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
-                // 浅色模式下把卡片主色压暗，免得橙字融进浅粉底
-                Text(subtitle).font(.caption.weight(.semibold)).foregroundStyle(palette.ink(colors[1]))
+                Text(subtitle).font(.caption.weight(.semibold)).foregroundStyle(subtitleColor)
                 Text(title).font(.title.bold())
-                Text(detail).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(detail).font(.subheadline).subtleForeground().fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
             art
@@ -205,7 +218,8 @@ struct SmallHeroCard<Art: View>: View {
             art.frame(height: 86)
             VStack(spacing: 3) {
                 Text(title).font(.headline)
-                Text(subtitle).font(.caption2).foregroundStyle(.secondary)
+                Text(subtitle).font(.caption2).subtleForeground()
+                    .multilineTextAlignment(.center)
             }
         }
         .frame(maxWidth: .infinity)
@@ -233,10 +247,11 @@ struct MiniTile: View {
                 MiniTileIcon(symbol: symbol, colors: colors, foreground: symbolColor)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.headline).foregroundStyle(.primary)
-                    Text(subtitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    Text(subtitle).font(.caption2).subtleForeground().lineLimit(1)
                 }
             }
             .glassCard(padding: 16, interactive: true)
+            .zoomSource(route)
         }
         .buttonStyle(.pressableCard)
     }
@@ -266,19 +281,25 @@ private struct MiniTileIcon: View {
     }
 }
 
-/// 签筒插画
+/// 签筒插画。签筒保留传统红，但向主题强调色靠一点
 struct StickTubeIllustration: View {
     var size: CGFloat = 96
     var shake: Double = 0
 
+    @Environment(\.palette) private var palette
+
     var body: some View {
+        let stickWood = palette.identity([Color(hex: 0xF5DEB3), Color(hex: 0xD2A86E)])
+        let red = palette.identity(Color(hex: 0xC0392B))
+        let tube = palette.identity([Color(hex: 0xC0392B), Color(hex: 0x7B1E1E)])
+        let gold = palette.identity(Color(hex: 0xFFD166))
         ZStack(alignment: .bottom) {
             // 签子
             ForEach(0..<7, id: \.self) { i in
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(LinearGradient(colors: [Color(hex: 0xF5DEB3), Color(hex: 0xD2A86E)], startPoint: .top, endPoint: .bottom))
+                    .fill(LinearGradient(colors: stickWood, startPoint: .top, endPoint: .bottom))
                     .overlay(alignment: .top) {
-                        RoundedRectangle(cornerRadius: 2).fill(Color(hex: 0xC0392B)).frame(height: size * 0.08)
+                        RoundedRectangle(cornerRadius: 2).fill(red).frame(height: size * 0.08)
                     }
                     .frame(width: size * 0.07, height: size * 0.75)
                     .rotationEffect(.degrees(Double(i - 3) * 6 + sin(shake * 3 + Double(i)) * 4), anchor: .bottom)
@@ -286,19 +307,19 @@ struct StickTubeIllustration: View {
             }
             // 筒身
             UnevenRoundedRectangle(topLeadingRadius: size * 0.06, bottomLeadingRadius: size * 0.12, bottomTrailingRadius: size * 0.12, topTrailingRadius: size * 0.06)
-                .fill(LinearGradient(colors: [Color(hex: 0xC0392B), Color(hex: 0x7B1E1E)], startPoint: .leading, endPoint: .trailing))
+                .fill(LinearGradient(colors: tube, startPoint: .leading, endPoint: .trailing))
                 .overlay {
                     VStack(spacing: size * 0.06) {
-                        Capsule().fill(Color(hex: 0xFFD166)).frame(height: size * 0.025)
+                        Capsule().fill(gold).frame(height: size * 0.025)
                         Text("签")
                             .font(.system(size: size * 0.22, weight: .heavy, design: .serif))
-                            .foregroundStyle(Color(hex: 0xFFD166))
-                        Capsule().fill(Color(hex: 0xFFD166)).frame(height: size * 0.025)
+                            .foregroundStyle(gold)
+                        Capsule().fill(gold).frame(height: size * 0.025)
                     }
                     .padding(.horizontal, size * 0.06)
                 }
                 .frame(width: size * 0.5, height: size * 0.62)
-                .shadow(color: Color(hex: 0xE11D48).opacity(0.5), radius: 10, y: 4)
+                .shadow(color: palette.identity(Color(hex: 0xE11D48)).opacity(0.5), radius: 10, y: 4)
         }
         .frame(width: size, height: size * 1.05)
         .accessibilityHidden(true)

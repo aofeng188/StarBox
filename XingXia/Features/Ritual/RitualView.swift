@@ -382,6 +382,9 @@ private struct RitualStickPage: View {
     let onDraw: () -> Void
 
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.palette) private var palette
+    /// 签筒跟着字号放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .largeTitle) private var flameSize: CGFloat = 44
 
     var body: some View {
         RitualPageScroll {
@@ -423,15 +426,17 @@ private struct RitualStickPage: View {
                     .multilineTextAlignment(.center)
                     .subtleForeground()
             } else {
+                // 签筒是「物件」，保留传统红，但向主题色靠一点
+                let scale = min(flameSize, 44 * 1.6) / 44
                 ZStack {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(LinearGradient(colors: [Color(hex: 0xB91C1C), Color(hex: 0x7F1D1D)], startPoint: .top, endPoint: .bottom))
+                    RoundedRectangle(cornerRadius: 24 * scale, style: .continuous)
+                        .fill(LinearGradient(colors: palette.identity([Color(hex: 0xB91C1C), Color(hex: 0x7F1D1D)]), startPoint: .top, endPoint: .bottom))
                     Image(systemName: "flame.fill")
-                        .font(.system(size: 44))
-                        .foregroundStyle(LinearGradient(colors: [Color(hex: 0xFFD166), Color(hex: 0xFF8A3D)], startPoint: .top, endPoint: .bottom))
+                        .font(.system(size: 44 * scale))
+                        .foregroundStyle(LinearGradient(colors: palette.identity([Color(hex: 0xFFD166), Color(hex: 0xFF8A3D)]), startPoint: .top, endPoint: .bottom))
                 }
-                .frame(width: 100, height: 116)
-                .shadow(color: Color(hex: 0xE11D48).opacity(0.5), radius: 12)
+                .frame(width: 100 * scale, height: 116 * scale)
+                .shadow(color: palette.identity(Color(hex: 0xE11D48)).opacity(0.5), radius: 12)
                 .accessibilityHidden(true)
 
                 VStack(spacing: 8) {
@@ -468,11 +473,13 @@ private struct RitualMoodPage: View {
     let onSelect: (MoodLevel) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 大表情跟着字号放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .largeTitle) private var emojiSize: CGFloat = 72
 
     var body: some View {
         RitualPageScroll {
             Text(mood?.emoji ?? "🌙")
-                .font(.system(size: 72))
+                .font(.system(size: min(emojiSize, 72 * 1.6)))
                 .contentTransition(.opacity)
                 .accessibilityHidden(true)
 
@@ -535,7 +542,7 @@ private struct RitualSummaryPage: View {
                 RitualSummaryRow(title: "今日一签", value: stick.map { "\($0.numberText) · \($0.levelInfo.displayName) · 「\($0.title)」" } ?? "还没有求签") {
                     Image(systemName: "flame.fill")
                         .font(.title2)
-                        .foregroundStyle(LinearGradient(colors: [Color(hex: 0xFF8A3D), Color(hex: 0xE11D48)], startPoint: .top, endPoint: .bottom))
+                        .foregroundStyle(LinearGradient(colors: palette.identity(HistoryLog.info(for: "stick").colors), startPoint: .top, endPoint: .bottom))
                 }
                 RitualSummaryRow(title: "心情", value: mood.map { "\($0.emoji) \($0.name)" } ?? "还没有记录") {
                     Text(mood?.emoji ?? "🙂")
@@ -569,10 +576,13 @@ private struct RitualSummaryRow<Icon: View>: View {
     let value: String
     @ViewBuilder var icon: Icon
 
+    /// 图标位跟着字号放大（封顶 1.6 倍），大号图标不溢出
+    @ScaledMetric(relativeTo: .title2) private var iconSize: CGFloat = 40
+
     var body: some View {
         HStack(spacing: 14) {
             icon
-                .frame(width: 40, height: 40)
+                .frame(width: min(iconSize, 40 * 1.6), height: min(iconSize, 40 * 1.6))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)

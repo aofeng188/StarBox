@@ -49,6 +49,8 @@ private struct FollowUpContent: View {
     let rate: (DecisionSatisfaction) -> Void
     let skip: () -> Void
 
+    @Environment(\.palette) private var palette
+
     var body: some View {
         let info = HistoryLog.info(for: record.tool)
         VStack(alignment: .leading, spacing: 14) {
@@ -65,7 +67,7 @@ private struct FollowUpContent: View {
             }
 
             HStack(alignment: .top, spacing: 12) {
-                ToolIcon(symbol: info.symbol, colors: info.colors, size: 40)
+                ToolIcon(symbol: info.symbol, colors: palette.identity(info.colors), size: 40)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(FollowUpText.sentence(record, today: today))
                         .font(.subheadline.weight(.semibold))
@@ -81,10 +83,12 @@ private struct FollowUpContent: View {
             }
             .accessibilityElement(children: .combine)
 
-            // 一行放不下（超大字号）时竖排
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) { options }
-                VStack(spacing: 8) { options }
+            // 三个玻璃按钮放在同一个容器里，按下时彼此融合；一行放不下（超大字号）时竖排
+            GlassEffectContainer(spacing: 8) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { options }
+                    VStack(spacing: 8) { options }
+                }
             }
         }
         .glassCard()

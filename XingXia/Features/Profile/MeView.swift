@@ -8,8 +8,11 @@ struct MeView: View {
     @Query(sort: \Profile.sortIndex) private var profiles: [Profile]
     @Query private var records: [DecisionRecord]
     @AppStorage(Backup.lastExportKey) private var lastBackup: Double = 0
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var editing: Profile?
     @State private var creating = false
+    /// 头像跟着字号放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .largeTitle) private var avatarSize: CGFloat = 76
 
     var body: some View {
         ScrollView {
@@ -19,27 +22,30 @@ struct MeView: View {
                 MoonBadgeCard()
 
                 VStack(spacing: 0) {
-                    MeRow(route: .profiles, symbol: "person.2.fill", colors: [Color(hex: 0x60A5FA), Color(hex: 0x6366F1)],
+                    MeRow(route: .profiles, symbol: "person.2.fill", colors: palette.identity([Color(hex: 0x60A5FA), Color(hex: 0x6366F1)]),
                           title: "档案管理", value: "\(profiles.count) 个")
                     Divider().padding(.leading, 58)
-                    MeRow(route: .birthChart, symbol: "circle.hexagongrid.fill", colors: [Color(hex: 0xA78BFA), Color(hex: 0xEC4899)],
+                    MeRow(route: .birthChart, symbol: "circle.hexagongrid.fill", colors: palette.identity([Color(hex: 0xA78BFA), Color(hex: 0xEC4899)]),
                           title: "我的命盘", value: "八字 · 星盘")
                 }
                 .glassCard(padding: 6)
 
                 VStack(spacing: 0) {
+                    // 主题这一行本来就是主题自己的颜色，不再混
                     MeRow(route: .themes, symbol: "paintpalette.fill", colors: themes.current.dark.spectrum.prefix(2).map { $0 },
                           title: "主题与外观", value: themes.current.name)
                     Divider().padding(.leading, 58)
-                    MeRow(route: .settings, symbol: "gearshape.fill", colors: [Color(hex: 0x94A3B8), Color(hex: 0x475569)],
+                    MeRow(route: .settings, symbol: "gearshape.fill", colors: palette.identity([Color(hex: 0x94A3B8), Color(hex: 0x475569)]),
                           title: "设置", value: "音效 · 震动 · 提醒")
                     Divider().padding(.leading, 58)
-                    MeRow(route: .backup, symbol: "externaldrive.fill", colors: [Color(hex: 0x2DD4BF), Color(hex: 0x0EA5E9)],
+                    MeRow(route: .backup, symbol: "externaldrive.fill", colors: palette.identity([Color(hex: 0x2DD4BF), Color(hex: 0x0EA5E9)]),
                           title: "数据备份", value: backupValue)
                 }
                 .glassCard(padding: 6)
 
-                HStack(spacing: 12) {
+                // 超大字号时两格竖排，数字和说明不被挤断
+                let stats = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 12)) : AnyLayout(HStackLayout(spacing: 12))
+                stats {
                     StatTile(value: "\(records.count)", label: "次随机决定", symbol: "dice.fill")
                     StatTile(value: "\(daysTogether)", label: "天相伴", symbol: "sparkles")
                 }
@@ -78,13 +84,18 @@ struct MeView: View {
         if let primary = app.primary, let profile = profiles.first(where: { $0.id == primary.id }) {
             let birth = profile.birth
             let bazi = BaZi(birth)
+            let avatar = min(avatarSize, 76 * 1.6)
+            let isLarge = typeSize.isAccessibilitySize
+            // 超大字号时头像放上面，名字、生日和标签占整行，铅笔挪到右上角
+            let layout = isLarge ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+                                 : AnyLayout(HStackLayout(spacing: 16))
             Button {
                 editing = profile
             } label: {
-                HStack(spacing: 16) {
+                layout {
                     Text(profile.avatar)
-                        .font(.system(size: 44))
-                        .frame(width: 76, height: 76)
+                        .font(.system(size: avatar * 44 / 76))
+                        .frame(width: avatar, height: avatar)
                         .background(Circle().fill(palette.accentGradient.opacity(0.35)))
                         .overlay(Circle().strokeBorder(palette.accentGradient, lineWidth: 2))
                         .shadow(color: palette.accent.opacity(0.5), radius: 10)
@@ -99,9 +110,18 @@ struct MeView: View {
                             TagChip(text: "日主\(bazi.dayMaster.name)\(bazi.dayMaster.element.name)", color: bazi.dayMaster.element.color)
                         }
                     }
-                    Spacer(minLength: 0)
-                    Image(systemName: "pencil").subtleForeground()
-                        .accessibilityLabel("编辑档案")
+                    if !isLarge {
+                        Spacer(minLength: 0)
+                        Image(systemName: "pencil").subtleForeground()
+                            .accessibilityLabel("编辑档案")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay(alignment: .topTrailing) {
+                    if isLarge {
+                        Image(systemName: "pencil").subtleForeground()
+                            .accessibilityLabel("编辑档案")
+                    }
                 }
                 .glassCard(interactive: true)
             }
@@ -125,6 +145,7 @@ struct MeView: View {
     }
 }
 
+/// 「我的」里的入口：点进去时页面从左边的图标放大出来
 private struct MeRow: View {
     let route: AppRoute
     let symbol: String
@@ -132,13 +153,25 @@ private struct MeRow: View {
     let title: String
     let value: String
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
         NavigationLink(value: route) {
             HStack(spacing: 14) {
                 ToolIcon(symbol: symbol, colors: colors, size: 34)
-                Text(title).foregroundStyle(.primary)
-                Spacer()
-                Text(value).font(.subheadline).subtleForeground()
+                    .zoomSource(route)
+                // 超大字号时说明换到标题下面，两段文字不挤在一行
+                if typeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title).foregroundStyle(.primary)
+                        Text(value).font(.subheadline).subtleForeground()
+                    }
+                    Spacer(minLength: 0)
+                } else {
+                    Text(title).foregroundStyle(.primary)
+                    Spacer()
+                    Text(value).font(.subheadline).subtleForeground()
+                }
                 Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
             }
             .padding(.horizontal, 12)
@@ -154,13 +187,17 @@ struct StatTile: View {
     let label: String
     let symbol: String
     @Environment(\.palette) private var palette
+    /// 数字跟着字号放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .title) private var valueSize: CGFloat = 28
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Image(systemName: symbol).foregroundStyle(palette.accentGradient)
             Text(value)
-                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .font(.system(size: min(valueSize, 28 * 1.6), weight: .bold, design: .rounded))
                 .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
             Text(label).font(.caption).subtleForeground()
         }
         .glassCard(padding: 16)
@@ -197,15 +234,18 @@ struct ProfileListView: View {
     @Query(sort: \Profile.sortIndex) private var profiles: [Profile]
     @State private var editing: Profile?
     @State private var creating = false
+    /// 头像底圈跟着字号放大（封顶 1.6 倍），大号表情不溢出
+    @ScaledMetric(relativeTo: .title) private var avatarSize: CGFloat = 48
 
     var body: some View {
+        let avatar = min(avatarSize, 48 * 1.6)
         List {
             Section {
                 ForEach(profiles) { profile in
                     HStack(spacing: 14) {
                         Text(profile.avatar)
                             .font(.title)
-                            .frame(width: 48, height: 48)
+                            .frame(width: avatar, height: avatar)
                             .background(Circle().fill(.tint.opacity(0.18)))
                         VStack(alignment: .leading, spacing: 3) {
                             HStack {

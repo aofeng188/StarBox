@@ -217,25 +217,34 @@ struct BackupView: View {
         BigActionButton(title: "合并到本机", symbol: "plus.circle.fill", isEnabled: file.totalCount > 0 || file.includesSettings) {
             restore(.merge)
         }
-        HStack(spacing: 12) {
-            Button(role: .destructive) {
-                confirmReplace = true
-            } label: {
-                Label("全部替换", systemImage: "arrow.triangle.2.circlepath")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
+        // 两个玻璃按钮放在同一个容器里，按下时彼此融合；一行放不下（超大字号）时竖排
+        GlassEffectContainer(spacing: 12) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) { secondaryActions(file) }
+                VStack(spacing: 12) { secondaryActions(file) }
             }
-            .buttonStyle(.glass)
-            .disabled(file.totalCount == 0 && !file.includesSettings)
-            Button {
-                pending = nil
-            } label: {
-                Text("取消")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
-            }
-            .buttonStyle(.glass)
         }
+    }
+
+    @ViewBuilder
+    private func secondaryActions(_ file: BackupFile) -> some View {
+        Button(role: .destructive) {
+            confirmReplace = true
+        } label: {
+            Label("全部替换", systemImage: "arrow.triangle.2.circlepath")
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+        }
+        .buttonStyle(.glass)
+        .disabled(file.totalCount == 0 && !file.includesSettings)
+        Button {
+            pending = nil
+        } label: {
+            Text("取消")
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+        }
+        .buttonStyle(.glass)
     }
 
     private func load(_ url: URL) {

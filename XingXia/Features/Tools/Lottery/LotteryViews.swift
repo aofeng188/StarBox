@@ -5,6 +5,8 @@ struct LotteryListView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \LotteryPool.createdAt) private var pools: [LotteryPool]
     @State private var editing: LotteryPool?
+    /// 奖池图标跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .largeTitle) private var iconSize: CGFloat = 36
 
     var body: some View {
         ScrollView {
@@ -14,8 +16,9 @@ struct LotteryListView: View {
                         LotteryDrawView(pool: pool)
                     } label: {
                         HStack(spacing: 14) {
-                            Text(pool.icon).font(.system(size: 36))
-                                .frame(width: 60, height: 60)
+                            let icon = min(iconSize, 36 * 1.6)
+                            Text(pool.icon).font(.system(size: icon))
+                                .frame(width: icon * 60 / 36, height: icon * 60 / 36)
                                 .background(Circle().fill(.tint.opacity(0.18)))
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(pool.name).font(.headline).foregroundStyle(.primary)
@@ -49,6 +52,7 @@ struct LotteryListView: View {
             .pageContent()
             .padding(.bottom, 30)
         }
+        .contentMargins(.bottom, 24, for: .scrollContent)
         .cosmicBackground()
         .navigationTitle("自定义抽奖")
         .sheet(item: $editing) { pool in NavigationStack { LotteryEditor(pool: pool) } }
@@ -76,6 +80,8 @@ struct LotteryDrawView: View {
     @State private var revealCount = 0
     @State private var editing = false
     @State private var sessionLog: [String] = []
+    /// 只抽一个时的结果大字，跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .title) private var resultSize: CGFloat = 30
 
     private var available: [LotteryItem] {
         pool.sortedItems.filter { $0.weight > 0 && (!pool.removeAfterDraw || $0.remaining > 0) }
@@ -107,7 +113,7 @@ struct LotteryDrawView: View {
                             Text(results.count == 1 ? "恭喜抽中" : "本轮抽中 \(results.count) 个").font(.subheadline).foregroundStyle(.secondary)
                             ForEach(Array(results.enumerated()), id: \.offset) { _, result in
                                 Text(result)
-                                    .font(results.count == 1 ? .system(size: 30, weight: .heavy, design: .rounded) : .headline)
+                                    .font(results.count == 1 ? .system(size: min(resultSize, 30 * 1.6), weight: .heavy, design: .rounded) : .headline)
                                     .foregroundStyle(palette.accentGradient)
                                     .multilineTextAlignment(.center)
                             }
@@ -180,6 +186,7 @@ struct LotteryDrawView: View {
             .pageContent()
             .padding(.bottom, 30)
         }
+        .contentMargins(.bottom, 24, for: .scrollContent)
         .overlay { ConfettiView(trigger: confetti) }
         .cosmicBackground()
         .navigationTitle("\(pool.icon) \(pool.name)")
@@ -302,6 +309,7 @@ struct LotteryEditor: View {
     @Bindable var pool: LotteryPool
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.palette) private var palette
     @State private var newName = ""
 
     private let icons = ["🎁", "🎊", "🧧", "🏆", "🍀", "🎉", "💎", "🎟️", "🍬", "🌟"]
@@ -315,7 +323,7 @@ struct LotteryEditor: View {
                         ForEach(icons, id: \.self) { icon in
                             Button { pool.icon = icon } label: {
                                 Text(icon).font(.title2).padding(6)
-                                    .background(Circle().fill(pool.icon == icon ? Color.accentColor.opacity(0.3) : .clear))
+                                    .background(Circle().fill(pool.icon == icon ? palette.accent.opacity(0.3) : .clear))
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("图标 \(icon)")
@@ -323,6 +331,7 @@ struct LotteryEditor: View {
                         }
                     }
                 }
+                .fadingScrollEdges()
                 Toggle("抽中后减少数量（不放回）", isOn: $pool.removeAfterDraw)
             }
             .glassRows()

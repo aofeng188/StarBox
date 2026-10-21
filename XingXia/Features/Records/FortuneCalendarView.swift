@@ -5,6 +5,11 @@ import Charts
 struct FortuneCalendarView: View {
     @Environment(AppState.self) private var app
     @Environment(\.palette) private var palette
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// 日历格子和详情里的分数环跟着字号放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .subheadline) private var cellHeight: CGFloat = 54
+    @ScaledMetric(relativeTo: .title) private var ringSize: CGFloat = 70
     @Query(sort: \StickDraw.date, order: .reverse) private var draws: [StickDraw]
     @Query(sort: \MoodEntry.dayKey, order: .reverse) private var moods: [MoodEntry]
 
@@ -37,12 +42,16 @@ struct FortuneCalendarView: View {
 
                 // 日历
                 let leading = (month.weekday + 6) % 7
+                let height = min(cellHeight, 54 * 1.6)
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 8) {
-                    ForEach(["一", "二", "三", "四", "五", "六", "日"], id: \.self) { Text($0).font(.caption2).foregroundStyle(.primary.opacity(0.7)) }
-                    ForEach((0..<leading).map { -1 - $0 }, id: \.self) { _ in Color.clear.frame(height: 54) }
+                    ForEach(["一", "二", "三", "四", "五", "六", "日"], id: \.self) {
+                        Text($0).font(.caption2).foregroundStyle(.primary.opacity(palette.isDark ? 0.7 : 0.85))
+                    }
+                    ForEach((0..<leading).map { -1 - $0 }, id: \.self) { _ in Color.clear.frame(height: height) }
                     ForEach(days, id: \.self) { day in
                         let cell = DayCell(day: day, score: scores[day] ?? 60, hasStick: stickMap[day.rawValue] != nil,
-                                           mood: moodMap[day.rawValue].flatMap(MoodLevel.init(rawValue:)), isSelected: day == selected)
+                                           mood: moodMap[day.rawValue].flatMap(MoodLevel.init(rawValue:)), isSelected: day == selected,
+                                           height: height)
                         Button {
                             selected = day
                             Haptics.selection()
@@ -117,9 +126,13 @@ struct FortuneCalendarView: View {
     private func detail(for day: DayKey, stick: Int?, mood: MoodLevel?) -> some View {
         let fortune = FortuneEngine.daily(for: app.birth, on: day)
         let almanac = AlmanacDay(day)
+        let ring = min(ringSize, 70 * 1.6)
+        // 超大字号时分数环放上面，日期和摘要才有整行宽度
+        let header = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+                                                  : AnyLayout(HStackLayout(spacing: 14))
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 14) {
-                ScoreRing(score: fortune.score, size: 70, lineWidth: 7).id(day)
+            header {
+                ScoreRing(score: fortune.score, size: ring, lineWidth: ring / 10).id(day)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(DateText.monthDay(day)) \(DateText.weekday(day)) · 农历\(almanac.lunar.text)").font(.subheadline.weight(.semibold))
                     // 运势文案不含「今天」等相对日期，任何一天都可以直接显示
@@ -127,8 +140,8 @@ struct FortuneCalendarView: View {
                 }
             }
             FlowLayout(spacing: 8) {
-                TagChip(text: "宜 " + fortune.funYi.prefix(2).joined(separator: "、"), color: Color(hex: 0x34D399))
-                TagChip(text: "忌 " + fortune.funJi.prefix(2).joined(separator: "、"), color: Color(hex: 0xFB7185))
+                TagChip(text: "宜 " + fortune.funYi.prefix(2).joined(separator: "、"), color: Color.positive(scheme))
+                TagChip(text: "忌 " + fortune.funJi.prefix(2).joined(separator: "、"), color: Color.negative(scheme))
             }
             if let stick {
                 let item = StickLibrary.stick(stick)
@@ -151,7 +164,11 @@ private struct DayCell: View {
     let hasStick: Bool
     let mood: MoodLevel?
     let isSelected: Bool
+    var height: CGFloat = 54
     @Environment(\.palette) private var palette
+    /// 格子里的小分数、心情表情跟着字号放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .caption2) private var scoreSize: CGFloat = 9
+    @ScaledMetric(relativeTo: .caption2) private var emojiSize: CGFloat = 11
 
     var body: some View {
         let intensity = Double(score - 35) / 64
@@ -159,19 +176,23 @@ private struct DayCell: View {
         VStack(spacing: 2) {
             Text("\(day.day)")
                 .font(.subheadline.weight(isToday ? .bold : .regular))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 .foregroundStyle(isSelected ? palette.onAccent : .primary)
             Text(mood?.emoji ?? "\(score)")
-                .font(.system(size: mood == nil ? 9 : 11, weight: .medium).monospacedDigit())
-                .foregroundStyle(isSelected ? palette.onAccent.opacity(0.9) : Color.primary.opacity(0.7))
+                .font(.system(size: mood == nil ? min(scoreSize, 9 * 1.6) : min(emojiSize, 11 * 1.6), weight: .medium).monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .foregroundStyle(isSelected ? palette.onAccent.opacity(0.9) : Color.primary.opacity(palette.isDark ? 0.7 : 0.8))
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 54)
+        .frame(height: height)
         .background {
             RoundedRectangle(cornerRadius: 12)
                 .fill(isSelected ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(palette.accent.opacity(0.08 + intensity * 0.35)))
         }
         .overlay(alignment: .topTrailing) {
-            if hasStick { Circle().fill(Color(hex: 0xEF4444)).frame(width: 6, height: 6).padding(5) }
+            if hasStick { Circle().fill(palette.identity(Color(hex: 0xEF4444))).frame(width: 6, height: 6).padding(5) }
         }
         .overlay {
             if isToday && !isSelected { RoundedRectangle(cornerRadius: 12).strokeBorder(palette.accent, lineWidth: 1.5) }

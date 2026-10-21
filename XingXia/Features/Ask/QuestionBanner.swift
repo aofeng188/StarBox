@@ -5,6 +5,8 @@ import SwiftData
 struct QuestionBanner: View {
     @Environment(AppState.self) private var app
     @Environment(\.palette) private var palette
+    /// 清除按钮的点按区跟着字号放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .title3) private var clearSize: CGFloat = 36
 
     var body: some View {
         if let question = app.currentQuestion, !question.isEmpty {
@@ -14,7 +16,7 @@ struct QuestionBanner: View {
                     .foregroundStyle(palette.accentGradient)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("你在问").font(.caption2).foregroundStyle(.secondary)
+                    Text("你在问").font(.caption2).subtleForeground()
                     Text(question).font(.subheadline.weight(.semibold)).lineLimit(2)
                 }
                 .accessibilityElement(children: .ignore)
@@ -28,7 +30,7 @@ struct QuestionBanner: View {
                         .font(.title3)
                         .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(.secondary)
-                        .frame(width: 36, height: 36)
+                        .frame(width: min(clearSize, 36 * 1.6), height: min(clearSize, 36 * 1.6))
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)

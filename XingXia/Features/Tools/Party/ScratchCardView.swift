@@ -4,6 +4,7 @@ import SwiftData
 struct ScratchCardView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.palette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \ScratchPreset.createdAt) private var presets: [ScratchPreset]
     @AppStorage("scratch.preset") private var presetID = ""
 
@@ -18,6 +19,11 @@ struct ScratchCardView: View {
     @State private var lastSound = Date.distantPast
     @State private var editing: ScratchPreset?
     @State private var cardID = 0
+    /// 卡池 chip 行的选中态在 chip 之间流动
+    @Namespace private var glassNamespace
+    /// 卡面上的图标和奖品字跟着字号放大，封顶 1.6 倍；卡片是固定尺寸，放不下时奖品字再缩小
+    @ScaledMetric(relativeTo: .title) private var prizeSize: CGFloat = 28
+    @ScaledMetric(relativeTo: .title) private var prizeIconSize: CGFloat = 34
 
     private let cardSize = CGSize(width: 330, height: 210)
     private let columns = 22
@@ -44,36 +50,46 @@ struct ScratchCardView: View {
                         .onChange(of: customMessage) { _, _ in if useCustom { newCard() } }
                 } else if !presets.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(presets) { item in
-                                let isOn = item.id == preset?.id
-                                Button(item.name) {
-                                    presetID = item.id.uuidString
-                                    newCard()
+                        GlassEffectContainer(spacing: GlassChipMetrics.containerSpacing) {
+                            HStack(spacing: GlassChipMetrics.spacing) {
+                                ForEach(presets) { item in
+                                    let isOn = item.id == preset?.id
+                                    Button {
+                                        withAnimation(reduceMotion ? nil : .bouncy) { presetID = item.id.uuidString }
+                                        newCard()
+                                    } label: {
+                                        Text(item.name)
+                                            .font(.subheadline.weight(.medium))
+                                            .lineLimit(1)
+                                            .fixedSize()
+                                            .padding(.horizontal, 12).padding(.vertical, 8)
+                                            .glassChip(isOn: isOn, id: item.id.uuidString, flows: true, in: glassNamespace)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityAddTraits(isOn ? .isSelected : [])
+                                    .contextMenu {
+                                        Button("编辑", systemImage: "pencil") { editing = item }
+                                        Button("删除", systemImage: "trash", role: .destructive) { context.delete(item); try? context.save() }
+                                    }
                                 }
-                                .font(.subheadline.weight(.medium))
-                                .padding(.horizontal, 12).padding(.vertical, 8)
-                                .foregroundStyle(isOn ? palette.onAccent : .primary)
-                                .background(Capsule().fill(isOn ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.primary.opacity(0.07))))
-                                .accessibilityAddTraits(isOn ? .isSelected : [])
-                                .contextMenu {
-                                    Button("编辑", systemImage: "pencil") { editing = item }
-                                    Button("删除", systemImage: "trash", role: .destructive) { context.delete(item); try? context.save() }
+                                Button {
+                                    let item = ScratchPreset(name: "新卡池", prizes: ["奖品一", "奖品二"])
+                                    context.insert(item)
+                                    try? context.save()
+                                    editing = item
+                                } label: {
+                                    Image(systemName: "plus")
+                                        .padding(9)
+                                        .glassEffect(.regular.interactive(), in: .circle)
                                 }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("新建卡池")
                             }
-                            Button {
-                                let item = ScratchPreset(name: "新卡池", prizes: ["奖品一", "奖品二"])
-                                context.insert(item)
-                                try? context.save()
-                                editing = item
-                            } label: {
-                                Image(systemName: "plus").padding(9).background(Circle().fill(.primary.opacity(0.07)))
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("新建卡池")
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 2)
                         }
-                        .padding(.horizontal, 16)
                     }
+                    .fadingScrollEdges()
                     .pageBleed()
                 }
 
@@ -85,17 +101,20 @@ struct ScratchCardView: View {
                     .font(.headline)
                     .foregroundStyle(revealed ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.secondary))
 
-                HStack(spacing: 12) {
-                    Button("直接揭晓", systemImage: "eye") { reveal() }
-                        .buttonStyle(.glass)
-                        .disabled(revealed)
-                    Button { newCard() } label: {
-                        Label("再来一张", systemImage: "arrow.counterclockwise").foregroundStyle(palette.onAccent)
+                // 卡片下的一排玻璃按钮放进同一个容器，按下时一起融合
+                GlassEffectContainer(spacing: 12) {
+                    HStack(spacing: 12) {
+                        Button("直接揭晓", systemImage: "eye") { reveal() }
+                            .buttonStyle(.glass)
+                            .disabled(revealed)
+                        Button { newCard() } label: {
+                            Label("再来一张", systemImage: "arrow.counterclockwise").foregroundStyle(palette.onAccent)
+                        }
+                        .buttonStyle(.glassProminent)
+                        .tint(palette.accent)
                     }
-                    .buttonStyle(.glassProminent)
-                    .tint(palette.accent)
+                    .controlSize(.large)
                 }
-                .controlSize(.large)
 
                 if !useCustom, let preset {
                     VStack(alignment: .leading, spacing: 6) {
@@ -126,13 +145,14 @@ struct ScratchCardView: View {
                                      startPoint: .topLeading, endPoint: .bottomTrailing))
                 .overlay {
                     VStack(spacing: 10) {
-                        Image(systemName: isBlank ? "face.smiling" : "gift.fill").font(.system(size: 34))
+                        Image(systemName: isBlank ? "face.smiling" : "gift.fill").font(.system(size: min(prizeIconSize, 34 * 1.6)))
                         Text(prize)
-                            .font(.system(size: 28, weight: .heavy, design: .rounded))
+                            .font(.system(size: min(prizeSize, 28 * 1.6), weight: .heavy, design: .rounded))
                             .multilineTextAlignment(.center)
                             .minimumScaleFactor(0.5)
                             .padding(.horizontal, 20)
                     }
+                    .padding(.vertical, 12)
                     .foregroundStyle(isBlank ? .white : palette.onAccent)
                 }
 

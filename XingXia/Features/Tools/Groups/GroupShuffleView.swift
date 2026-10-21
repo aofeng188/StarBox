@@ -24,6 +24,8 @@ struct GroupShuffleView: View {
     @State private var showSave = false
     @State private var rosterName = ""
     @FocusState private var editing: Bool
+    /// 排序、点名结果前面的序号圆跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .headline) private var badgeSize: CGFloat = 32
 
     private var names: [String] {
         text.components(separatedBy: CharacterSet(charactersIn: "\n,，、 ;；"))
@@ -101,6 +103,8 @@ struct GroupShuffleView: View {
             .pageContent()
             .padding(.bottom, 30)
         }
+        // 悬浮 tab 栏下，结果最后一组也能完整滚出来
+        .contentMargins(.bottom, 24, for: .scrollContent)
         .scrollDismissesKeyboard(.interactively)
         .cosmicBackground()
         .navigationTitle("随机分组")
@@ -159,7 +163,9 @@ struct GroupShuffleView: View {
                             Text("\(index + 1)")
                                 .font(.headline.monospacedDigit())
                                 .foregroundStyle(palette.color(at: index).readableForeground)
-                                .frame(width: 32, height: 32)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
+                                .frame(width: min(badgeSize, 32 * 1.6), height: min(badgeSize, 32 * 1.6))
                                 .background(Circle().fill(palette.color(at: index)))
                             Text(name).font(mode == .pick ? .title3.bold() : .body)
                             Spacer()

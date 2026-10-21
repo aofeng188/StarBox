@@ -6,6 +6,7 @@ import SwiftData
 struct SearchView: View {
     @Environment(AppState.self) private var app
     @Environment(\.modelContext) private var context
+    @Environment(\.palette) private var palette
 
     @State private var query = ""
     @State private var recent: [SearchItem] = []
@@ -49,7 +50,7 @@ struct SearchView: View {
                         open(item)
                     } label: {
                         HStack(spacing: 12) {
-                            ToolIcon(symbol: item.symbol, colors: item.colors, size: 40)
+                            ToolIcon(symbol: item.symbol, colors: palette.identity(item.colors), size: 40)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.name).font(.headline).foregroundStyle(.primary)
                                 Text(item.subtitle).font(.caption).subtleForeground().lineLimit(2)

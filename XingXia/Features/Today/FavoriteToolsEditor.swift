@@ -4,6 +4,7 @@ import SwiftUI
 struct FavoriteToolsEditor: View {
     @Environment(AppSettings.self) private var settings
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.palette) private var palette
 
     var body: some View {
         let favorites = settings.favoriteTools.compactMap(FavoriteTool.init(id:))
@@ -14,7 +15,7 @@ struct FavoriteToolsEditor: View {
                     if favorites.isEmpty {
                         Text("还没有收藏，从下面挑几个常用的吧")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .subtleForeground()
                             .listRowBackground(Color.clear)
                     }
                     ForEach(favorites) { tool in
@@ -69,7 +70,7 @@ struct FavoriteToolsEditor: View {
 
     private func row(_ tool: FavoriteTool) -> some View {
         HStack(spacing: 14) {
-            ToolIcon(symbol: tool.symbol, colors: tool.colors, size: 36)
+            ToolIcon(symbol: tool.symbol, colors: palette.identity(tool.colors), size: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(tool.name).foregroundStyle(.primary)
                 Text(tool.subtitle).font(.caption).subtleForeground()

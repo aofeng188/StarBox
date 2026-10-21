@@ -33,6 +33,7 @@ struct AlmanacDetailView: View {
                             Text("\(DateText.full(day)) \(DateText.weekday(day))").font(.headline)
                             if day != today { Text("点按选择日期").font(.caption2).foregroundStyle(.secondary) }
                         }
+                        .multilineTextAlignment(.center)
                     }
                     .buttonStyle(.plain)
                     Spacer()
@@ -43,16 +44,29 @@ struct AlmanacDetailView: View {
 
                 // 主信息
                 VStack(spacing: 10) {
+                    // 农历大字跟着字号放大，但封顶约 1.6 倍、只占一行（「十一月廿九」这类长日期在窄屏上缩一点）
                     Text(almanac.lunar.monthName + almanac.lunar.dayName)
                         .font(AppFont.serif(46, weight: .bold))
                         .foregroundStyle(palette.accentGradient)
                         .shadow(color: palette.accent.opacity(0.4), radius: 12)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                     Text(almanac.ganzhiText).font(.subheadline.weight(.medium))
                     Text("\(almanac.lunar.yearGanZhi.branch.animalEmoji) \(almanac.lunar.yearGanZhi.name)\(almanac.lunar.yearGanZhi.branch.animal)年 · 纳音\(almanac.day.nayin)")
                         .font(.footnote).foregroundStyle(.secondary)
-                    HStack(spacing: 8) {
-                        TagChip(text: almanac.jianChu.name, color: almanac.jianChu.isLucky ? Color(hex: 0x34D399) : Color(hex: 0xFBBF24))
-                        TagChip(text: "\(almanac.deity.name) · \(almanac.deity.pathName)", color: almanac.deity.isYellowPath ? Color(hex: 0xFBBF24) : Color(hex: 0x94A3B8))
+                    // 吉凶用语义色（深浅色各一套），黄道日用金色，黑道日沿用灰色
+                    let jianChuColor = almanac.jianChu.isLucky ? Color.positive(scheme) : Color.caution(scheme)
+                    let deityColor = almanac.deity.isYellowPath ? Color.gold(scheme) : Color(hex: 0x94A3B8)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) {
+                            TagChip(text: almanac.jianChu.name, color: jianChuColor)
+                            TagChip(text: "\(almanac.deity.name) · \(almanac.deity.pathName)", color: deityColor)
+                        }
+                        VStack(spacing: 6) {
+                            TagChip(text: almanac.jianChu.name, color: jianChuColor)
+                            TagChip(text: "\(almanac.deity.name) · \(almanac.deity.pathName)", color: deityColor)
+                        }
                     }
                     if !almanac.shensha.isEmpty {
                         // 神煞多时（大字号下）一行放不下就竖排
@@ -64,8 +78,15 @@ struct AlmanacDetailView: View {
                         .accessibilityLabel("神煞：\(almanac.shensha.joined(separator: "、"))")
                     }
                     if !almanac.festivals.isEmpty {
-                        HStack(spacing: 8) {
-                            ForEach(almanac.festivals, id: \.self) { TagChip(text: $0, color: Color(hex: 0xFB7185)) }
+                        // 节日色是「身份色」，向主题强调色靠一点；放不下一行时竖排
+                        let festivalColor = palette.identity(Color(hex: 0xFB7185))
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 8) {
+                                ForEach(almanac.festivals, id: \.self) { TagChip(text: $0, color: festivalColor) }
+                            }
+                            VStack(spacing: 6) {
+                                ForEach(almanac.festivals, id: \.self) { TagChip(text: $0, color: festivalColor) }
+                            }
                         }
                     }
                 }
@@ -126,13 +147,26 @@ struct AlmanacDetailView: View {
                     }
                     Divider().opacity(0.4)
                     ForEach(upcomingTerms(after: day), id: \.self) { term in
-                        HStack {
-                            Text(term.name).font(.subheadline.weight(.semibold))
-                            Spacer()
-                            Text("\(term.day.month)月\(term.day.day)日 \(term.moment.formatted(.dateTime.hour().minute()))")
-                                .font(.caption).foregroundStyle(.secondary)
-                            Text("\(day.days(to: term.day))天后").font(.caption).foregroundStyle(.tint)
+                        let date = Text("\(term.day.month)月\(term.day.day)日 \(term.moment.formatted(.dateTime.hour().minute()))")
+                        let countdown = Text("\(day.days(to: term.day))天后")
+                        // 大字号下一行放不下时，节气名单独一行，日期和倒数排在下面
+                        ViewThatFits(in: .horizontal) {
+                            HStack {
+                                Text(term.name).font(.subheadline.weight(.semibold))
+                                Spacer()
+                                date.font(.caption).foregroundStyle(.secondary)
+                                countdown.font(.caption).foregroundStyle(.tint)
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(term.name).font(.subheadline.weight(.semibold))
+                                HStack(alignment: .firstTextBaseline) {
+                                    date.font(.caption).foregroundStyle(.secondary)
+                                    countdown.font(.caption).foregroundStyle(.tint)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .accessibilityElement(children: .combine)
                     }
                 }
                 .glassCard()
@@ -157,6 +191,8 @@ struct AlmanacDetailView: View {
             .pageContent()
             .padding(.bottom, 30)
         }
+        // 悬浮 tab 栏下，最底下的说明文字也能完整滚出来
+        .contentMargins(.bottom, 24, for: .scrollContent)
         .cosmicBackground()
         .navigationTitle("黄历")
         .toolbar {

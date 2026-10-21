@@ -56,6 +56,7 @@ struct FoodMenusView: View {
 struct FoodMenuEditor: View {
     @Bindable var menu: FoodMenu
     @Environment(\.modelContext) private var context
+    @Environment(\.palette) private var palette
     @State private var newItem = ""
 
     private let icons = ["🍱", "🍜", "🍔", "🍕", "🍣", "🥗", "🍲", "🥟", "🍛", "🧋", "🏢", "🏠", "🎉", "💼"]
@@ -71,7 +72,7 @@ struct FoodMenuEditor: View {
                                 menu.icon = icon
                             } label: {
                                 Text(icon).font(.title2).padding(6)
-                                    .background(Circle().fill(menu.icon == icon ? Color.accentColor.opacity(0.3) : .clear))
+                                    .background(Circle().fill(menu.icon == icon ? palette.accent.opacity(0.3) : .clear))
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("图标 \(icon)")
@@ -79,6 +80,7 @@ struct FoodMenuEditor: View {
                         }
                     }
                 }
+                .fadingScrollEdges()
             }
             .glassRows()
 

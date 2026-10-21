@@ -5,8 +5,12 @@ struct FortuneDetailView: View {
     @Environment(AppState.self) private var app
     @Environment(\.palette) private var palette
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var today = DayKey.today
     @State private var offset = 0
+    /// 运势等级大字、分项图标圆跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .largeTitle) private var levelSize: CGFloat = 44
+    @ScaledMetric(relativeTo: .headline) private var categoryIconSize: CGFloat = 30
 
     var body: some View {
         let day = today.adding(days: offset)
@@ -34,7 +38,7 @@ struct FortuneDetailView: View {
                         .font(.footnote).foregroundStyle(.secondary)
                     ScoreRing(score: fortune.score, size: 170, lineWidth: 16, label: "运势指数")
                         .id(day)
-                    GradientText(text: fortune.levelName, font: .system(size: 44, weight: .heavy, design: .rounded))
+                    GradientText(text: fortune.levelName, font: .system(size: min(levelSize, 44 * 1.6), weight: .heavy, design: .rounded))
                     StarRatingView(stars: fortune.stars, size: 18)
                     Text(fortune.summary)
                         .font(.body)
@@ -66,17 +70,25 @@ struct FortuneDetailView: View {
                     .buttonStyle(.glass)
                 }
 
+                // 超大字号下名字和星级一行放不下，星级换到名字下面
+                let nameAndStars = typeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+                    : AnyLayout(HStackLayout(spacing: 8))
+                let iconCircle = min(categoryIconSize, 30 * 1.6)
                 ForEach(FortuneCategory.allCases) { category in
                     let value = fortune.score(category)
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             Image(systemName: category.symbol)
+                                .font(.system(size: iconCircle * 0.56))
                                 .foregroundStyle(palette.onAccent)
-                                .frame(width: 30, height: 30)
+                                .frame(width: iconCircle, height: iconCircle)
                                 .background(Circle().fill(palette.accentGradient))
                                 .accessibilityHidden(true)
-                            Text(category.name).font(.headline)
-                            StarRatingView(stars: StarRating.stars(for: value), size: 11)
+                            nameAndStars {
+                                Text(category.name).font(.headline)
+                                StarRatingView(stars: StarRating.stars(for: value), size: 11)
+                            }
                             Spacer()
                             Text("\(value)")
                                 .font(.title3.weight(.bold)).monospacedDigit()
@@ -90,7 +102,8 @@ struct FortuneDetailView: View {
 
                 VStack(alignment: .leading, spacing: 14) {
                     SectionHeader(title: "幸运指南", symbol: "wand.and.stars")
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+                    // 超大字号下两列放不下，改成一列，名称和说明不截断
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: typeSize.isAccessibilitySize ? 1 : 2), spacing: 14) {
                         LuckyCell(title: "幸运色", value: fortune.luckyColor.name, caption: fortune.luckyColor.hexString) {
                             Circle().fill(Color(fortune.luckyColor)).frame(width: 30, height: 30)
                                 .shadow(color: Color(fortune.luckyColor).opacity(0.8), radius: 8)
@@ -126,6 +139,8 @@ struct FortuneDetailView: View {
             .pageContent()
             .padding(.bottom, 30)
         }
+        // 悬浮 tab 栏下，最底下的每日一句也能完整滚出来
+        .contentMargins(.bottom, 24, for: .scrollContent)
         .cosmicBackground()
         .navigationTitle("运势详解")
         .toolbar {

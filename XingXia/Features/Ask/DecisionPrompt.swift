@@ -43,11 +43,12 @@ struct DecisionPrompt: View {
 
     private func card(_ record: DecisionRecord) -> some View {
         let info = HistoryLog.info(for: record.tool)
+        let colors = palette.identity(info.colors)
         let summary = "\(info.name)：\(record.result)"
         return ViewThatFits(in: .horizontal) {
             // 放得下时一行胶囊
             HStack(spacing: 10) {
-                ToolIcon(symbol: info.symbol, colors: info.colors, size: 30)
+                ToolIcon(symbol: info.symbol, colors: colors, size: 30)
                 Text(summary).font(.subheadline.weight(.semibold)).lineLimit(1)
                 Spacer(minLength: 4)
                 buttons(record)
@@ -60,7 +61,7 @@ struct DecisionPrompt: View {
             // 结果长或字号大时分两行
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
-                    ToolIcon(symbol: info.symbol, colors: info.colors, size: 30)
+                    ToolIcon(symbol: info.symbol, colors: colors, size: 30)
                     Text(summary).font(.subheadline.weight(.semibold)).lineLimit(3)
                     Spacer(minLength: 0)
                 }

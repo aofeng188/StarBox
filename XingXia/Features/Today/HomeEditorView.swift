@@ -18,7 +18,7 @@ struct HomeEditorView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(card.name)
                                 if card == .family {
-                                    Text("有两个及以上档案时显示").font(.caption).foregroundStyle(.secondary)
+                                    Text("有两个及以上档案时显示").font(.caption).subtleForeground()
                                 }
                             }
                             Spacer()

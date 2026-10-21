@@ -10,6 +10,7 @@ struct AnnualReviewView: View {
     @Environment(AppState.self) private var app
     @Environment(\.palette) private var palette
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.dynamicTypeSize) private var typeSize
     @Query private var records: [DecisionRecord]
     @Query private var moods: [MoodEntry]
     @Query private var draws: [StickDraw]
@@ -20,6 +21,8 @@ struct AnnualReviewView: View {
     @State private var review: AnnualReview?
     /// 年份大字跟随系统字号放大（设上限）
     @ScaledMetric(relativeTo: .largeTitle) private var yearSize: CGFloat = 56
+    /// 「最幸运的一天」的分数环跟着字号放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .title) private var luckyRingSize: CGFloat = 76
 
     init(year: Int) {
         self.year = year
@@ -217,7 +220,7 @@ struct AnnualReviewView: View {
                         .font(.headline.monospacedDigit())
                         .foregroundStyle(palette.ink(palette.accent))
                         .frame(width: 20)
-                    ToolIcon(symbol: info.symbol, colors: info.colors, size: 34)
+                    ToolIcon(symbol: info.symbol, colors: palette.identity(info.colors), size: 34)
                     Text(info.name).font(.subheadline.weight(.semibold))
                     Spacer(minLength: 0)
                     Text("\(tool.count) 次").font(.subheadline).subtleForeground().monospacedDigit()
@@ -313,10 +316,14 @@ struct AnnualReviewView: View {
         if let mood { notes.append("心情\(mood.name) \(mood.emoji)") }
         if decisions > 0 { notes.append("做了 \(decisions) 个决定") }
         if let stick { notes.append("求得\(stick.levelInfo.displayName)") }
+        let ring = min(luckyRingSize, 76 * 1.6)
+        // 超大字号时分数环放上面，日期和那天的记录占整行
+        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+                                                  : AnyLayout(HStackLayout(spacing: 16))
         return VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: "最幸运的一天", symbol: "sparkles")
-            HStack(spacing: 16) {
-                ScoreRing(score: lucky.score, size: 76, lineWidth: 8, label: "运势")
+            layout {
+                ScoreRing(score: lucky.score, size: ring, lineWidth: ring * 8 / 76, label: "运势")
                 VStack(alignment: .leading, spacing: 4) {
                     Text(DateText.monthDay(lucky.day)).font(.title3.weight(.bold))
                     Text("\(DateText.weekday(lucky.day)) · 农历\(LunarDate(lucky.day).text)").font(.caption).subtleForeground()

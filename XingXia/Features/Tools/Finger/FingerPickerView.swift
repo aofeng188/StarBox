@@ -90,6 +90,8 @@ struct FingerPickerView: View {
     @State private var winners: Set<Int> = []
     @State private var teams: [Int: Int] = [:]
     @State private var resultTime: Date?
+    /// 空白时中间的大图标跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .largeTitle) private var hintIconSize: CGFloat = 50
 
     private let fingerColors: [Color] = [0xFF6B6B, 0xFFD166, 0x06D6A0, 0x4CC9F0, 0xB388FF, 0xFF8FC7, 0xF4A261, 0x80ED99, 0x48CAE4, 0xFFAFCC].map { Color(hex: $0) }
     private let teamColors: [Color] = [Color(hex: 0xFF5D73), Color(hex: 0x4CC9F0)]
@@ -112,7 +114,7 @@ struct FingerPickerView: View {
             if touches.isEmpty {
                 VStack(spacing: 14) {
                     Image(systemName: "hand.point.up.left.and.text.fill")
-                        .font(.system(size: 50))
+                        .font(.system(size: min(hintIconSize, 50 * 1.6)))
                         .foregroundStyle(palette.accentGradient)
                         .symbolEffect(.bounce, options: .repeating.speed(0.3), isActive: !reduceMotion)
                     Text("每个人把一根手指放在屏幕上")

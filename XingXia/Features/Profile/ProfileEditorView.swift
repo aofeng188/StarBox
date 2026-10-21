@@ -35,6 +35,8 @@ struct ProfileEditorView: View {
     @State private var showDeleteConfirm = false
     /// 从「出生城市」返回时 onAppear 会再触发一次，只在第一次出现时读档案，不能覆盖没保存的修改
     @State private var loaded = false
+    /// 头像选择跟着字号放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .title) private var avatarSize: CGFloat = 46
 
     static let avatars = ["🌟", "🌙", "☀️", "🪐", "🌸", "🍀", "🔥", "💧", "🦊", "🐱", "🐶", "🐼",
                           "🐰", "🦄", "🐯", "🐲", "🐻", "🐧", "🐳", "🦋", "🍑", "🍓", "🧸", "🎈"]
@@ -58,6 +60,7 @@ struct ProfileEditorView: View {
             }
 
             Section("头像与称呼") {
+                let avatarCircle = min(avatarSize, 46 * 1.6)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(Self.avatars, id: \.self) { emoji in
@@ -66,8 +69,8 @@ struct ProfileEditorView: View {
                                 Haptics.selection()
                             } label: {
                                 Text(emoji)
-                                    .font(.system(size: 28))
-                                    .frame(width: 46, height: 46)
+                                    .font(.system(size: avatarCircle * 28 / 46))
+                                    .frame(width: avatarCircle, height: avatarCircle)
                                     .background(Circle().fill(avatar == emoji ? palette.accent.opacity(0.3) : .clear))
                                     .overlay(Circle().strokeBorder(avatar == emoji ? palette.accent : .clear, lineWidth: 2))
                             }
@@ -78,6 +81,7 @@ struct ProfileEditorView: View {
                     }
                     .padding(.vertical, 4)
                 }
+                .fadingScrollEdges()
                 TextField("名字或昵称", text: $name)
                 Picker("关系", selection: $relation) {
                     ForEach(Self.relations, id: \.self) { Text($0) }

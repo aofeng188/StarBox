@@ -19,6 +19,7 @@ struct FoodPickerView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.palette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \FoodLog.date, order: .reverse) private var logs: [FoodLog]
     @Query private var blocked: [BlockedFood]
     @Query(sort: \FoodMenu.createdAt) private var menus: [FoodMenu]
@@ -46,6 +47,9 @@ struct FoodPickerView: View {
 
     @State private var showMenus = false
     @State private var showBlocked = false
+    /// 餐段、菜单 chip 行的选中态在 chip 之间流动
+    @Namespace private var glassNamespace
+    @ScaledMetric(relativeTo: .largeTitle) private var placeholderSize: CGFloat = 70
 
     var body: some View {
         ScrollView {
@@ -66,30 +70,33 @@ struct FoodPickerView: View {
                                           isRolling: isRolling, revealCount: revealCount)
                     } else {
                         VStack(spacing: 10) {
-                            Text("🍽️").font(.system(size: 70))
+                            Text("🍽️").font(.system(size: min(placeholderSize, 70 * 1.6)))
                             Text("今天吃点什么好呢？").font(.title2.bold())
                             Text(candidateHint).font(.subheadline).foregroundStyle(.secondary)
                         }
                     }
 
                     if let result, !isRolling {
-                        HStack(spacing: 10) {
-                            Button { accept(result) } label: {
-                                // 和 BigActionButton 一样把文字色放在 label 里，深色主题的亮 accent 上用深字
-                                Label(acceptedTitle == result.title ? "已记录" : "就吃这个", systemImage: "checkmark.circle.fill")
-                                    .foregroundStyle(palette.onAccent)
-                            }
-                            .buttonStyle(.glassProminent)
-                            .tint(palette.accent)
-                            .disabled(acceptedTitle == result.title)
-                            if let item = result.mapItem {
-                                Button("导航", systemImage: "location.fill") {
-                                    item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
+                        // 结果下的一排玻璃按钮放进同一个容器，出现、消失时一起融合变形
+                        GlassEffectContainer(spacing: 10) {
+                            HStack(spacing: 10) {
+                                Button { accept(result) } label: {
+                                    // 和 BigActionButton 一样把文字色放在 label 里，深色主题的亮 accent 上用深字
+                                    Label(acceptedTitle == result.title ? "已记录" : "就吃这个", systemImage: "checkmark.circle.fill")
+                                        .foregroundStyle(palette.onAccent)
                                 }
-                                .buttonStyle(.glass)
-                            } else if source == .library {
-                                Button("不想吃", systemImage: "hand.thumbsdown") { block(result.title) }
+                                .buttonStyle(.glassProminent)
+                                .tint(palette.accent)
+                                .disabled(acceptedTitle == result.title)
+                                if let item = result.mapItem {
+                                    Button("导航", systemImage: "location.fill") {
+                                        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
+                                    }
                                     .buttonStyle(.glass)
+                                } else if source == .library {
+                                    Button("不想吃", systemImage: "hand.thumbsdown") { block(result.title) }
+                                        .buttonStyle(.glass)
+                                }
                             }
                         }
                         .transition(.scale.combined(with: .opacity))
@@ -122,6 +129,8 @@ struct FoodPickerView: View {
             .pageContent()
             .padding(.bottom, 30)
         }
+        // 悬浮 tab 栏下，最底下的「最近吃过」也能完整滚出来
+        .contentMargins(.bottom, 24, for: .scrollContent)
         .overlay { ConfettiView(trigger: confetti) }
         .cosmicBackground()
         .navigationTitle("今天吃什么")
@@ -155,28 +164,31 @@ struct FoodPickerView: View {
             VStack(alignment: .leading, spacing: 10) {
                 // 五个餐段在窄屏上放不下，改为可横向滑动，文字不换行
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(MealTime.allCases) { item in
-                            Button {
-                                meal = item
-                                Haptics.selection()
-                            } label: {
-                                Label(item.name, systemImage: item.symbol)
-                                    .labelStyle(.titleAndIcon)
-                                    .font(.caption.weight(.semibold))
-                                    .lineLimit(1)
-                                    .fixedSize()
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 7)
-                                    .foregroundStyle(meal == item ? palette.onAccent : .primary)
-                                    .background(Capsule().fill(meal == item ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.primary.opacity(0.07))))
+                    GlassEffectContainer(spacing: GlassChipMetrics.containerSpacing) {
+                        HStack(spacing: GlassChipMetrics.spacing) {
+                            ForEach(MealTime.allCases) { item in
+                                Button {
+                                    withAnimation(reduceMotion ? nil : .bouncy) { meal = item }
+                                    Haptics.selection()
+                                } label: {
+                                    Label(item.name, systemImage: item.symbol)
+                                        .labelStyle(.titleAndIcon)
+                                        .font(.caption.weight(.semibold))
+                                        .lineLimit(1)
+                                        .fixedSize()
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 7)
+                                        .glassChip(isOn: meal == item, id: "meal-\(item.id)", flows: true, in: glassNamespace)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityAddTraits(meal == item ? .isSelected : [])
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityAddTraits(meal == item ? .isSelected : [])
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 2)
                     }
-                    .padding(.horizontal, 16)
                 }
+                .fadingScrollEdges()
                 .pageBleed()
                 ChipPicker(options: FoodLibrary.cuisines, selection: $cuisines, allLabel: "全部菜系")
                 HStack {
@@ -201,32 +213,39 @@ struct FoodPickerView: View {
                 .buttonStyle(.glass)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(menus) { menu in
-                            let isOn = currentMenu?.id == menu.id
-                            Button {
-                                menuID = menu.id
-                                result = nil
-                                Haptics.selection()
-                            } label: {
-                                Text("\(menu.icon) \(menu.name) · \(menu.items?.count ?? 0)")
-                                    .font(.subheadline.weight(.medium))
-                                    .padding(.horizontal, 12).padding(.vertical, 8)
-                                    .foregroundStyle(isOn ? palette.onAccent : .primary)
-                                    .background(Capsule().fill(isOn ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.primary.opacity(0.07))))
+                    GlassEffectContainer(spacing: GlassChipMetrics.containerSpacing) {
+                        HStack(spacing: GlassChipMetrics.spacing) {
+                            ForEach(menus) { menu in
+                                let isOn = currentMenu?.id == menu.id
+                                Button {
+                                    withAnimation(reduceMotion ? nil : .bouncy) { menuID = menu.id }
+                                    result = nil
+                                    Haptics.selection()
+                                } label: {
+                                    Text("\(menu.icon) \(menu.name) · \(menu.items?.count ?? 0)")
+                                        .font(.subheadline.weight(.medium))
+                                        .lineLimit(1)
+                                        .fixedSize()
+                                        .padding(.horizontal, 12).padding(.vertical, 8)
+                                        .glassChip(isOn: isOn, id: menu.id.uuidString, flows: true, in: glassNamespace)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isRolling)
+                                .accessibilityAddTraits(isOn ? .isSelected : [])
+                            }
+                            Button { showMenus = true } label: {
+                                Image(systemName: "pencil")
+                                    .padding(9)
+                                    .glassEffect(.regular.interactive(), in: .circle)
                             }
                             .buttonStyle(.plain)
-                            .disabled(isRolling)
-                            .accessibilityAddTraits(isOn ? .isSelected : [])
+                            .accessibilityLabel("编辑菜单")
                         }
-                        Button { showMenus = true } label: {
-                            Image(systemName: "pencil").padding(9).background(Circle().fill(.primary.opacity(0.07)))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("编辑菜单")
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 2)
                     }
-                    .padding(.horizontal, 16)
                 }
+                .fadingScrollEdges()
                 .pageBleed()
             }
         case .nearby:

@@ -98,32 +98,34 @@ private struct CountdownHero: View {
     let item: CountdownItem
     let today: DayKey
     @Environment(\.palette) private var palette
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// 大数字跟着字号放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .largeTitle) private var daysSize: CGFloat = 84
+    @ScaledMetric(relativeTo: .largeTitle) private var todaySize: CGFloat = 64
 
     var body: some View {
         let status = item.status(today: today)
         let color = palette.color(at: item.colorIndex)
         // 色块装饰用原色，文字和数字用调过明暗的版本，浅色模式下粉彩色也读得清
         let ink = palette.inkColor(at: item.colorIndex)
+        let isLarge = typeSize.isAccessibilitySize
         VStack(spacing: 10) {
             HStack {
                 Text(item.emoji).font(.title)
                 Text(item.title).font(.title3.bold())
                 if item.pinned { Image(systemName: "pin.fill").font(.caption).foregroundStyle(.secondary).accessibilityLabel("已置顶") }
                 Spacer()
-                CountdownSourceChip(item: item, color: color)
+                if !isLarge { CountdownSourceChip(item: item, color: color) }
             }
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(status.prefix).font(.title3).foregroundStyle(.secondary)
-                if status.isToday && item.kind != .anniversary {
-                    Text(status.suffix).font(.system(size: 64, weight: .heavy, design: .rounded)).foregroundStyle(ink)
-                } else {
-                    Text("\(status.days)")
-                        .font(.system(size: 84, weight: .heavy, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(LinearGradient(colors: [ink, ink.opacity(0.75)], startPoint: .top, endPoint: .bottom))
-                        .shadow(color: color.opacity(0.5), radius: 16)
-                    Text(status.suffix).font(.title3).foregroundStyle(.secondary)
-                }
+            // 超大字号时类型标签放到标题下面，标题不被挤成一列
+            if isLarge {
+                CountdownSourceChip(item: item, color: color)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            // 一行放不下（超大字号、天数很多）时「还有」「天」换到数字上下
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) { figure(status, color: color, ink: ink) }
+                VStack(spacing: 2) { figure(status, color: color, ink: ink) }
             }
             Text(status.caption).font(.subheadline).foregroundStyle(.secondary)
         }
@@ -131,40 +133,73 @@ private struct CountdownHero: View {
         .glassCard(padding: 22, tint: color.opacity(0.1))
         .accessibilityElement(children: .combine)
     }
+
+    @ViewBuilder
+    private func figure(_ status: CountdownStatus, color: Color, ink: Color) -> some View {
+        Text(status.prefix).font(.title3).foregroundStyle(.secondary)
+        if status.isToday && item.kind != .anniversary {
+            Text(status.suffix)
+                .font(.system(size: min(todaySize, 64 * 1.6), weight: .heavy, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .foregroundStyle(ink)
+        } else {
+            Text("\(status.days)")
+                .font(.system(size: min(daysSize, 84 * 1.6), weight: .heavy, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .foregroundStyle(LinearGradient(colors: [ink, ink.opacity(0.75)], startPoint: .top, endPoint: .bottom))
+                .shadow(color: color.opacity(0.5), radius: 16)
+            Text(status.suffix).font(.title3).foregroundStyle(.secondary)
+        }
+    }
 }
 
 private struct CountdownRow: View {
     let item: CountdownItem
     let today: DayKey
     @Environment(\.palette) private var palette
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// 表情底圈和天数跟着字号放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .title2) private var circleSize: CGFloat = 48
+    @ScaledMetric(relativeTo: .title) private var daysSize: CGFloat = 30
 
     var body: some View {
         let status = item.status(today: today)
         let color = palette.color(at: item.colorIndex)
         let ink = palette.inkColor(at: item.colorIndex)
-        HStack(spacing: 14) {
+        let isLarge = typeSize.isAccessibilitySize
+        let circle = min(circleSize, 48 * 1.6)
+        // 超大字号时竖排：表情、标题、天数各占一行，标题不被挤断
+        let layout = isLarge ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(spacing: 14))
+        layout {
             Text(item.emoji)
                 .font(.title2)
-                .frame(width: 48, height: 48)
+                .frame(width: circle, height: circle)
                 .background(Circle().fill(color.opacity(0.18)))
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
                     Text(item.title).font(.headline)
                     if item.pinned { Image(systemName: "pin.fill").font(.caption2).foregroundStyle(.secondary).accessibilityLabel("已置顶") }
                 }
-                Text(status.caption).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(status.caption).font(.caption).foregroundStyle(.secondary).lineLimit(isLarge ? nil : 1)
                 if item.isFromProfile {
                     CountdownSourceChip(item: item, color: color)
                 }
             }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 0) {
+            if !isLarge { Spacer() }
+            VStack(alignment: isLarge ? .leading : .trailing, spacing: 0) {
                 Text(status.prefix).font(.caption2).foregroundStyle(.secondary)
                 if status.isToday && item.kind != .anniversary {
                     Text(status.suffix).font(.title3.bold()).foregroundStyle(ink)
                 } else {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text("\(status.days)").font(.system(size: 30, weight: .bold, design: .rounded)).monospacedDigit().foregroundStyle(ink)
+                        Text("\(status.days)")
+                            .font(.system(size: min(daysSize, 30 * 1.6), weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .foregroundStyle(ink)
                         Text(status.suffix).font(.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -293,6 +328,7 @@ struct CountdownEditor: View {
                         }
                     }
                 }
+                .fadingScrollEdges()
                 Picker("类型", selection: $kind) {
                     ForEach(CountdownKind.allCases) { Text($0.name).tag($0) }
                 }

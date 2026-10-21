@@ -4,8 +4,13 @@ struct ThemeSettingsView: View {
     @Environment(ThemeManager.self) private var themes
     @Environment(\.colorScheme) private var scheme
     @Environment(\.palette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 选中规则的强调色圆底在各行之间滑动
+    @Namespace private var modeNamespace
+    /// 主题缩略图跟着字号变宽，超大字号时一行一个
+    @ScaledMetric(relativeTo: .subheadline) private var tileMinWidth: CGFloat = 140
 
-    private let columns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
+    private var columns: [GridItem] { [GridItem(.adaptive(minimum: min(tileMinWidth, 280)), spacing: 12)] }
 
     var body: some View {
         @Bindable var themes = themes
@@ -17,7 +22,7 @@ struct ThemeSettingsView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("当前：\(themes.current.name)").font(.headline)
-                            Text(themes.reason).font(.caption).foregroundStyle(.secondary)
+                            Text(themes.reason).font(.caption).subtleForeground()
                         }
                         Spacer()
                         if themes.mode != .fixed {
@@ -39,7 +44,7 @@ struct ThemeSettingsView: View {
                     }
                     .pickerStyle(.segmented)
                     Text("每套主题都有深色「星空」与浅色「晨曦」两个版本。")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).subtleForeground()
                 }
                 .glassCard()
 
@@ -47,19 +52,29 @@ struct ThemeSettingsView: View {
                     SectionHeader(title: "切换规则", symbol: "wand.and.stars")
                         .padding(.bottom, 8)
                     ForEach(ThemeRuleMode.allCases) { mode in
+                        let isSelected = themes.mode == mode
                         Button {
-                            withAnimation(.snappy) { themes.mode = mode }
+                            withAnimation(reduceMotion ? nil : Animation.snappy) { themes.mode = mode }
                             Haptics.selection()
                         } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: mode.symbol)
                                     .frame(width: 30, height: 30)
-                                    .foregroundStyle(themes.mode == mode ? palette.onAccent : palette.accent)
-                                    .background(Circle().fill(themes.mode == mode ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(palette.accent.opacity(0.12))))
+                                    .foregroundStyle(isSelected ? palette.onAccent : palette.accent)
+                                    .background {
+                                        ZStack {
+                                            Circle().fill(palette.accent.opacity(0.12))
+                                            if isSelected {
+                                                Circle()
+                                                    .fill(palette.accentGradient)
+                                                    .matchedGeometryEffect(id: "selectedMode", in: modeNamespace)
+                                            }
+                                        }
+                                    }
                                     .accessibilityHidden(true)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(mode.name).foregroundStyle(.primary)
-                                    Text(mode.detail).font(.caption).foregroundStyle(.secondary)
+                                    Text(mode.detail).font(.caption).subtleForeground()
                                 }
                                 Spacer()
                                 // 选中状态由 isSelected 朗读，对勾不再读出符号名
@@ -83,14 +98,14 @@ struct ThemeSettingsView: View {
                     Toggle(isOn: $themes.lowPowerOverride) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("低电量时切换为「黑洞」")
-                            Text("开启低电量模式后自动使用最省电的纯黑主题").font(.caption).foregroundStyle(.secondary)
+                            Text("开启低电量模式后自动使用最省电的纯黑主题").font(.caption).subtleForeground()
                         }
                     }
                     Divider().padding(.vertical, 6)
                     Toggle(isOn: $themes.festivalEggs) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("节日彩蛋")
-                            Text("春节、中秋、七夕、圣诞等节日自动换上应景主题").font(.caption).foregroundStyle(.secondary)
+                            Text("春节、中秋、七夕、圣诞等节日自动换上应景主题").font(.caption).subtleForeground()
                         }
                     }
                 }
@@ -176,7 +191,7 @@ struct ThemeSettingsView: View {
             Image(systemName: symbol).frame(width: 28).foregroundStyle(palette.accent)
             VStack(alignment: .leading) {
                 Text(title)
-                if let subtitle { Text(subtitle).font(.caption).foregroundStyle(.secondary) }
+                if let subtitle { Text(subtitle).font(.caption).subtleForeground() }
             }
             Spacer()
             Picker(title, selection: selection) {
@@ -195,7 +210,7 @@ struct ThemeSettingsView: View {
                     Text(row.0)
                     Spacer()
                     Circle().fill(row.1.palette(for: scheme).accentGradient).frame(width: 14, height: 14)
-                    Text(row.1.name).foregroundStyle(.secondary)
+                    Text(row.1.name).subtleForeground()
                 }
                 .font(.subheadline)
             }
@@ -231,6 +246,8 @@ struct ThemePreviewTile: View {
                 Image(systemName: theme.symbol)
                 Text(theme.name).font(.subheadline.weight(.semibold))
             }
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
             .foregroundStyle(p.isDark ? .white : .black.opacity(0.75))
             .padding(10)
         }

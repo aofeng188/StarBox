@@ -5,6 +5,9 @@ import Charts
 struct HistoryView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.palette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 筛选标签的选中底色在标签之间流动
+    @Namespace private var filterNamespace
     @Query(sort: \DecisionRecord.date, order: .reverse) private var records: [DecisionRecord]
     @State private var filter: String?
     @State private var search = ""
@@ -57,6 +60,7 @@ struct HistoryView: View {
                             }
                         }
                     }
+                    .fadingScrollEdges()
                 }
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -126,16 +130,26 @@ struct HistoryView: View {
         }
     }
 
+    /// 选中底色用 matchedGeometryEffect 从旧标签滑到新标签（减弱动态效果时直接切换）。
+    /// 这一行在 fadingScrollEdges 的遮罩里，遮罩下的玻璃取不到背后的画面，所以选中底色不用玻璃
     private func chip(title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
         Button {
-            withAnimation(.snappy) { action() }
+            withAnimation(reduceMotion ? nil : Animation.snappy) { action() }
             Haptics.selection()
         } label: {
             Text(title)
                 .font(.subheadline.weight(isOn ? .semibold : .regular))
                 .padding(.horizontal, 12).padding(.vertical, 7)
                 .foregroundStyle(isOn ? palette.onAccent : .primary)
-                .background(Capsule().fill(isOn ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.primary.opacity(0.07))))
+                .background {
+                    if isOn {
+                        Capsule()
+                            .fill(palette.accentGradient)
+                            .matchedGeometryEffect(id: "filterSelection", in: filterNamespace)
+                    } else {
+                        Capsule().fill(.primary.opacity(0.07))
+                    }
+                }
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isOn ? .isSelected : [])
@@ -171,24 +185,27 @@ struct HistoryView: View {
 struct HistoryRow: View {
     let record: DecisionRecord
 
+    @Environment(\.palette) private var palette
+
     var body: some View {
         let info = HistoryLog.info(for: record.tool)
+        let secondary = Color.primary.opacity(palette.isDark ? 0.7 : 0.8)
         HStack(spacing: 12) {
-            ToolIcon(symbol: info.symbol, colors: info.colors, size: 34)
+            ToolIcon(symbol: info.symbol, colors: palette.identity(info.colors), size: 34)
             VStack(alignment: .leading, spacing: 3) {
                 Text(record.result).font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
                 Text(record.title.isEmpty ? info.name : "\(info.name) · \(record.title)")
-                    .font(.caption).foregroundStyle(.primary.opacity(0.7)).lineLimit(1)
+                    .font(.caption).foregroundStyle(secondary).lineLimit(1)
                 if let question = extraQuestion {
                     Label(question, systemImage: "questionmark.bubble")
                         .font(.caption)
-                        .foregroundStyle(.primary.opacity(0.7))
+                        .foregroundStyle(secondary)
                         .lineLimit(1)
                 }
                 DecisionMarks(record: record)
             }
             Spacer()
-            Text(DateText.relative(record.date)).font(.caption2).foregroundStyle(.primary.opacity(0.7))
+            Text(DateText.relative(record.date)).font(.caption2).foregroundStyle(secondary)
         }
         .contentShape(.rect)
         .accessibilityElement(children: .combine)

@@ -5,6 +5,7 @@ import SwiftData
 struct WheelListView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.palette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \WheelTemplate.createdAt) private var templates: [WheelTemplate]
     @AppStorage("wheel.lastTemplate") private var lastTemplateID = ""
 
@@ -22,6 +23,10 @@ struct WheelListView: View {
     @State private var dragBaseRotation: Double = 0
     @State private var lastDragSample: (angle: Double, time: Date)?
     @State private var dragVelocity: Double = 0
+    /// 转盘 chip 行的选中态在 chip 之间流动
+    @Namespace private var glassNamespace
+    /// 结果大字跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .largeTitle) private var resultSize: CGFloat = 34
 
     private var template: WheelTemplate? {
         templates.first { $0.id.uuidString == lastTemplateID } ?? templates.first
@@ -50,27 +55,32 @@ struct WheelListView: View {
                 if let template {
                     // 模板切换
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(templates) { item in
-                                Button {
-                                    lastTemplateID = item.id.uuidString
-                                    restoreAll()
-                                    resultTitle = nil
-                                    Haptics.selection()
-                                } label: {
-                                    Text(item.name)
-                                        .font(.subheadline.weight(.medium))
-                                        .padding(.horizontal, 12).padding(.vertical, 8)
-                                        .foregroundStyle(item.id == template.id ? palette.onAccent : .primary)
-                                        .background(Capsule().fill(item.id == template.id ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.primary.opacity(0.07))))
+                        GlassEffectContainer(spacing: GlassChipMetrics.containerSpacing) {
+                            HStack(spacing: GlassChipMetrics.spacing) {
+                                ForEach(templates) { item in
+                                    Button {
+                                        withAnimation(reduceMotion ? nil : .bouncy) { lastTemplateID = item.id.uuidString }
+                                        restoreAll()
+                                        resultTitle = nil
+                                        Haptics.selection()
+                                    } label: {
+                                        Text(item.name)
+                                            .font(.subheadline.weight(.medium))
+                                            .lineLimit(1)
+                                            .fixedSize()
+                                            .padding(.horizontal, 12).padding(.vertical, 8)
+                                            .glassChip(isOn: item.id == template.id, id: item.id.uuidString, flows: true, in: glassNamespace)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(spinner.isSpinning)
+                                    .accessibilityAddTraits(item.id == template.id ? .isSelected : [])
                                 }
-                                .buttonStyle(.plain)
-                                .disabled(spinner.isSpinning)
-                                .accessibilityAddTraits(item.id == template.id ? .isSelected : [])
                             }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 2)
                         }
-                        .padding(.horizontal, 16)
                     }
+                    .fadingScrollEdges()
                     .pageBleed()
 
                     wheel
@@ -81,7 +91,7 @@ struct WheelListView: View {
                         if let resultTitle {
                             VStack(spacing: 6) {
                                 Text("转到了").font(.subheadline).foregroundStyle(.secondary)
-                                GradientText(text: resultTitle, font: .system(size: 34, weight: .heavy, design: .rounded))
+                                GradientText(text: resultTitle, font: .system(size: min(resultSize, 34 * 1.6), weight: .heavy, design: .rounded))
                                     .multilineTextAlignment(.center)
                             }
                             .transition(.scale.combined(with: .opacity))
@@ -124,6 +134,8 @@ struct WheelListView: View {
             .pageContent()
             .padding(.bottom, 30)
         }
+        // 悬浮 tab 栏下，选项列表最后一行也能完整滚出来
+        .contentMargins(.bottom, 24, for: .scrollContent)
         .scrollDisabled(dragStartAngle != nil)
         .overlay { ConfettiView(trigger: confetti) }
         .cosmicBackground()

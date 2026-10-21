@@ -7,6 +7,7 @@ import Combine
 struct JournalView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     /// 零点和回到前台时刷新
     @State private var today = DayKey.today
@@ -47,26 +48,41 @@ struct JournalView: View {
             }
             .accessibilityElement(children: .combine)
             Spacer(minLength: 0)
-            if !isCurrentMonth {
-                Button("回到本月") { setMonth(Self.firstDay(of: today)) }
-                    .font(.subheadline)
+            // 三个玻璃按钮放在同一个容器里：「回到本月」出现、消失时从旁边的箭头里长出来、融回去
+            GlassEffectContainer(spacing: 10) {
+                HStack(spacing: 10) {
+                    if !isCurrentMonth {
+                        Button {
+                            setMonth(Self.firstDay(of: today))
+                        } label: {
+                            // 超大字号时只留图标，月份和箭头才排得下
+                            if typeSize.isAccessibilitySize {
+                                Image(systemName: "arrow.uturn.backward").frame(width: 22, height: 22)
+                            } else {
+                                Text("回到本月")
+                            }
+                        }
+                        .font(.subheadline)
+                        .buttonStyle(.glass)
+                        .accessibilityLabel("回到本月")
+                    }
+                    Button {
+                        setMonth(Self.shift(month, by: -1))
+                    } label: {
+                        Image(systemName: "chevron.left").frame(width: 22, height: 22)
+                    }
                     .buttonStyle(.glass)
+                    .accessibilityLabel("上个月")
+                    Button {
+                        setMonth(Self.shift(month, by: 1))
+                    } label: {
+                        Image(systemName: "chevron.right").frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.glass)
+                    .disabled(isCurrentMonth)
+                    .accessibilityLabel("下个月")
+                }
             }
-            Button {
-                setMonth(Self.shift(month, by: -1))
-            } label: {
-                Image(systemName: "chevron.left").frame(width: 22, height: 22)
-            }
-            .buttonStyle(.glass)
-            .accessibilityLabel("上个月")
-            Button {
-                setMonth(Self.shift(month, by: 1))
-            } label: {
-                Image(systemName: "chevron.right").frame(width: 22, height: 22)
-            }
-            .buttonStyle(.glass)
-            .disabled(isCurrentMonth)
-            .accessibilityLabel("下个月")
         }
         .padding(.horizontal, 4)
     }
@@ -147,7 +163,7 @@ private struct JournalMonthContent: View {
 
         VStack(spacing: 16) {
             MonthlyReviewCard(review: review, month: month, isCurrentMonth: isCurrentMonth)
-            JournalShortcuts()
+            JournalShortcuts(today: today)
             LazyVStack(alignment: .leading, spacing: 16) {
                 SectionHeader(title: "时间线", subtitle: days.isEmpty ? nil : "\(days.count) 天有记录", symbol: "list.bullet.below.rectangle")
                     .padding(.horizontal, 4)
@@ -209,10 +225,13 @@ private struct AnnualReviewBanner: View {
     let year: Int
     let isDecember: Bool
 
+    @Environment(\.palette) private var palette
+
     var body: some View {
+        let colors = palette.identity(JournalShortcuts.annualColors)
         NavigationLink(value: AppRoute.annualReview(year: year)) {
             HStack(spacing: 14) {
-                GlowIcon(symbol: "sparkles", color: Color(hex: 0xF59E0B), secondary: Color(hex: 0xEF4444), size: 46)
+                GlowIcon(symbol: "sparkles", color: colors[0], secondary: colors[1], size: 46)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(String(year)) 年度回顾").font(.headline)
                     Text(isDecember ? "这一年快过完了，看看你的年度关键词和最幸运的一天" : "新年好！回头看看去年做过的决定和心情")
@@ -222,7 +241,8 @@ private struct AnnualReviewBanner: View {
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right").foregroundStyle(.tertiary)
             }
-            .glassCard(tint: Color(hex: 0xF59E0B).opacity(0.12), interactive: true)
+            .glassCard(tint: colors[0].opacity(0.12), interactive: true)
+            .zoomSource(.annualReview(year: year))
         }
         .buttonStyle(.pressableCard)
     }
@@ -230,6 +250,8 @@ private struct AnnualReviewBanner: View {
 
 /// 心情、倒数日、运势日历、决策历史、塔罗手记、年度回顾
 private struct JournalShortcuts: View {
+    let today: DayKey
+
     private struct Shortcut: Identifiable {
         let name: String
         let symbol: String
@@ -238,6 +260,10 @@ private struct JournalShortcuts: View {
         var id: String { name }
     }
 
+    /// 年度回顾的身份色（横幅和快捷入口共用）
+    static let annualColors = [Color(hex: 0xF59E0B), Color(hex: 0xEF4444)]
+
+    @Environment(\.palette) private var palette
     @ScaledMetric(relativeTo: .caption) private var tileWidth: CGFloat = 88
 
     private var shortcuts: [Shortcut] {
@@ -247,9 +273,16 @@ private struct JournalShortcuts: View {
             Shortcut(name: "运势日历", symbol: "calendar", colors: [Color(hex: 0x8B5CF6), Color(hex: 0xEC4899)], route: .fortuneCalendar),
             Shortcut(name: "决策历史", symbol: "clock.arrow.circlepath", colors: [Color(hex: 0x94A3B8), Color(hex: 0x6366F1)], route: .history),
             Shortcut(name: "塔罗手记", symbol: "book.closed.fill", colors: [Color(hex: 0x8B5CF6), Color(hex: 0x3B82F6)], route: .tarotJournal),
-            Shortcut(name: "年度回顾", symbol: "chart.bar.xaxis", colors: [Color(hex: 0xF59E0B), Color(hex: 0xEF4444)],
-                     route: .annualReview(year: AppRoute.reviewYear())),
+            Shortcut(name: "年度回顾", symbol: "chart.bar.xaxis", colors: Self.annualColors,
+                     route: .annualReview(year: AppRoute.reviewYear(on: today.date))),
         ]
+    }
+
+    /// 缩放转场的来源。12 月和 1 月顶部有年度回顾横幅，转场从横幅出发，这里的年度回顾不再标（同一路由只标一处）
+    private func zoomRoute(for shortcut: Shortcut) -> AppRoute? {
+        let bannerShown = today.month == 12 || today.month == 1
+        if bannerShown, case .annualReview = shortcut.route { return nil }
+        return shortcut.route
     }
 
     var body: some View {
@@ -259,7 +292,8 @@ private struct JournalShortcuts: View {
                 ForEach(shortcuts) { shortcut in
                     NavigationLink(value: shortcut.route) {
                         VStack(spacing: 6) {
-                            ToolIcon(symbol: shortcut.symbol, colors: shortcut.colors, size: 44)
+                            ToolIcon(symbol: shortcut.symbol, colors: palette.identity(shortcut.colors), size: 44)
+                                .zoomSource(ifPresent: zoomRoute(for: shortcut))
                             Text(shortcut.name)
                                 .font(.caption)
                                 .foregroundStyle(.primary)
@@ -275,5 +309,17 @@ private struct JournalShortcuts: View {
             }
         }
         .glassCard()
+    }
+}
+
+private extension View {
+    /// route 为 nil 时不标缩放来源
+    @ViewBuilder
+    func zoomSource(ifPresent route: AppRoute?) -> some View {
+        if let route {
+            zoomSource(route)
+        } else {
+            self
+        }
     }
 }
