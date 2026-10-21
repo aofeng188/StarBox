@@ -5,11 +5,15 @@ import SwiftData
 struct WheelListView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.palette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \WheelTemplate.createdAt) private var templates: [WheelTemplate]
     @AppStorage("wheel.lastTemplate") private var lastTemplateID = ""
 
     @State private var spinner = WheelSpinner()
     @State private var eliminated: Set<UUID> = []
+    /// 淘汰模式下刚转到的选项：结果出来就算淘汰，只是先留在盘面上让指针对着它，稍后或下一次转动前再移出
+    @State private var pendingElimination: UUID?
+    @State private var eliminationTask: Task<Void, Never>?
     @State private var resultTitle: String?
     @State private var lastIndex = -1
     @State private var lastTick = Date.distantPast
@@ -19,6 +23,10 @@ struct WheelListView: View {
     @State private var dragBaseRotation: Double = 0
     @State private var lastDragSample: (angle: Double, time: Date)?
     @State private var dragVelocity: Double = 0
+    /// 转盘 chip 行的选中态在 chip 之间流动
+    @Namespace private var glassNamespace
+    /// 结果大字跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .largeTitle) private var resultSize: CGFloat = 34
 
     private var template: WheelTemplate? {
         templates.first { $0.id.uuidString == lastTemplateID } ?? templates.first
@@ -30,31 +38,49 @@ struct WheelListView: View {
             .map { WheelSegment(id: $0.id, title: $0.title, weight: $0.weight) }
     }
 
+    /// 下一次转动真正参与的选项数（刚淘汰、还留在盘面上的不算）
+    private var spinnableCount: Int {
+        segments.filter { $0.id != pendingElimination }.count
+    }
+
+    /// 当前转盘里已淘汰（含待移出）的选项数；编辑时删掉的选项、换转盘前留下的记录不算
+    private var eliminatedCount: Int {
+        (template?.options ?? []).filter { eliminated.contains($0.id) || $0.id == pendingElimination }.count
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 18) {
+                QuestionBanner()
                 if let template {
                     // 模板切换
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(templates) { item in
-                                Button {
-                                    lastTemplateID = item.id.uuidString
-                                    eliminated = []
-                                    resultTitle = nil
-                                    Haptics.selection()
-                                } label: {
-                                    Text(item.name)
-                                        .font(.subheadline.weight(.medium))
-                                        .padding(.horizontal, 12).padding(.vertical, 8)
-                                        .foregroundStyle(item.id == template.id ? .white : .primary)
-                                        .background(Capsule().fill(item.id == template.id ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.primary.opacity(0.07))))
+                        GlassEffectContainer(spacing: GlassChipMetrics.containerSpacing) {
+                            HStack(spacing: GlassChipMetrics.spacing) {
+                                ForEach(templates) { item in
+                                    Button {
+                                        withAnimation(reduceMotion ? nil : .bouncy) { lastTemplateID = item.id.uuidString }
+                                        restoreAll()
+                                        resultTitle = nil
+                                        Haptics.selection()
+                                    } label: {
+                                        Text(item.name)
+                                            .font(.subheadline.weight(.medium))
+                                            .lineLimit(1)
+                                            .fixedSize()
+                                            .padding(.horizontal, 12).padding(.vertical, 8)
+                                            .glassChip(isOn: item.id == template.id, id: item.id.uuidString, flows: true, in: glassNamespace)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(spinner.isSpinning)
+                                    .accessibilityAddTraits(item.id == template.id ? .isSelected : [])
                                 }
-                                .buttonStyle(.plain)
                             }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 2)
                         }
-                        .padding(.horizontal, 16)
                     }
+                    .fadingScrollEdges()
                     .pageBleed()
 
                     wheel
@@ -65,7 +91,7 @@ struct WheelListView: View {
                         if let resultTitle {
                             VStack(spacing: 6) {
                                 Text("转到了").font(.subheadline).foregroundStyle(.secondary)
-                                GradientText(text: resultTitle, font: .system(size: 34, weight: .heavy, design: .rounded))
+                                GradientText(text: resultTitle, font: .system(size: min(resultSize, 34 * 1.6), weight: .heavy, design: .rounded))
                                     .multilineTextAlignment(.center)
                             }
                             .transition(.scale.combined(with: .opacity))
@@ -80,9 +106,10 @@ struct WheelListView: View {
                         HStack {
                             Label("淘汰模式：转到的选项会暂时移出", systemImage: "scissors").font(.caption).foregroundStyle(.secondary)
                             Spacer()
-                            if !eliminated.isEmpty {
-                                Button("恢复全部（\(eliminated.count)）") { withAnimation { eliminated = [] } }
+                            if eliminatedCount > 0 {
+                                Button("恢复全部（\(eliminatedCount)）") { withAnimation { restoreAll() } }
                                     .font(.caption)
+                                    .disabled(spinner.isSpinning)
                             }
                         }
                         .glassCard(padding: 14)
@@ -107,6 +134,8 @@ struct WheelListView: View {
             .pageContent()
             .padding(.bottom, 30)
         }
+        // 悬浮 tab 栏下，选项列表最后一行也能完整滚出来
+        .contentMargins(.bottom, 24, for: .scrollContent)
         .scrollDisabled(dragStartAngle != nil)
         .overlay { ConfettiView(trigger: confetti) }
         .cosmicBackground()
@@ -121,14 +150,30 @@ struct WheelListView: View {
                 } label: {
                     Image(systemName: "slider.horizontal.3")
                 }
+                .disabled(spinner.isSpinning)
             }
         }
         .sheet(item: $editing) { template in
             NavigationStack { WheelEditor(template: template) }
         }
-        .onShake { spin(velocity: nil) }
+        .onShake(isEnabled: editing == nil) { spin(velocity: nil) }
+        // 关掉淘汰模式后「恢复全部」不再显示，已移出的选项要放回盘面
+        .onChange(of: template?.removeAfterSpin) { _, isOn in
+            if isOn != true { restoreAll() }
+        }
+        // 在编辑器里删掉当前转盘后会自动换到另一个，上一个转盘的结果和淘汰状态一并清掉
+        .onChange(of: template?.id) { _, _ in
+            restoreAll()
+            resultTitle = nil
+        }
         .onAppear {
             spinner.onFrame = { angle in tick(angle) }
+            // 从问一问带着「A 还是 B」进来：选项写进「问一问」转盘并切过去
+            if let id = AskWheel.applyPending(in: context, templates: templates) {
+                restoreAll()
+                resultTitle = nil
+                lastTemplateID = id.uuidString
+            }
         }
         .onDisappear { spinner.stop() }
     }
@@ -149,14 +194,14 @@ struct WheelListView: View {
             } label: {
                 Text("GO")
                     .font(.system(size: 26, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(palette.onAccent)
                     .frame(width: 84, height: 84)
                     .background(Circle().fill(palette.accentGradient))
             }
             .buttonStyle(.plain)
             .glassEffect(.regular.interactive(), in: .circle)
             .shadow(color: palette.accent.opacity(0.6), radius: 14)
-            .disabled(spinner.isSpinning || segments.count < 2)
+            .disabled(spinner.isSpinning || spinnableCount < 2)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .accessibilityLabel("开始转动")
         }
@@ -223,8 +268,11 @@ struct WheelListView: View {
 
     /// velocity 为拨动速度（度/秒，正为顺时针）；nil 表示点按按钮
     private func spin(velocity: Double?) {
-        let segments = segments
-        guard segments.count >= 2, !spinner.isSpinning else { return }
+        guard !spinner.isSpinning else { return }
+        // 先确认移出上一次淘汰的选项后还能转，再真正移出，落点按移出后的扇区计算
+        let segments = segments.filter { $0.id != pendingElimination }
+        guard segments.count >= 2 else { return }
+        commitElimination()
         guard let index = TrueRandom.weightedIndex(segments.map(\.weight)) else { return }
         let range = WheelCanvas.ranges(segments)[index]
         let width = range.upperBound - range.lowerBound
@@ -238,6 +286,9 @@ struct WheelListView: View {
         delta += direction * turns * 360
         let target = spinner.angle + delta
         let duration = min(7, max(3.2, abs(delta) / speed * 1.6))
+        // 转动开始时记下模板名和模式，结果按这一次的转盘记录
+        let templateName = template?.name ?? ""
+        let eliminates = template?.removeAfterSpin == true
 
         resultTitle = nil
         SoundEngine.shared.play(.whoosh, volume: 0.5)
@@ -248,14 +299,37 @@ struct WheelListView: View {
             SoundEngine.shared.play(.success)
             Haptics.success()
             confetti += 1
-            HistoryLog.add(context, tool: ToolKind.wheel.rawValue, title: template?.name ?? "", result: picked.title)
-            if template?.removeAfterSpin == true {
-                Task {
+            Announce.post("转到了：\(picked.title)")
+            HistoryLog.add(context, tool: ToolKind.wheel.rawValue, title: templateName, result: picked.title)
+            if eliminates {
+                pendingElimination = picked.id
+                eliminationTask = Task {
                     try? await Task.sleep(for: .seconds(1.2))
-                    withAnimation(.snappy) { _ = eliminated.insert(picked.id) }
+                    guard !Task.isCancelled else { return }
+                    commitElimination(animated: true)
                 }
             }
         }
+    }
+
+    /// 把刚转到的选项正式移出盘面
+    private func commitElimination(animated: Bool = false) {
+        eliminationTask?.cancel()
+        eliminationTask = nil
+        guard let id = pendingElimination else { return }
+        pendingElimination = nil
+        if animated {
+            withAnimation(.snappy) { _ = eliminated.insert(id) }
+        } else {
+            eliminated.insert(id)
+        }
+    }
+
+    private func restoreAll() {
+        eliminationTask?.cancel()
+        eliminationTask = nil
+        pendingElimination = nil
+        eliminated = []
     }
 
     private func create() {
@@ -267,6 +341,9 @@ struct WheelListView: View {
             context.insert(option)
         }
         try? context.save()
+        // 和点模板 chip 一样，换到新转盘时清掉上一个转盘的淘汰状态和结果
+        restoreAll()
+        resultTitle = nil
         lastTemplateID = template.id.uuidString
         editing = template
     }
@@ -338,7 +415,9 @@ struct WheelEditor: View {
     private func add() {
         let title = newOption.trimmingCharacters(in: .whitespaces)
         guard !title.isEmpty else { return }
-        let option = WheelOption(title: title, sortIndex: template.options?.count ?? 0)
+        // 接在现有最大序号后面，删除过选项也不会和已有项重号
+        let nextIndex = ((template.options ?? []).map(\.sortIndex).max() ?? -1) + 1
+        let option = WheelOption(title: title, sortIndex: nextIndex)
         option.template = template
         context.insert(option)
         try? context.save()

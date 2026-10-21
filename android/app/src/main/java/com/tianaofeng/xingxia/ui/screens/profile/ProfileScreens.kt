@@ -3,7 +3,6 @@ package com.tianaofeng.xingxia.ui.screens.profile
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,10 +28,12 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.GridOn
 import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.People
 import androidx.compose.material.icons.rounded.PersonAddAlt1
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.SettingsBackupRestore
 import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.DropdownMenu
@@ -53,6 +54,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,6 +67,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tianaofeng.xingxia.BuildConfig
 import com.tianaofeng.xingxia.core.BaZi
 import com.tianaofeng.xingxia.core.BirthCity
 import com.tianaofeng.xingxia.core.BirthInfo
@@ -77,10 +80,12 @@ import com.tianaofeng.xingxia.core.LunarDate
 import com.tianaofeng.xingxia.core.WuXing
 import com.tianaofeng.xingxia.core.ZodiacSign
 import com.tianaofeng.xingxia.core.lunar
+import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.data.Profile
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.ui.components.BigActionButton
 import com.tianaofeng.xingxia.ui.components.CircleIconButton
+import com.tianaofeng.xingxia.ui.components.DayKeySaver
 import com.tianaofeng.xingxia.ui.components.EmptyHint
 import com.tianaofeng.xingxia.ui.components.Flow
 import com.tianaofeng.xingxia.ui.components.Fonts
@@ -99,12 +104,16 @@ import com.tianaofeng.xingxia.ui.components.TagChip
 import com.tianaofeng.xingxia.ui.components.TextAction
 import com.tianaofeng.xingxia.ui.components.ToggleRow
 import com.tianaofeng.xingxia.ui.components.ToolIcon
+import com.tianaofeng.xingxia.ui.components.fadingHorizontalScroll
 import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.weight
 import com.tianaofeng.xingxia.ui.nav.LocalNavigator
 import com.tianaofeng.xingxia.ui.nav.Routes
 import com.tianaofeng.xingxia.ui.screens.common.ZodiacBadge
+import com.tianaofeng.xingxia.ui.screens.divination.CompatibilityShareButton
 import com.tianaofeng.xingxia.ui.screens.divination.GlassTextField
+import com.tianaofeng.xingxia.ui.screens.divination.ShareSide
+import com.tianaofeng.xingxia.ui.screens.ritual.MoonBadgeCard
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.ThemeManager
 import com.tianaofeng.xingxia.ui.theme.color
@@ -161,17 +170,20 @@ fun MeScreen() {
             }
         }
 
+        // 月相徽章：走完每日仪式的日子点亮当晚的月相
+        MoonBadgeCard()
+
         GlassCard(padding = 6.dp, spacing = 0.dp) {
             MeRow(Icons.Rounded.People, listOf(hex(0x60A5FA), hex(0x6366F1)), "档案管理", "${profiles.size} 个") { navigator.open(Routes.PROFILES) }
             RowDivider()
             MeRow(Icons.Rounded.GridOn, listOf(hex(0xA78BFA), hex(0xEC4899)), "我的命盘", "八字 · 星盘") { navigator.open(Routes.BIRTH_CHART) }
-            RowDivider()
-            MeRow(Icons.Rounded.Favorite, listOf(hex(0xFB7185), hex(0xF43F5E)), "缘分配对", "星座 · 生肖") { navigator.open(Routes.COMPATIBILITY) }
         }
         GlassCard(padding = 6.dp, spacing = 0.dp) {
             MeRow(Icons.Rounded.Palette, palette.spectrum.take(2), "主题与外观", ThemeManager.resolve(java.time.LocalDateTime.now(), Store.birth, false).first.name) { navigator.open(Routes.THEMES) }
             RowDivider()
-            MeRow(Icons.Rounded.Settings, listOf(hex(0x94A3B8), hex(0x475569)), "设置", "震动 · 摇一摇 · 动画") { navigator.open(Routes.SETTINGS) }
+            MeRow(Icons.Rounded.Settings, listOf(hex(0x94A3B8), hex(0x475569)), "设置", "音效 · 震动 · 提醒") { navigator.open(Routes.SETTINGS) }
+            RowDivider()
+            MeRow(Icons.Rounded.SettingsBackupRestore, listOf(hex(0x2DD4BF), hex(0x0EA5E9)), "数据备份", backupValue()) { navigator.open(Routes.BACKUP) }
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -181,11 +193,22 @@ fun MeScreen() {
         }
 
         SecondaryText(
-            "星匣 Android 版 1.0 · 所有数据仅保存在你的设备上",
+            "星匣 Android 版 ${BuildConfig.VERSION_NAME} · 所有数据仅保存在你的设备上",
             style = Fonts.caption,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
+    }
+}
+
+/** 「我的」里数据备份一行的说明：上次导出是哪天 */
+private fun backupValue(): String {
+    val last = AppSettings.backupLastExportAt
+    if (last <= 0) return "导出 · 恢复"
+    return when (val days = DayKey.of(Instant.ofEpochMilli(last)).daysTo(DayKey.today)) {
+        in Int.MIN_VALUE..0 -> "今天已备份"
+        1 -> "昨天已备份"
+        else -> "$days 天前备份"
     }
 }
 
@@ -203,7 +226,7 @@ private fun MeRow(icon: ImageVector, colors: List<Color>, title: String, value: 
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        ToolIcon(icon, colors, 34.dp)
+        ToolIcon(icon, palette.identity(colors), 34.dp)
         Text(title, style = Fonts.body, modifier = Modifier.weight(1f))
         SecondaryText(value)
         Icon(Icons.Rounded.ChevronRight, null, tint = palette.tertiaryText)
@@ -300,23 +323,24 @@ fun ProfileEditorScreen(profileId: String?, isOnboarding: Boolean) {
     val existing = remember(profileId) { Store.profiles.items.firstOrNull { it.id == profileId } }
     val initialLunar = remember(existing) { existing?.birthdayKey?.lunar() }
 
-    var name by remember { mutableStateOf(existing?.name ?: "") }
-    var relation by remember { mutableStateOf(existing?.relation ?: if (isOnboarding || Store.profiles.items.isEmpty()) "自己" else "朋友") }
-    var avatar by remember { mutableStateOf(existing?.avatar ?: "🌟") }
-    var useLunar by remember { mutableStateOf(existing?.enteredAsLunar ?: false) }
-    var birthday by remember { mutableStateOf(existing?.birthdayKey ?: DayKey(1998, 6, 18)) }
-    var lunarYear by remember { mutableIntStateOf(initialLunar?.lunarYear ?: 1998) }
-    var lunarMonth by remember { mutableIntStateOf(initialLunar?.month ?: 5) }
-    var lunarDay by remember { mutableIntStateOf(initialLunar?.day ?: 1) }
-    var lunarLeap by remember { mutableStateOf(initialLunar?.isLeapMonth ?: false) }
-    var knowsTime by remember { mutableStateOf(existing?.hasBirthTime ?: false) }
-    var hour by remember { mutableIntStateOf(existing?.birthHour ?: 12) }
-    var minute by remember { mutableIntStateOf(existing?.birthMinute ?: 0) }
-    var cityId by remember { mutableStateOf(existing?.birthCityId ?: "beijing") }
-    var showDate by remember { mutableStateOf(false) }
-    var showTime by remember { mutableStateOf(false) }
-    var showCity by remember { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf(false) }
+    // 旋转、切换深浅色等配置变化后保留已填的内容
+    var name by rememberSaveable { mutableStateOf(existing?.name ?: "") }
+    var relation by rememberSaveable { mutableStateOf(existing?.relation ?: if (isOnboarding || Store.profiles.items.isEmpty()) "自己" else "朋友") }
+    var avatar by rememberSaveable { mutableStateOf(existing?.avatar ?: "🌟") }
+    var useLunar by rememberSaveable { mutableStateOf(existing?.enteredAsLunar ?: false) }
+    var birthday by rememberSaveable(stateSaver = DayKeySaver) { mutableStateOf(existing?.birthdayKey ?: DayKey(1998, 6, 18)) }
+    var lunarYear by rememberSaveable { mutableIntStateOf(initialLunar?.lunarYear ?: 1998) }
+    var lunarMonth by rememberSaveable { mutableIntStateOf(initialLunar?.month ?: 5) }
+    var lunarDay by rememberSaveable { mutableIntStateOf(initialLunar?.day ?: 1) }
+    var lunarLeap by rememberSaveable { mutableStateOf(initialLunar?.isLeapMonth ?: false) }
+    var knowsTime by rememberSaveable { mutableStateOf(existing?.hasBirthTime ?: false) }
+    var hour by rememberSaveable { mutableIntStateOf(existing?.birthHour ?: 12) }
+    var minute by rememberSaveable { mutableIntStateOf(existing?.birthMinute ?: 0) }
+    var cityId by rememberSaveable { mutableStateOf(existing?.birthCityId ?: "beijing") }
+    var showDate by rememberSaveable { mutableStateOf(false) }
+    var showTime by rememberSaveable { mutableStateOf(false) }
+    var showCity by rememberSaveable { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
 
     val leapOfYear = LunarDate.leapMonth(lunarYear)
     val converted = LunarDate.solarDate(lunarYear, lunarMonth, lunarDay, lunarLeap && leapOfYear == lunarMonth)
@@ -367,7 +391,7 @@ fun ProfileEditorScreen(profileId: String?, isOnboarding: Boolean) {
 
         GlassCard {
             SectionHeader("头像与称呼")
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fadingHorizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 for (emoji in AVATARS) {
                     val selected = emoji == avatar
                     Box(
@@ -403,8 +427,8 @@ fun ProfileEditorScreen(profileId: String?, isOnboarding: Boolean) {
                     InfoRow("对应公历", DateText.full(converted))
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Warning, null, Modifier.size(16.dp), tint = hex(0xF59E0B))
-                        Text("这一天在农历中不存在，请检查日期", style = Fonts.footnote, color = hex(0xF59E0B))
+                        Icon(Icons.Rounded.Warning, null, Modifier.size(16.dp), tint = palette.caution)
+                        Text("这一天在农历中不存在，请检查日期", style = Fonts.footnote, color = palette.caution)
                     }
                 }
             } else {
@@ -641,6 +665,12 @@ fun BirthChartScreen() {
             Text(sun.profile, style = Fonts.subheadline, color = palette.text.copy(alpha = 0.85f))
         }
 
+        // 星盘：十二星座 + 等宫制十二宫，标出太阳、月亮和上升
+        GlassCard(spacing = 14.dp) {
+            SectionHeader("星盘", subtitle = if (birth.hasTime) "等宫制 · 第一宫从上升点起" else "太阳与月亮的位置", icon = Icons.Rounded.NightsStay)
+            NatalWheel(birth)
+        }
+
         GlassCard(spacing = 14.dp) {
             SectionHeader("四柱八字", subtitle = if (bazi.trueSolarApplied) "已按真太阳时校正" else "未填出生时间，仅排三柱", icon = Icons.Rounded.GridOn)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -685,7 +715,7 @@ fun BirthChartScreen() {
                 for (element in WuXing.entries) {
                     val value = counts.getValue(element)
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("$value", style = Fonts.caption.weight(FontWeight.Bold), color = element.color)
+                        Text("$value", style = Fonts.caption.weight(FontWeight.Bold), color = palette.ink(element.color))
                         Box(
                             Modifier
                                 .fillMaxWidth()
@@ -730,8 +760,8 @@ private fun Pillar(title: String, pillar: GanZhi, highlight: Boolean, modifier: 
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         SecondaryText(title, style = Fonts.caption)
-        Text(pillar.stem.name, style = Fonts.serif(30, bold = true), color = pillar.stem.element.color)
-        Text(pillar.branch.name, style = Fonts.serif(30, bold = true), color = pillar.branch.element.color)
+        Text(pillar.stem.name, style = Fonts.serif(30, bold = true), color = palette.ink(pillar.stem.element.color))
+        Text(pillar.branch.name, style = Fonts.serif(30, bold = true), color = palette.ink(pillar.branch.element.color))
         SecondaryText(pillar.nayin, style = Fonts.caption2)
     }
 }
@@ -765,7 +795,13 @@ fun CompatibilityScreen() {
     val animals = a.animal?.let { x -> b.animal?.let { y -> x to y } }
     val result = Compatibility.between(a.sign, b.sign, animals)
 
-    Screen(title = "缘分配对", spacing = 18.dp) {
+    Screen(
+        title = "缘分配对",
+        spacing = 18.dp,
+        actions = {
+            CompatibilityShareButton(ShareSide(a.sign, a.animal, a.title, a.avatar), ShareSide(b.sign, b.animal, b.title, b.avatar), result)
+        },
+    ) {
         GlassCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SidePicker(a, profiles, Modifier.weight(1f)) { left = it }

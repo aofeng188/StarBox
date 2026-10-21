@@ -11,6 +11,8 @@ struct FortuneStick: Decodable, Identifiable, Hashable {
     var id: Int { n }
     var levelInfo: StickLevel { StickLevel(rawValue: level) ?? .middle }
     var numberText: String { "第\(StickLibrary.chineseNumber(n))签" }
+    /// 读屏播报用，例如「第 12 签，上上签，云开见月」
+    var spokenText: String { "第 \(n) 签，\(levelInfo.displayName)，\(title)" }
 
     /// 各方面的断语（按签等从断语库中稳定地选取）
     var areas: [(String, String)] {
@@ -29,6 +31,8 @@ enum StickLevel: String, CaseIterable {
     case low = "下"
 
     var displayName: String { rawValue == "下" ? "下签" : rawValue + "签" }
+    /// 印章上的字：「上上」「中平」「下签」
+    var sealText: String { rawValue == "下" ? "下签" : rawValue }
 
     var color: Color {
         switch self {
@@ -68,6 +72,13 @@ enum StickLibrary {
 
     static func stick(_ number: Int) -> FortuneStick {
         all.first { $0.n == number } ?? all[0]
+    }
+
+    /// 随机求一支：按签库实际的支数取，不假定签号连续。excluding 用于重新求签时避开刚被否定的那支
+    static func random(excluding number: Int? = nil) -> FortuneStick {
+        let pool = all.filter { $0.n != number }
+        let source = pool.isEmpty ? all : pool
+        return source[TrueRandom.int(0...(source.count - 1))]
     }
 
     static let areaNames = ["心愿", "事业", "财运", "感情", "健康", "出行"]
@@ -115,12 +126,21 @@ enum StickLibrary {
         ],
     ]
 
+    /// 签号的中文写法：十二、六十、一百、一百零一、一百一十
     static func chineseNumber(_ n: Int) -> String {
         let digits = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"]
+        guard n >= 0, n < 1000 else { return String(n) }
         if n < 10 { return digits[n] }
-        if n == 10 { return "十" }
-        if n < 20 { return "十" + digits[n % 10] }
-        let tens = digits[n / 10] + "十"
-        return n % 10 == 0 ? tens : tens + digits[n % 10]
+        if n < 20 { return "十" + (n == 10 ? "" : digits[n % 10]) }
+        if n < 100 {
+            let tens = digits[n / 10] + "十"
+            return n % 10 == 0 ? tens : tens + digits[n % 10]
+        }
+        let hundreds = digits[n / 100] + "百"
+        let rest = n % 100
+        if rest == 0 { return hundreds }
+        if rest < 10 { return hundreds + "零" + digits[rest] }
+        // 百位之后的十要带「一」：一百一十五
+        return hundreds + digits[rest / 10] + "十" + (rest % 10 == 0 ? "" : digits[rest % 10])
     }
 }

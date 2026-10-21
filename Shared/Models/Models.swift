@@ -55,6 +55,14 @@ final class DecisionRecord {
     var result: String = ""
     var detail: String?
     var date: Date = Date()
+    /// 「问一问」里当时在问的问题（AppState.currentQuestion），没有就是 nil
+    var question: String?
+    /// nil 没表态，true「就这么办」，false「再想想」
+    var adopted: Bool?
+    /// 回访结果：1 满意，0 一般，-1 后悔；nil 还没回访
+    var satisfaction: Int?
+    /// 回访（含「跳过」）的时间；有值就不再出现在首页回访卡里
+    var followedUpAt: Date?
 
     init(tool: String, title: String, result: String, detail: String? = nil, date: Date = Date()) {
         self.tool = tool
@@ -306,12 +314,29 @@ final class MoodEntry {
     }
 }
 
+/// 每日仪式：某天看过（或跳过）了仪式。每天最多一条，月相徽章按完成的日子统计
+@Model
+final class RitualDay {
+    var dayKey: Int = 0
+    var completedAt: Date = Date()
+    var skipped: Bool = false
+    /// MoonPhaseName.rawValue
+    var moonPhase: Int = 0
+
+    init(dayKey: Int, completedAt: Date = Date(), skipped: Bool = false, moonPhase: Int = 0) {
+        self.dayKey = dayKey
+        self.completedAt = completedAt
+        self.skipped = skipped
+        self.moonPhase = moonPhase
+    }
+}
+
 enum AppSchema {
     static let models: [any PersistentModel.Type] = [
         Profile.self, DecisionRecord.self, StickDraw.self, TarotReading.self,
         FoodMenu.self, FoodMenuItem.self, FoodLog.self, BlockedFood.self,
         LotteryPool.self, LotteryItem.self, WheelTemplate.self, WheelOption.self,
-        Roster.self, CustomPrompt.self, ScratchPreset.self, Countdown.self, MoodEntry.self,
+        Roster.self, CustomPrompt.self, ScratchPreset.self, Countdown.self, MoodEntry.self, RitualDay.self,
     ]
 
     /// App 与小组件共用同一个数据库；App Group 不可用时退回 App 自己的沙盒。

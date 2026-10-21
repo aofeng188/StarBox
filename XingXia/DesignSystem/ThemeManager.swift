@@ -97,6 +97,8 @@ final class ThemeManager {
     private(set) var current: AppTheme = .nebula
     /// 当前主题的来由，展示在主题设置页
     private(set) var reason: String = ""
+    /// 系统低电量模式。星空背景据此暂停动画
+    private(set) var isLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
 
     private var launchRandomID: String
     private var birth: BirthInfo?
@@ -137,6 +139,9 @@ final class ThemeManager {
 
     /// 重新计算当前主题。时段规则依赖时间，由界面定时调用。
     func refresh(now: Date = Date()) {
+        // App 挂起期间切换低电量模式可能收不到通知，回到前台、定时刷新时一并校正
+        let lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+        if lowPower != isLowPowerMode { isLowPowerMode = lowPower }
         let (theme, why) = resolve(now: now)
         if theme.id != current.id {
             current = theme
@@ -183,7 +188,7 @@ final class ThemeManager {
     }
 
     private func festivalTheme(_ day: DayKey) -> (AppTheme, String)? {
-        let festivals = Festivals.on(day, lunar: LunarDate(day.date))
+        let festivals = Festivals.on(day, lunar: LunarDate(day))
         let table: [(String, AppTheme)] = [
             ("春节", .redGiant), ("除夕", .redGiant), ("元宵节", .redGiant), ("中秋节", .solarGold),
             ("七夕", .sakura), ("情人节", .sakura), ("圣诞节", .aurora), ("平安夜", .aurora), ("万圣夜", .eventHorizon),

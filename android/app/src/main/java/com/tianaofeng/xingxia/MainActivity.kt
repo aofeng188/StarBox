@@ -1,16 +1,12 @@
 package com.tianaofeng.xingxia
 
 import android.app.Application
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.os.PowerManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -19,14 +15,17 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
+import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.data.Store
-import com.tianaofeng.xingxia.ui.components.CosmicBackground
+import com.tianaofeng.xingxia.ui.components.CosmicBackdrop
 import com.tianaofeng.xingxia.ui.components.HapticsHost
+import com.tianaofeng.xingxia.ui.components.SensitiveClipboard
 import com.tianaofeng.xingxia.ui.components.SoundEngine
+import com.tianaofeng.xingxia.ui.components.rememberPowerSaveMode
 import com.tianaofeng.xingxia.system.ReminderScheduler
+import com.tianaofeng.xingxia.system.SkyReminders
 import com.tianaofeng.xingxia.system.Widgets
 import com.tianaofeng.xingxia.ui.nav.AppNavigation
 import com.tianaofeng.xingxia.ui.nav.Routes
@@ -40,6 +39,7 @@ class XingXiaApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         Store.init(this)
+        AppSettings.migrateIfNeeded()
         SoundEngine.prepare(this)
         val app = this
         Store.onDataChanged = {
@@ -47,6 +47,8 @@ class XingXiaApplication : Application() {
             ReminderScheduler.reschedule(app)
         }
         ReminderScheduler.reschedule(this)
+        SkyReminders.reschedule(this)
+        ReminderScheduler.scheduleDayChange(this)
     }
 }
 
@@ -56,19 +58,31 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        if (savedInstanceState == null) pendingLink.value = Routes.fromUri(intent?.data)
+        // 从小组件、通知、快捷方式点进来的那次不弹每日仪式（Store.markDeepLink）
+        if (savedInstanceState == null) pendingLink.value = Routes.fromUri(intent?.data)?.also { Store.markDeepLink() }
         setContent { XingXiaRoot(pendingLink) }
     }
 
     override fun onStop() {
         super.onStop()
-        // 离开 App 时刷新小组件（主题、档案、日期都可能变了）
+        // 退到后台时收起「就这么办 / 再想想」浮层（收起不算表态）
+        Store.lastDecision = null
+        // 离开 App 时刷新小组件（主题、档案、日期、心情都可能变了）
         Widgets.updateAll(this)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        Routes.fromUri(intent.data)?.let { pendingLink.value = it }
+        Routes.fromUri(intent.data)?.let {
+            Store.markDeepLink()
+            pendingLink.value = it
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // 拷贝的密码在后台到期时读不到剪贴板，回到前台再检查一次
+        if (hasFocus) SensitiveClipboard.clearIfExpired(this, hasFocus = true)
     }
 }
 
@@ -84,15 +98,12 @@ fun rememberMinuteClock(): LocalDateTime {
     return now
 }
 
-private fun isPowerSave(context: Context): Boolean =
-    (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isPowerSaveMode == true
-
 @Composable
 fun XingXiaRoot(pendingLink: MutableState<String?>) {
     val context = LocalContext.current
     val now = rememberMinuteClock()
     val systemDark = isSystemInDarkTheme()
-    val (theme, _) = ThemeManager.resolve(now, Store.birth, isPowerSave(context))
+    val (theme, _) = ThemeManager.resolve(now, Store.birth, rememberPowerSaveMode())
     val dark = when (ThemeManager.appearance) {
         AppearanceMode.SYSTEM -> systemDark
         AppearanceMode.LIGHT -> false
@@ -112,10 +123,8 @@ fun XingXiaRoot(pendingLink: MutableState<String?>) {
     XingXiaTheme(palette) {
         CompositionLocalProvider(LocalContentColor provides palette.text) {
             HapticsHost()
-            Box(Modifier.fillMaxSize()) {
-                CosmicBackground()
-                AppNavigation(pendingLink)
-            }
+            // 星空背景同时是玻璃卡片的模糊来源
+            CosmicBackdrop { AppNavigation(pendingLink) }
         }
     }
 }

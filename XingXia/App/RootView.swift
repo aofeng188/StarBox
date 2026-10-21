@@ -5,29 +5,48 @@ struct RootView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(ThemeManager.self) private var themes
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// 动态字体的放大倍数：舞台页主按钮跟着字号变高，浮层也要抬得更高
+    @ScaledMetric(relativeTo: .headline) private var textScale: CGFloat = 1
+    /// 底栏配件（今日胶囊）此刻是否展开浮在 tab 栏上方
+    @State private var accessoryExpanded = false
 
     var body: some View {
         @Bindable var app = app
         TabView(selection: $app.selectedTab) {
             Tab("今日", systemImage: "sparkles", value: AppTab.today) {
                 NavigationStack(path: app.binding(for: .today)) { TodayView().withAppRoutes() }
+                    .zoomTransitionRoot()
             }
-            Tab("占卜", systemImage: "moon.stars.fill", value: AppTab.divination) {
-                NavigationStack(path: app.binding(for: .divination)) { DivinationHubView().withAppRoutes() }
+            Tab("问一问", systemImage: "questionmark.bubble.fill", value: AppTab.ask) {
+                NavigationStack(path: app.binding(for: .ask)) { AskView().withAppRoutes() }
+                    .zoomTransitionRoot()
             }
-            Tab("百宝", systemImage: "square.grid.2x2.fill", value: AppTab.tools) {
-                NavigationStack(path: app.binding(for: .tools)) { ToolsHubView().withAppRoutes() }
-            }
-            Tab("记录", systemImage: "calendar", value: AppTab.records) {
-                NavigationStack(path: app.binding(for: .records)) { RecordsHubView().withAppRoutes() }
+            Tab("日记", systemImage: "text.book.closed.fill", value: AppTab.journal) {
+                NavigationStack(path: app.binding(for: .journal)) { JournalView().withAppRoutes() }
+                    .zoomTransitionRoot()
             }
             Tab("我的", systemImage: "person.crop.circle.fill", value: AppTab.me) {
                 NavigationStack(path: app.binding(for: .me)) { MeView().withAppRoutes() }
+                    .zoomTransitionRoot()
+            }
+            Tab(value: AppTab.search, role: .search) {
+                NavigationStack(path: app.binding(for: .search)) { SearchView().withAppRoutes() }
+                    .zoomTransitionRoot()
             }
         }
+        // iPad 上 tab 栏可以展开成侧边栏；iPhone 上照旧是底部 tab 栏
+        .tabViewStyle(.sidebarAdaptable)
         .tabBarMinimizeBehavior(.onScrollDown)
+        .tabViewBottomAccessory { TodayAccessory(isExpanded: $accessoryExpanded) }
+        .overlay(alignment: .bottom) { DecisionPrompt(bottomInset: promptInset) }
+        .dailyRitual()
+        // 切 tab、进出页面时收起决策浮层
+        .onChange(of: app.selectedTab) { dismissDecisionPrompt() }
+        .onChange(of: app.paths) { dismissDecisionPrompt() }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { _ in
-            // 折叠 / 展开会把窗口换到另一块屏幕：等转场结束，再让系统重新确认支持的方向
+            // 折叠 / 展开会把窗口换到另一块屏幕：等转场结束，再让系统重新确认支持的方向（iPad 一直支持所有方向，不用问）
+            guard UIDevice.current.userInterfaceIdiom == .phone else { return }
             Task {
                 try? await Task.sleep(for: .milliseconds(400))
                 AppDelegate.refreshSupportedOrientations()
@@ -38,6 +57,10 @@ struct RootView: View {
                 themes.refresh()
                 NotificationScheduler.reschedule()
                 Haptics.prepare()
+            } else if phase == .background {
+                dismissDecisionPrompt()
+                // 心情、求签在 App 里记录后，回到桌面时让小组件跟上
+                WidgetKinds.reloadRecordWidgets()
             }
         }
         .task {
@@ -49,12 +72,28 @@ struct RootView: View {
             }
         }
     }
+
+    /// 决策浮层底部让出的高度：iPhone 上 tab 栏浮在底部，沉浸页隐藏了 tab 栏就贴近安全区；iPad 的 tab 栏在顶部。
+    /// 底栏配件展开时还要让出配件的高度。抛硬币、掷骰子的主按钮在最底下（iPad 竖屏也是），浮层抬到按钮上方
+    private var promptInset: CGFloat {
+        let route = app.paths[app.selectedTab]?.last
+        if let lift = route?.promptLiftAboveAction { return lift * min(max(textScale, 1), 1.6) }
+        if route?.hidesTabBar == true { return 8 }
+        let accessory: CGFloat = accessoryExpanded ? 56 : 0
+        guard horizontalSizeClass == .compact else { return 8 + accessory }
+        return 64 + accessory
+    }
+
+    private func dismissDecisionPrompt() {
+        if app.lastDecision != nil { app.dismissDecisionPrompt() }
+    }
 }
 
 extension View {
     func withAppRoutes() -> some View {
         navigationDestination(for: AppRoute.self) { route in
             RouteDestination(route: route)
+                .zoomDestination(route)
         }
     }
 }

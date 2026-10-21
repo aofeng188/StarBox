@@ -116,6 +116,8 @@ struct StageScaffold<Top: View, Stage: View, Bottom: View>: View {
             // 放得下时完全不滚动，免得和舞台上的拖拽、长按手势抢触摸
             .scrollDisabled(proxy.size.height >= required)
         }
+        // 沉浸页隐藏浮动 tab 栏，底部主按钮不会被挡住
+        .toolbar(.hidden, for: .tabBar)
     }
 }
 

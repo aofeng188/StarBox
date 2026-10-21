@@ -66,15 +66,22 @@ struct WheelCanvas: View {
     let colors: [Color]
     let lightsOn: Bool
 
+    @Environment(\.palette) private var palette
+
     var body: some View {
         GeometryReader { proxy in
             let size = min(proxy.size.width, proxy.size.height)
             let radius = size / 2
+            // 金边和跑马灯是转盘「物件」的颜色，向主题强调色靠一点
+            let rim = palette.identity([Color(hex: 0xF5D78E), Color(hex: 0xB8862E)])
+            let bulbOn = palette.identity(Color(hex: 0xFFF3C4))
+            let bulbOff = palette.identity(Color(hex: 0x8A6A2A))
+            let bulbGlow = palette.identity(Color(hex: 0xFFD166))
             ZStack {
                 // 外圈
                 Circle()
                     .fill(LinearGradient(colors: [Color(hex: 0x2A2340), Color(hex: 0x120E22)], startPoint: .top, endPoint: .bottom))
-                    .overlay(Circle().strokeBorder(LinearGradient(colors: [Color(hex: 0xF5D78E), Color(hex: 0xB8862E)], startPoint: .top, endPoint: .bottom), lineWidth: 4))
+                    .overlay(Circle().strokeBorder(LinearGradient(colors: rim, startPoint: .top, endPoint: .bottom), lineWidth: 4))
                     .shadow(color: .black.opacity(0.4), radius: 16, y: 8)
 
                 Canvas { context, canvasSize in
@@ -101,7 +108,8 @@ struct WheelCanvas: View {
                         let band = r * 0.57
                         let fontSize = min(18, max(9, band * sweep * .pi / 180 * 0.6))
                         let title = segment.title.count > 10 ? String(segment.title.prefix(9)) + "…" : segment.title
-                        let resolved = context.resolve(Text(title).font(.system(size: fontSize, weight: .bold)).foregroundColor(.white))
+                        // 扇区底色深浅不一，文字按底色亮度取深字或白字
+                        let resolved = context.resolve(Text(title).font(.system(size: fontSize, weight: .bold)).foregroundColor(Self.labelColor(on: color)))
                         let measured = resolved.measure(in: CGSize(width: 1000, height: 100))
                         let scale = min(1, (r * 0.56) / max(1, measured.width))
                         var text = context
@@ -125,9 +133,9 @@ struct WheelCanvas: View {
                     let a = Double(i) / 24 * 2 * .pi
                     let on = lightsOn ? (i + Int(rotation / 15)) % 2 == 0 : i % 2 == 0
                     Circle()
-                        .fill(on ? Color(hex: 0xFFF3C4) : Color(hex: 0x8A6A2A))
+                        .fill(on ? bulbOn : bulbOff)
                         .frame(width: size * 0.028, height: size * 0.028)
-                        .shadow(color: on ? Color(hex: 0xFFD166) : .clear, radius: 4)
+                        .shadow(color: on ? bulbGlow : .clear, radius: 4)
                         .offset(x: cos(a) * radius * 0.93, y: sin(a) * radius * 0.93)
                 }
             }
@@ -142,6 +150,12 @@ struct WheelCanvas: View {
         // 首尾相邻时避免同色
         if index == count - 1 && count > 1 && i == 0 { i = (i + 1) % colors.count }
         return colors[i]
+    }
+
+    /// 扇区标签的文字色。扇区外缘半透明、压在深色底盘上，外圈还有一层暗角，文字处比填充色暗，
+    /// 所以换成深字的亮度分界比通用的 readableForeground（0.18）高，按各主题实测取 0.3
+    static func labelColor(on fill: Color) -> Color {
+        fill.relativeLuminance > 0.3 ? Color(hex: 0x14101F) : .white
     }
 
     /// 扇区区间（从正上方顺时针，单位度）
@@ -164,14 +178,16 @@ struct WheelCanvas: View {
 
 /// 指针
 struct WheelPointer: View {
+    @Environment(\.palette) private var palette
+
     var body: some View {
         ZStack {
             Triangle()
-                .fill(LinearGradient(colors: [Color(hex: 0xFFF3C4), Color(hex: 0xF5B83D)], startPoint: .top, endPoint: .bottom))
+                .fill(LinearGradient(colors: palette.identity([Color(hex: 0xFFF3C4), Color(hex: 0xF5B83D)]), startPoint: .top, endPoint: .bottom))
                 .frame(width: 30, height: 38)
-                .shadow(color: Color(hex: 0xFFD166).opacity(0.9), radius: 8)
+                .shadow(color: palette.identity(Color(hex: 0xFFD166)).opacity(0.9), radius: 8)
             Triangle()
-                .stroke(Color(hex: 0x8A6A2A), lineWidth: 1.5)
+                .stroke(palette.identity(Color(hex: 0x8A6A2A)), lineWidth: 1.5)
                 .frame(width: 30, height: 38)
         }
         .accessibilityHidden(true)

@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.tianaofeng.xingxia.system.ReminderScheduler
+import com.tianaofeng.xingxia.system.SkyReminders
 import com.tianaofeng.xingxia.ui.components.SoundEffect
 import com.tianaofeng.xingxia.ui.components.SoundEngine
 import com.tianaofeng.xingxia.ui.components.TextAction
@@ -42,6 +43,8 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.SettingsBackupRestore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -53,6 +56,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.tianaofeng.xingxia.BuildConfig
 import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.data.Store
 import com.tianaofeng.xingxia.rememberMinuteClock
@@ -74,6 +78,11 @@ import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.ThemeManager
 import com.tianaofeng.xingxia.ui.theme.ThemeRuleMode
 import com.tianaofeng.xingxia.ui.theme.TimeSlot
+import com.tianaofeng.xingxia.ui.nav.LocalNavigator
+import com.tianaofeng.xingxia.ui.nav.Routes
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 
 @Composable
 fun ThemeSettingsScreen() {
@@ -238,6 +247,7 @@ private fun ThemeSwatch(theme: AppTheme, modifier: Modifier) {
 fun SettingsScreen() {
     val context = LocalContext.current
     val palette = LocalPalette.current
+    val navigator = LocalNavigator.current
     var showTime by remember { mutableStateOf(false) }
     var permissionDenied by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -247,6 +257,11 @@ fun SettingsScreen() {
         } else {
             permissionDenied = true
         }
+    }
+    // 天象日历页也有同一个开关；授权结果只作用于这里拨动的那一次
+    val skyPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) AppSettings.skyReminders = true else permissionDenied = true
+        SkyReminders.reschedule(context)
     }
 
     Screen(title = "设置") {
@@ -274,7 +289,15 @@ fun SettingsScreen() {
             ToggleRow("摇一摇", AppSettings.shakeEnabled, "在求签、骰子、抛硬币等页面摇动手机触发") { AppSettings.shakeEnabled = it }
         }
         GlassCard {
-            SectionHeader("每日提醒")
+            SectionHeader("每日仪式")
+            ToggleRow("每日仪式", AppSettings.dailyRitualEnabled) { AppSettings.dailyRitualEnabled = it }
+            SecondaryText(
+                "每天第一次打开星匣时，先看看今天的月亮、运势、签和心情，随时可以跳过。走完仪式的日子会点亮当晚的月相，一轮集齐八种月相得一枚满月徽章。",
+                style = Fonts.caption,
+            )
+        }
+        GlassCard {
+            SectionHeader("提醒")
             ToggleRow("每天推送今日运势", AppSettings.dailyReminderEnabled, "按当前档案计算，点通知直接打开运势详解") { on ->
                 if (on && !ReminderScheduler.hasPermission(context) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -296,21 +319,51 @@ fun SettingsScreen() {
                 }
                 TextAction("现在发一条试试") { ReminderScheduler.showToday(context) }
             }
+            ToggleRow("天象提醒", AppSettings.skyReminders, "满月、新月和流星雨极大的前一天晚上 8 点提醒") { on ->
+                if (on && !ReminderScheduler.hasPermission(context) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    skyPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    AppSettings.skyReminders = on
+                    SkyReminders.reschedule(context)
+                }
+            }
             if (permissionDenied) {
                 SecondaryText("没有通知权限。可以在系统设置 ▸ 应用 ▸ 星匣 ▸ 通知 里打开。", style = Fonts.caption)
             }
         }
         GlassCard {
+            SectionHeader("倒数日")
+            ToggleRow("档案生日自动倒数", AppSettings.profileBirthdaysInCountdowns) { AppSettings.profileBirthdaysInCountdowns = it }
+            SecondaryText("档案里的生日会自动出现在倒数日列表、首页和小组件里，农历录入的按农历每年重复。关掉后只显示你自己添加的倒数日。", style = Fonts.caption)
+        }
+        GlassCard {
+            SectionHeader("数据")
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { navigator.open(Routes.BACKUP) }
+                    .semantics { role = Role.Button }
+                    .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(Icons.Rounded.SettingsBackupRestore, null, tint = palette.accent)
+                Text("数据备份", style = Fonts.body, modifier = Modifier.weight(1f))
+                Icon(Icons.Rounded.ChevronRight, null, tint = palette.tertiaryText)
+            }
+            SecondaryText("数据只保存在本机。换手机、重装前，可以在「数据备份」导出一份，iPhone 和 Android 版可以互相导入。", style = Fonts.caption)
+        }
+        GlassCard {
             SectionHeader("显示")
-            ToggleRow("背景动画", AppSettings.backgroundAnimation, "星空闪烁、星云流动和流星；关闭可省电") { AppSettings.backgroundAnimation = it }
+            ToggleRow("背景动画", AppSettings.backgroundAnimation, "星空闪烁、星云流动和流星；关闭可省电，系统省电模式下会自动暂停") { AppSettings.backgroundAnimation = it }
         }
         GlassCard(spacing = 8.dp) {
             SectionHeader("桌面小组件与快捷方式", icon = Icons.Rounded.Widgets)
-            SecondaryText("长按桌面空白处 ▸ 小组件 ▸ 星匣，可以添加「今日运势」「星座运势」「倒数日」三种小组件。长按星匣图标还能直接打开今天吃什么、抛硬币、求签和今日运势。", style = Fonts.caption)
+            SecondaryText("长按桌面空白处 ▸ 小组件 ▸ 星匣，可以添加「今日运势」「星座运势」「倒数日」「心情」「抛硬币」五种小组件；星座运势和倒数日可以选择要显示的星座或日子，之后长按小组件能重新设置；心情和抛硬币直接在桌面上点。长按星匣图标还能直接打开今天吃什么、抛硬币、求签和今日运势。", style = Fonts.caption)
         }
         GlassCard(spacing = 8.dp) {
             SectionHeader("关于", icon = Icons.Rounded.Info)
-            SecondaryText("星匣 Android 版 1.1.0")
+            SecondaryText("星匣 Android 版 ${BuildConfig.VERSION_NAME}")
             SecondaryText("运势与占卜内容为娱乐性质，仅供参考。所有数据只保存在本机，不联网、不收集任何信息。", style = Fonts.caption)
         }
     }

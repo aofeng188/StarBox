@@ -5,10 +5,15 @@ import Charts
 struct HistoryView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.palette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 筛选标签的选中底色在标签之间流动
+    @Namespace private var filterNamespace
     @Query(sort: \DecisionRecord.date, order: .reverse) private var records: [DecisionRecord]
     @State private var filter: String?
     @State private var search = ""
     @State private var confirmClear = false
+    /// 点开补记照做 / 满意度的那条
+    @State private var editing: DecisionRecord?
 
     private var tools: [String] {
         var seen: [String] = []
@@ -19,7 +24,8 @@ struct HistoryView: View {
     private var filtered: [DecisionRecord] {
         records.filter { record in
             (filter == nil || record.tool == filter)
-                && (search.isEmpty || record.result.contains(search) || record.title.contains(search))
+                && (search.isEmpty || record.result.contains(search) || record.title.contains(search)
+                    || record.question?.contains(search) == true)
         }
     }
 
@@ -54,6 +60,7 @@ struct HistoryView: View {
                             }
                         }
                     }
+                    .fadingScrollEdges()
                 }
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -62,7 +69,7 @@ struct HistoryView: View {
             ForEach(grouped, id: \.0) { day, items in
                 Section {
                     ForEach(items) { record in
-                        HistoryRow(record: record)
+                        row(record)
                             .swipeActions {
                                 Button("删除", systemImage: "trash", role: .destructive) {
                                     context.delete(record)
@@ -106,20 +113,46 @@ struct HistoryView: View {
                 try? context.save()
             }
         }
+        .sheet(item: $editing) { record in
+            DecisionEditSheet(record: record)
+        }
     }
 
+    /// 决定可以点开补记「照做了吗、后来怎么样」；占卜和游戏只是记一笔
+    @ViewBuilder
+    private func row(_ record: DecisionRecord) -> some View {
+        if JournalStats.isDecision(record.tool) {
+            Button { editing = record } label: { HistoryRow(record: record) }
+                .buttonStyle(.plain)
+                .accessibilityHint("补记是否照做、后来怎么样")
+        } else {
+            HistoryRow(record: record)
+        }
+    }
+
+    /// 选中底色用 matchedGeometryEffect 从旧标签滑到新标签（减弱动态效果时直接切换）。
+    /// 这一行在 fadingScrollEdges 的遮罩里，遮罩下的玻璃取不到背后的画面，所以选中底色不用玻璃
     private func chip(title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
         Button {
-            withAnimation(.snappy) { action() }
+            withAnimation(reduceMotion ? nil : Animation.snappy) { action() }
             Haptics.selection()
         } label: {
             Text(title)
                 .font(.subheadline.weight(isOn ? .semibold : .regular))
                 .padding(.horizontal, 12).padding(.vertical, 7)
-                .foregroundStyle(isOn ? .white : .primary)
-                .background(Capsule().fill(isOn ? AnyShapeStyle(palette.accentGradient) : AnyShapeStyle(.primary.opacity(0.07))))
+                .foregroundStyle(isOn ? palette.onAccent : .primary)
+                .background {
+                    if isOn {
+                        Capsule()
+                            .fill(palette.accentGradient)
+                            .matchedGeometryEffect(id: "filterSelection", in: filterNamespace)
+                    } else {
+                        Capsule().fill(.primary.opacity(0.07))
+                    }
+                }
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
     private var stats: some View {
@@ -145,5 +178,43 @@ struct HistoryView: View {
             }
         }
         .glassCard()
+    }
+}
+
+/// 决策历史的一行：结果、工具和标题，「问一问」带来的问题，以及照做 / 满意度标记
+struct HistoryRow: View {
+    let record: DecisionRecord
+
+    @Environment(\.palette) private var palette
+
+    var body: some View {
+        let info = HistoryLog.info(for: record.tool)
+        let secondary = Color.primary.opacity(palette.isDark ? 0.7 : 0.8)
+        HStack(spacing: 12) {
+            ToolIcon(symbol: info.symbol, colors: palette.identity(info.colors), size: 34)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(record.result).font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
+                Text(record.title.isEmpty ? info.name : "\(info.name) · \(record.title)")
+                    .font(.caption).foregroundStyle(secondary).lineLimit(1)
+                if let question = extraQuestion {
+                    Label(question, systemImage: "questionmark.bubble")
+                        .font(.caption)
+                        .foregroundStyle(secondary)
+                        .lineLimit(1)
+                }
+                DecisionMarks(record: record)
+            }
+            Spacer()
+            Text(DateText.relative(record.date)).font(.caption2).foregroundStyle(secondary)
+        }
+        .contentShape(.rect)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// 「问一问」带过来的问题；和标题一样时（硬币、答案之书把问题当标题）不重复显示
+    private var extraQuestion: String? {
+        guard let question = record.question?.trimmingCharacters(in: .whitespacesAndNewlines), !question.isEmpty,
+              question != record.title.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+        return question
     }
 }

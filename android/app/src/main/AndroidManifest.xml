@@ -13,8 +13,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.XingXia">
 
+        <!-- 旋转、深浅色切换、折叠屏展开、调整字体大小等由 Compose 自行响应，不重建 Activity，编辑中的表单和进行中的占卜不会丢 -->
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode|keyboardHidden|density|fontScale"
             android:exported="true"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">
@@ -33,14 +35,50 @@
         </activity>
 
         <receiver android:name=".system.ReminderReceiver" android:exported="false" />
+        <!-- 天象提醒：满月、新月、流星雨极大前一天晚上 -->
+        <receiver android:name=".system.SkyReminderReceiver" android:exported="false" />
+        <!-- 跨天刷新小组件：DATE_CHANGED 在 Android 8+ 不再发给静态 receiver，改由 AlarmManager 每天零点后触发 -->
+        <receiver android:name=".system.DayChangeReceiver" android:exported="false" />
         <receiver android:name=".system.BootReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
                 <action android:name="android.intent.action.TIME_SET" />
-                <action android:name="android.intent.action.DATE_CHANGED" />
             </intent-filter>
         </receiver>
+
+        <!-- 分享卡图片：缓存目录 share/ 下的文件经 FileProvider 临时授权给分享目标 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- 小组件配置：添加或长按重新设置时选择星座 / 倒数日 -->
+        <activity
+            android:name=".system.HoroscopeWidgetConfigActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="选择星座"
+            android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".system.CountdownWidgetConfigActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="选择倒数日"
+            android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
 
         <receiver android:name=".system.FortuneWidgetReceiver" android:exported="true" android:label="今日运势">
             <intent-filter>
@@ -59,6 +97,19 @@
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/countdown_widget_info" />
+        </receiver>
+        <!-- 可以点的小组件：点表情记心情、点硬币抛一次（Glance 的 actionRunCallback，在 App 进程里写数据） -->
+        <receiver android:name=".system.MoodWidgetReceiver" android:exported="true" android:label="心情">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/mood_widget_info" />
+        </receiver>
+        <receiver android:name=".system.CoinWidgetReceiver" android:exported="true" android:label="抛硬币">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/coin_widget_info" />
         </receiver>
     </application>
 </manifest>

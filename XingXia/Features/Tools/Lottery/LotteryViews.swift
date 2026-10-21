@@ -5,6 +5,8 @@ struct LotteryListView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \LotteryPool.createdAt) private var pools: [LotteryPool]
     @State private var editing: LotteryPool?
+    /// 奖池图标跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .largeTitle) private var iconSize: CGFloat = 36
 
     var body: some View {
         ScrollView {
@@ -14,8 +16,9 @@ struct LotteryListView: View {
                         LotteryDrawView(pool: pool)
                     } label: {
                         HStack(spacing: 14) {
-                            Text(pool.icon).font(.system(size: 36))
-                                .frame(width: 60, height: 60)
+                            let icon = min(iconSize, 36 * 1.6)
+                            Text(pool.icon).font(.system(size: icon))
+                                .frame(width: icon * 60 / 36, height: icon * 60 / 36)
                                 .background(Circle().fill(.tint.opacity(0.18)))
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(pool.name).font(.headline).foregroundStyle(.primary)
@@ -49,6 +52,7 @@ struct LotteryListView: View {
             .pageContent()
             .padding(.bottom, 30)
         }
+        .contentMargins(.bottom, 24, for: .scrollContent)
         .cosmicBackground()
         .navigationTitle("自定义抽奖")
         .sheet(item: $editing) { pool in NavigationStack { LotteryEditor(pool: pool) } }
@@ -76,9 +80,20 @@ struct LotteryDrawView: View {
     @State private var revealCount = 0
     @State private var editing = false
     @State private var sessionLog: [String] = []
+    /// 只抽一个时的结果大字，跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .title) private var resultSize: CGFloat = 30
 
     private var available: [LotteryItem] {
         pool.sortedItems.filter { $0.weight > 0 && (!pool.removeAfterDraw || $0.remaining > 0) }
+    }
+
+    /// 抽不了时说明原因：没有奖品、权重全为 0、不放回且已抽完
+    private var unavailableReason: (title: String, hint: String)? {
+        let items = pool.sortedItems
+        if items.isEmpty { return ("先添加奖品吧", "点右上角「编辑」添加奖品或选项") }
+        if items.allSatisfy({ $0.weight <= 0 }) { return ("所有奖品权重都是 0", "在「编辑」里调高权重才能抽") }
+        if available.isEmpty { return ("奖品已经抽完啦", "点下方奖池的「重置」可以再来一轮") }
+        return nil
     }
 
     var body: some View {
@@ -98,7 +113,7 @@ struct LotteryDrawView: View {
                             Text(results.count == 1 ? "恭喜抽中" : "本轮抽中 \(results.count) 个").font(.subheadline).foregroundStyle(.secondary)
                             ForEach(Array(results.enumerated()), id: \.offset) { _, result in
                                 Text(result)
-                                    .font(results.count == 1 ? .system(size: 30, weight: .heavy, design: .rounded) : .headline)
+                                    .font(results.count == 1 ? .system(size: min(resultSize, 30 * 1.6), weight: .heavy, design: .rounded) : .headline)
                                     .foregroundStyle(palette.accentGradient)
                                     .multilineTextAlignment(.center)
                             }
@@ -109,8 +124,14 @@ struct LotteryDrawView: View {
                             CubicKeyframe(1.15, duration: 0.15)
                             SpringKeyframe(1, duration: 0.4, spring: .bouncy)
                         }
+                    } else if let reason = unavailableReason {
+                        VStack(spacing: 6) {
+                            Text(reason.title).font(.title3.weight(.semibold))
+                            Text(reason.hint).font(.footnote).foregroundStyle(.secondary)
+                        }
+                        .multilineTextAlignment(.center)
                     } else {
-                        Text(available.isEmpty ? "奖品已经抽完啦" : "准备好了吗？").font(.title3.weight(.semibold))
+                        Text("准备好了吗？").font(.title3.weight(.semibold))
                     }
                 }
                 .frame(minHeight: 80)
@@ -131,7 +152,7 @@ struct LotteryDrawView: View {
                     HStack {
                         SectionHeader(title: "奖池", subtitle: pool.removeAfterDraw ? "抽中后数量减少" : "可重复抽中", symbol: "shippingbox")
                         if pool.removeAfterDraw {
-                            Button("重置") { reset() }.font(.caption).buttonStyle(.glass)
+                            Button("重置") { reset() }.font(.caption).buttonStyle(.glass).disabled(isDrawing)
                         }
                     }
                     let totalWeight = available.reduce(0.0) { $0 + effectiveWeight($1) }
@@ -165,15 +186,16 @@ struct LotteryDrawView: View {
             .pageContent()
             .padding(.bottom, 30)
         }
+        .contentMargins(.bottom, 24, for: .scrollContent)
         .overlay { ConfettiView(trigger: confetti) }
         .cosmicBackground()
         .navigationTitle("\(pool.icon) \(pool.name)")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { Button("编辑", systemImage: "pencil") { editing = true } }
+            ToolbarItem(placement: .topBarTrailing) { Button("编辑", systemImage: "pencil") { editing = true }.disabled(isDrawing) }
         }
         .sheet(isPresented: $editing) { NavigationStack { LotteryEditor(pool: pool) } }
-        .onShake { if !isDrawing && !available.isEmpty { draw() } }
+        .onShake(isEnabled: !editing) { if !isDrawing && !available.isEmpty { draw() } }
     }
 
     private func effectiveWeight(_ item: LotteryItem) -> Double {
@@ -181,7 +203,7 @@ struct LotteryDrawView: View {
     }
 
     private func draw() {
-        guard !available.isEmpty else { return }
+        guard !isDrawing, !available.isEmpty else { return }
         isDrawing = true
         results = []
         SoundEngine.shared.play(.whoosh)
@@ -214,6 +236,7 @@ struct LotteryDrawView: View {
             confetti += 1
             SoundEngine.shared.play(.success)
             Haptics.reveal()
+            Announce.post("抽中：\(results.joined(separator: "、"))")
             HistoryLog.add(context, tool: ToolKind.lottery.rawValue, title: pool.name, result: results.joined(separator: "、"))
         }
     }
@@ -286,6 +309,7 @@ struct LotteryEditor: View {
     @Bindable var pool: LotteryPool
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.palette) private var palette
     @State private var newName = ""
 
     private let icons = ["🎁", "🎊", "🧧", "🏆", "🍀", "🎉", "💎", "🎟️", "🍬", "🌟"]
@@ -299,12 +323,15 @@ struct LotteryEditor: View {
                         ForEach(icons, id: \.self) { icon in
                             Button { pool.icon = icon } label: {
                                 Text(icon).font(.title2).padding(6)
-                                    .background(Circle().fill(pool.icon == icon ? Color.accentColor.opacity(0.3) : .clear))
+                                    .background(Circle().fill(pool.icon == icon ? palette.accent.opacity(0.3) : .clear))
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("图标 \(icon)")
+                            .accessibilityAddTraits(pool.icon == icon ? .isSelected : [])
                         }
                     }
                 }
+                .fadingScrollEdges()
                 Toggle("抽中后减少数量（不放回）", isOn: $pool.removeAfterDraw)
             }
             .glassRows()
@@ -342,7 +369,9 @@ struct LotteryEditor: View {
     private func add() {
         let name = newName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
-        let item = LotteryItem(name: name, quantity: 1, sortIndex: pool.items?.count ?? 0)
+        // 接在现有最大序号后面，删除过奖品也不会和已有项重号
+        let nextIndex = ((pool.items ?? []).map(\.sortIndex).max() ?? -1) + 1
+        let item = LotteryItem(name: name, quantity: 1, sortIndex: nextIndex)
         item.pool = pool
         context.insert(item)
         try? context.save()

@@ -33,36 +33,52 @@ struct CountdownStatus: Sendable {
     let caption: String
     let targetDay: DayKey
     let isToday: Bool
+
+    /// 不重复的倒数日已经过去
+    var isPast: Bool { prefix == "已过" }
 }
 
-extension Countdown {
-    var kindValue: CountdownKind { CountdownKind(rawValue: kind) ?? .countdown }
-
-    var originDay: DayKey { DayKey(date) }
+/// 倒数日的日期规则（与 Android 的 CountdownSpec 一致）。数据库里的倒数日和由档案生日生成的都用它计算。
+struct CountdownSpec: Hashable, Sendable {
+    let kind: CountdownKind
+    /// 公历日期。农历生日只用它的年份算年龄；不重复的农历倒数日是换算好的目标日
+    let origin: DayKey
+    let repeatsYearly: Bool
+    var isLunar = false
+    var lunarMonth = 1
+    var lunarDay = 1
+    /// 生日是否知道出生年份，不知道时不显示年龄
+    var knowsBirthYear = true
 
     func nextOccurrence(from today: DayKey = .today) -> DayKey {
-        let repeats = repeatsYearly || kindValue == .birthday
-        guard repeats else { return originDay }
-        for year in (today.year - 1)...(today.year + 2) {
-            let candidate: DayKey?
-            if isLunar {
-                let date = LunarDate.solarDate(gregorianYear: year, month: lunarMonth, day: lunarDay, isLeap: false)
-                    ?? LunarDate.solarDate(gregorianYear: year, month: lunarMonth, day: lunarDay - 1, isLeap: false)
-                candidate = date.map { DayKey($0) }
-            } else {
-                let origin = originDay
-                var day = origin.day
-                // 2 月 29 日在平年按 2 月 28 日算
-                if origin.month == 2 && day == 29 && !Self.isLeapYear(year) { day = 28 }
-                candidate = DayKey(year: year, month: origin.month, day: day)
-            }
-            if let candidate, candidate >= today { return candidate }
+        let repeats = repeatsYearly || kind == .birthday
+        if isLunar {
+            // 不重复的农历日子：取不早于 origin（创建日，或编辑器保存时写入的换算结果）的第一个对应公历日期
+            return Self.lunarOccurrence(month: lunarMonth, day: lunarDay, onOrAfter: repeats ? today : origin) ?? origin
         }
-        return originDay
+        guard repeats else { return origin }
+        for year in (today.year - 1)...(today.year + 2) {
+            var day = origin.day
+            // 2 月 29 日在平年按 2 月 28 日算
+            if origin.month == 2 && day == 29 && !Self.isLeapYear(year) { day = 28 }
+            let candidate = DayKey(year: year, month: origin.month, day: day)
+            if candidate >= today { return candidate }
+        }
+        return origin
+    }
+
+    /// 农历某月某日在 start 当天或之后第一次出现的公历日期；小月没有三十时按廿九算
+    static func lunarOccurrence(month: Int, day: Int, onOrAfter start: DayKey) -> DayKey? {
+        for year in (start.year - 1)...(start.year + 2) {
+            let candidate = LunarDate.solarDay(gregorianYear: year, month: month, day: day, isLeap: false)
+                ?? LunarDate.solarDay(gregorianYear: year, month: month, day: day - 1, isLeap: false)
+            if let candidate, candidate >= start { return candidate }
+        }
+        return nil
     }
 
     func status(today: DayKey = .today) -> CountdownStatus {
-        switch kindValue {
+        switch kind {
         case .countdown:
             let target = nextOccurrence(from: today)
             let diff = today.days(to: target)
@@ -73,7 +89,6 @@ extension Countdown {
             }
             return CountdownStatus(days: -diff, prefix: "已过", suffix: "天", caption: caption, targetDay: target, isToday: false)
         case .anniversary:
-            let origin = originDay
             let passed = origin.days(to: today)
             if passed < 0 {
                 return CountdownStatus(days: -passed, prefix: "还有", suffix: "天", caption: DateText.full(origin),
@@ -91,15 +106,126 @@ extension Countdown {
         case .birthday:
             let next = nextOccurrence(from: today)
             let left = today.days(to: next)
-            let age = next.year - originDay.year
-            let calendarName = isLunar ? "农历\(LunarDate.monthNames[max(0, lunarMonth - 1)])月\(LunarDate.dayNames[max(0, lunarDay - 1)])" : DateText.monthDay(originDay)
-            let caption = age > 0 ? "\(calendarName) · 即将 \(age) 岁" : calendarName
+            let age = next.year - origin.year
+            let calendarName = isLunar ? "农历\(LunarDate.monthNames[max(0, lunarMonth - 1)])月\(LunarDate.dayNames[max(0, lunarDay - 1)])" : DateText.monthDay(origin)
+            var caption = calendarName
+            if knowsBirthYear && age > 0 {
+                caption += left == 0 ? " · \(age) 岁生日" : " · 即将 \(age) 岁"
+            }
             return CountdownStatus(days: left, prefix: left == 0 ? "生日" : "还有", suffix: left == 0 ? "快乐" : "天",
                                    caption: caption, targetDay: next, isToday: left == 0)
         }
     }
 
-    private static func isLeapYear(_ year: Int) -> Bool {
+    static func isLeapYear(_ year: Int) -> Bool {
         (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+    }
+}
+
+extension Countdown {
+    var kindValue: CountdownKind { CountdownKind(rawValue: kind) ?? .countdown }
+
+    var originDay: DayKey { DayKey(date) }
+
+    /// 农历生日是否记录了出生年份。没记录时 date 存的是创建当天（旧数据里没动过「出生年份参考」的也是这样），不显示年龄。
+    var knowsBirthYear: Bool {
+        !(isLunar && kindValue == .birthday && originDay == DayKey(createdAt))
+    }
+
+    var spec: CountdownSpec {
+        CountdownSpec(kind: kindValue, origin: originDay, repeatsYearly: repeatsYearly, isLunar: isLunar,
+                      lunarMonth: lunarMonth, lunarDay: lunarDay, knowsBirthYear: knowsBirthYear)
+    }
+
+    func nextOccurrence(from today: DayKey = .today) -> DayKey {
+        spec.nextOccurrence(from: today)
+    }
+
+    static func lunarOccurrence(month: Int, day: Int, onOrAfter start: DayKey) -> DayKey? {
+        CountdownSpec.lunarOccurrence(month: month, day: day, onOrAfter: start)
+    }
+
+    func status(today: DayKey = .today) -> CountdownStatus {
+        spec.status(today: today)
+    }
+
+    var item: CountdownItem {
+        CountdownItem(id: id, title: title, emoji: emoji, colorIndex: colorIndex, pinned: pinned, spec: spec, profileID: nil)
+    }
+}
+
+// MARK: - 列表里的一项（含档案生日）
+
+/// 倒数日列表、首页倒数日条和小组件里的一项：数据库里的倒数日，或由档案生日生成的「虚拟倒数日」（不入库、不可编辑删除）
+struct CountdownItem: Identifiable, Hashable, Sendable {
+    let id: UUID
+    let title: String
+    let emoji: String
+    let colorIndex: Int
+    let pinned: Bool
+    let spec: CountdownSpec
+    /// 由档案生日生成时为档案的 id
+    let profileID: UUID?
+
+    var kind: CountdownKind { spec.kind }
+    var isFromProfile: Bool { profileID != nil }
+
+    func status(today: DayKey = .today) -> CountdownStatus {
+        spec.status(today: today)
+    }
+
+    /// 与 AppSettings.profileBirthdaysInCountdowns 是同一个键（App Group 共享存储），小组件直接读，没设置过时为开
+    static let profileBirthdaysKey = "profileBirthdaysInCountdowns"
+
+    static var profileBirthdaysEnabled: Bool {
+        AppGroup.defaults.object(forKey: profileBirthdaysKey) as? Bool ?? true
+    }
+
+    /// 档案生日生成的倒数日：标题「名字的生日」，农历录入的档案按农历生日每年重复（闰月出生的按平月过）。
+    /// 已经手动建了同一人的生日倒数（kind 为生日、标题包含名字）的档案跳过。
+    static func profileBirthdays(_ profiles: [Profile], existing countdowns: [Countdown]) -> [CountdownItem] {
+        let manualBirthdays = countdowns.filter { $0.kindValue == .birthday }.map(\.title)
+        return profiles.compactMap { profile in
+            let name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty, !manualBirthdays.contains(where: { $0.contains(name) }) else { return nil }
+            let birth = DayKey(profile.birthday)
+            var spec = CountdownSpec(kind: .birthday, origin: birth, repeatsYearly: true)
+            if profile.enteredAsLunar {
+                let lunar = LunarDate(birth)
+                spec.isLunar = true
+                spec.lunarMonth = lunar.month
+                spec.lunarDay = lunar.day
+            }
+            return CountdownItem(id: profile.id, title: "\(name)的生日", emoji: "🎂", colorIndex: profile.colorIndex,
+                                 pinned: false, spec: spec, profileID: profile.id)
+        }
+    }
+
+    /// 数据库里的倒数日 + （开关打开时）档案生日
+    static func all(_ countdowns: [Countdown], profiles: [Profile], includeProfiles: Bool) -> [CountdownItem] {
+        countdowns.map(\.item) + (includeProfiles ? profileBirthdays(profiles, existing: countdowns) : [])
+    }
+
+    /// 列表的排序：置顶在前；然后按剩余天数，纪念日和已过的倒数日排在后面
+    static func sorted(_ items: [CountdownItem], today: DayKey = .today) -> [CountdownItem] {
+        items.map { item -> (CountdownItem, Int) in
+            let status = item.status(today: today)
+            return (item, item.kind == .anniversary || status.isPast ? 10_000 + status.days : status.days)
+        }
+        .sorted { a, b in
+            if a.0.pinned != b.0.pinned { return a.0.pinned }
+            return a.1 < b.1
+        }
+        .map { $0.0 }
+    }
+
+    /// 最近的一个还没到的倒数日或生日（不算纪念日和已过的）
+    static func nearest(_ items: [CountdownItem], today: DayKey = .today) -> (item: CountdownItem, status: CountdownStatus)? {
+        items
+            .filter { $0.kind != .anniversary }
+            .map { ($0, $0.status(today: today)) }
+            .filter { !$0.1.isPast }
+            .min { $0.1.days < $1.1.days }
+            .map { (item: $0.0, status: $0.1) }
     }
 }

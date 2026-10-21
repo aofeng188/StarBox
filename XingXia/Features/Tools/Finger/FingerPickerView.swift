@@ -4,18 +4,26 @@ import UIKit
 
 /// 捕获多点触控的 UIKit 视图
 struct MultiTouchSurface: UIViewRepresentable {
+    /// 读屏提示（当前模式的规则）
+    var spokenHint: String?
     var onChange: ([Int: CGPoint]) -> Void
 
     func makeUIView(context: Context) -> TouchView {
         let view = TouchView()
         view.isMultipleTouchEnabled = true
         view.backgroundColor = .clear
+        // 开着 VoiceOver 时把原始触摸直接交给这块区域，否则手指会被当成浏览手势
+        view.isAccessibilityElement = true
+        view.accessibilityLabel = "触控区域，所有人把一根手指放在屏幕上"
+        view.accessibilityHint = spokenHint
+        view.accessibilityTraits = .allowsDirectInteraction
         view.onChange = onChange
         return view
     }
 
     func updateUIView(_ uiView: TouchView, context: Context) {
         uiView.onChange = onChange
+        uiView.accessibilityHint = spokenHint
     }
 
     final class TouchView: UIView {
@@ -82,6 +90,8 @@ struct FingerPickerView: View {
     @State private var winners: Set<Int> = []
     @State private var teams: [Int: Int] = [:]
     @State private var resultTime: Date?
+    /// 空白时中间的大图标跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .largeTitle) private var hintIconSize: CGFloat = 50
 
     private let fingerColors: [Color] = [0xFF6B6B, 0xFFD166, 0x06D6A0, 0x4CC9F0, 0xB388FF, 0xFF8FC7, 0xF4A261, 0x80ED99, 0x48CAE4, 0xFFAFCC].map { Color(hex: $0) }
     private let teamColors: [Color] = [Color(hex: 0xFF5D73), Color(hex: 0x4CC9F0)]
@@ -89,7 +99,8 @@ struct FingerPickerView: View {
 
     var body: some View {
         ZStack {
-            TimelineView(.animation) { context in
+            // 没有手指时什么也不用画，暂停逐帧刷新
+            TimelineView(.animation(paused: touches.isEmpty && phase == .waiting)) { context in
                 let now = context.date
                 Canvas { canvas, _ in
                     draw(in: &canvas, now: now)
@@ -98,24 +109,31 @@ struct FingerPickerView: View {
             }
             .accessibilityHidden(true)
 
-            MultiTouchSurface { points in update(points) }
+            MultiTouchSurface(spokenHint: hint) { points in update(points) }
 
             if touches.isEmpty {
                 VStack(spacing: 14) {
                     Image(systemName: "hand.point.up.left.and.text.fill")
-                        .font(.system(size: 50))
+                        .font(.system(size: min(hintIconSize, 50 * 1.6)))
                         .foregroundStyle(palette.accentGradient)
-                        .symbolEffect(.bounce, options: .repeating.speed(0.3))
+                        .symbolEffect(.bounce, options: .repeating.speed(0.3), isActive: !reduceMotion)
                     Text("每个人把一根手指放在屏幕上")
                         .font(.title3.bold())
                     Text(hint).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }
                 .padding(30)
                 .allowsHitTesting(false)
+                // 说明压在屏幕正中，读屏会抢走落在上面的手指；内容已经放进触控区域的标签和提示里
+                .accessibilityHidden(true)
             }
 
             VStack {
                 if touches.isEmpty || phase == .waiting {
+                    QuestionBanner()
+                        .frame(maxWidth: 480)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        .opacity(touches.isEmpty ? 1 : 0)
                     controls
                         .opacity(touches.isEmpty ? 1 : 0)
                 }
@@ -233,6 +251,8 @@ struct FingerPickerView: View {
         resultTime = Date()
         SoundEngine.shared.play(mode == .teams ? .success : .chime)
         Haptics.reveal()
+        // 读屏用户的手指都在触控区域上，焦点不会移到底部的状态文字，结果出来时主动播报
+        Announce.post(statusText)
         let detail = mode == .teams ? "\(touches.count) 人分两队" : "\(touches.count) 人中选 \(winners.count) 人"
         HistoryLog.add(context, tool: ToolKind.finger.rawValue, title: mode.name, result: detail)
     }

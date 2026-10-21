@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 extension Color {
     init(hex: UInt32, opacity: Double = 1) {
@@ -42,6 +43,54 @@ struct ThemePalette: Sendable {
         let colors = spectrum
         return colors[((index % colors.count) + colors.count) % colors.count]
     }
+
+    /// 压在 accent / accentGradient 上的文字颜色。深色主题的强调色都偏亮，用深字；浅色主题的强调色偏深，用白字。
+    var onAccent: Color { isDark ? Color(hex: 0x14101F) : .white }
+
+    /// 把一个颜色调成能直接当文字用的版本：深色模式下提亮过暗的颜色，浅色模式下压暗过浅的颜色。
+    func ink(_ color: Color) -> Color {
+        let luminance = color.relativeLuminance
+        if isDark {
+            return luminance < 0.2 ? color.mix(with: .white, by: 0.45) : color
+        }
+        return luminance > 0.25 ? color.mix(with: .black, by: 0.5) : color
+    }
+
+    /// 工具、签、答案之书等的身份色向主题强调色靠一点（默认 20%）：保留辨识度，换主题时不和强调色打架
+    func identity(_ color: Color, amount: Double = 0.2) -> Color {
+        color.mix(with: accent, by: amount)
+    }
+
+    func identity(_ colors: [Color], amount: Double = 0.2) -> [Color] {
+        colors.map { identity($0, amount: amount) }
+    }
+
+    /// spectrum 的文字版本，和 `color(at:)` 一一对应
+    func inkColor(at index: Int) -> Color { ink(color(at: index)) }
+}
+
+extension Color {
+    /// WCAG 相对亮度：0 是黑，1 是白
+    var relativeLuminance: Double {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(self).getRed(&r, green: &g, blue: &b, alpha: &a)
+        func linear(_ c: CGFloat) -> Double {
+            let c = Double(min(max(c, 0), 1))
+            return c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+    }
+
+    /// 压在这个颜色上的文字该用的颜色：亮底用深字，暗底用白字（取对比度更高的一边）
+    var readableForeground: Color {
+        relativeLuminance > 0.18 ? Color(hex: 0x14101F) : .white
+    }
+
+    /// 语义色。深色模式用明亮的 400 级，浅色模式用加深的 700 级，保证当文字用时读得清。
+    static func positive(_ scheme: ColorScheme) -> Color { scheme == .dark ? Color(hex: 0x34D399) : Color(hex: 0x047857) }
+    static func negative(_ scheme: ColorScheme) -> Color { scheme == .dark ? Color(hex: 0xFB7185) : Color(hex: 0xBE123C) }
+    static func gold(_ scheme: ColorScheme) -> Color { scheme == .dark ? Color(hex: 0xFFD166) : Color(hex: 0xA16207) }
+    static func caution(_ scheme: ColorScheme) -> Color { scheme == .dark ? Color(hex: 0xFBBF24) : Color(hex: 0xB45309) }
 }
 
 struct AppTheme: Identifiable, Hashable, Sendable {

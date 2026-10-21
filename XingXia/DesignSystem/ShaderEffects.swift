@@ -55,11 +55,14 @@ private struct ShockwaveRing<T: Equatable>: View {
     @Environment(\.palette) private var palette
 
     var body: some View {
+        // 先取出颜色，避免在 keyframeAnimator 的 Sendable 闭包里捕获整个 palette
+        let gradient = palette.accentGradient
+        let accent = palette.accent
         Color.clear
             .keyframeAnimator(initialValue: ShockwaveState(), trigger: trigger) { _, state in
                 Circle()
-                    .strokeBorder(palette.accentGradient, lineWidth: 3)
-                    .shadow(color: palette.accent, radius: 10)
+                    .strokeBorder(gradient, lineWidth: 3)
+                    .shadow(color: accent, radius: 10)
                     .scaleEffect(state.scale)
                     .opacity(state.opacity)
             } keyframes: { _ in

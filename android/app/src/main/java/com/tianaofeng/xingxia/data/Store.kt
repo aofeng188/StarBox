@@ -1,13 +1,19 @@
 package com.tianaofeng.xingxia.data
 
+import android.app.Activity
+import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Bundle
+import android.os.SystemClock
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.tianaofeng.xingxia.core.BirthInfo
 import com.tianaofeng.xingxia.core.DayKey
+import com.tianaofeng.xingxia.core.JournalStats
+import com.tianaofeng.xingxia.core.MoonInfo
 import com.tianaofeng.xingxia.core.ZodiacSign
 import com.tianaofeng.xingxia.core.BaZi
 import com.tianaofeng.xingxia.core.EarthlyBranch
@@ -66,11 +72,32 @@ data class DecisionRecord(
     val result: String,
     val detail: String? = null,
     val date: Long = System.currentTimeMillis(),
-)
+    /** 「问一问」里当时在问的问题（Store.currentQuestion），没有就是 null */
+    val question: String? = null,
+    /** null 没表态，true「就这么办」，false「再想想」 */
+    val adopted: Boolean? = null,
+    /** 回访结果：1 满意，0 一般，-1 后悔；null 还没回访 */
+    val satisfaction: Int? = null,
+    /** 回访（含「跳过」）的时间（毫秒）；有值就不再出现在首页回访卡里 */
+    val followedUpAt: Long? = null,
+) {
+    /** 当时在问的问题：question；没有时硬币、答案之书的 title 就是用户写的问题（与 iOS 的 askedQuestion 一致） */
+    val askedQuestion: String? get() = JournalStats.askedQuestion(tool, title, question)
+}
 
 /** 每日一签 */
 @Serializable
 data class StickDraw(val dayKey: Int, val profileId: String?, val stickNumber: Int, val date: Long = System.currentTimeMillis())
+
+/** 塔罗手记：一次塔罗解读。cards 与 iOS 相同，如 "0u,13r,5u"（牌 id + u 正位 / r 逆位） */
+@Serializable
+data class TarotReading(
+    val id: String = newId(),
+    val date: Long = System.currentTimeMillis(),
+    val spread: String,
+    val cards: String,
+    val question: String = "",
+)
 
 @Serializable
 data class WheelOption(val id: String = newId(), val title: String, val weight: Double = 1.0)
@@ -104,6 +131,17 @@ data class MoodEntry(
     val date: Long = System.currentTimeMillis(),
 )
 
+/** 每日仪式：某天看过（或跳过）了仪式。每天最多一条，月相徽章按完成的日子统计 */
+@Serializable
+data class RitualDay(
+    /** yyyyMMdd */
+    val dayKey: Int,
+    val completedAt: Long = System.currentTimeMillis(),
+    val skipped: Boolean = false,
+    /** MoonPhaseName 的序号 0…7（与 iOS 的 rawValue 相同） */
+    val moonPhase: Int = 0,
+)
+
 @Serializable
 data class Countdown(
     val id: String = newId(),
@@ -123,8 +161,21 @@ data class Countdown(
 ) {
     val kindValue: CountdownKind get() = CountdownKind.of(kind)
 
+    /** 创建当天 */
+    val createdDay: DayKey get() = DayKey.of(java.time.Instant.ofEpochMilli(createdAt))
+
+    /**
+     * 农历生日是否记录了出生年份（与 iOS 一致）。没记录时 date 存的是创建当天
+     * （旧数据里没动过「出生年份参考」的也是这样），不显示年龄。
+     */
+    val knowsBirthYear: Boolean
+        get() = !(isLunar && kindValue == CountdownKind.BIRTHDAY && date == createdDay.rawValue)
+
     val spec: CountdownSpec
-        get() = CountdownSpec(kindValue, DayKey.fromRaw(date) ?: DayKey.today, repeatsYearly, isLunar, lunarMonth, lunarDay)
+        get() = CountdownSpec(
+            kindValue, DayKey.fromRaw(date) ?: DayKey.today, repeatsYearly, isLunar, lunarMonth, lunarDay,
+            showsAge = knowsBirthYear,
+        )
 
     fun status(today: DayKey = DayKey.today): CountdownStatus = spec.status(today)
 }
@@ -217,6 +268,9 @@ object Prefs {
     fun int(key: String, default: Int): MutableState<Int> =
         cached(key) { PrefState(sp.getInt(key, default)) { sp.edit().putInt(key, it).apply() } }
 
+    fun long(key: String, default: Long): MutableState<Long> =
+        cached(key) { PrefState(sp.getLong(key, default)) { sp.edit().putLong(key, it).apply() } }
+
     fun string(key: String, default: String): MutableState<String> =
         cached(key) { PrefState(sp.getString(key, default) ?: default) { sp.edit().putString(key, it).apply() } }
 
@@ -255,6 +309,7 @@ object Store {
     val profiles = PersistedList("profiles", Profile.serializer())
     val records = PersistedList("decisionRecords", DecisionRecord.serializer())
     val stickDraws = PersistedList("stickDraws", StickDraw.serializer())
+    val tarotReadings = PersistedList("tarotReadings", TarotReading.serializer())
     val wheels = PersistedList("wheelTemplates", WheelTemplate.serializer())
     val foodLogs = PersistedList("foodLogs", FoodLog.serializer())
     val blockedFoods = PersistedList("blockedFoods", BlockedFood.serializer())
@@ -265,18 +320,65 @@ object Store {
     val foodMenus = PersistedList("foodMenus", FoodMenu.serializer())
     val customPrompts = PersistedList("customPrompts", CustomPrompt.serializer())
     val scratchPresets = PersistedList("scratchPresets", ScratchPreset.serializer())
+    val ritualDays = PersistedList("ritualDays", RitualDay.serializer())
 
     private val all get() = listOf(
-        profiles, records, stickDraws, wheels, foodLogs, blockedFoods, rosters,
-        moods, countdowns, lotteryPools, foodMenus, customPrompts, scratchPresets,
+        profiles, records, stickDraws, tarotReadings, wheels, foodLogs, blockedFoods, rosters,
+        moods, countdowns, lotteryPools, foodMenus, customPrompts, scratchPresets, ritualDays,
     )
 
     private val primaryId by lazy { Prefs.string("primaryProfileId", "") }
+
+    /** 「问一问」里正在问的问题：进入新问题时覆盖，清空问题框时置 null。记决策时一起记进 question */
+    var currentQuestion by mutableStateOf<String?>(null)
+
+    /** 刚记下的那条决定（App 在前台时），根布局据此弹出「就这么办 / 再想想」；收起时置 null */
+    var lastDecision by mutableStateOf<DecisionRecord?>(null)
+
+    /**
+     * 最近一次从深链接（小组件、通知、快捷方式）打开页面的时间（SystemClock.elapsedRealtime 毫秒）：
+     * 每日仪式这次不盖住用户点进来的页面（与 iOS 的 AppState.lastDeepLinkAt 一致）
+     */
+    var lastDeepLinkAt by mutableStateOf<Long?>(null)
+        private set
+
+    /** MainActivity 收到能识别的深链接时调用 */
+    fun markDeepLink() {
+        lastDeepLinkAt = SystemClock.elapsedRealtime()
+    }
+
+    private var startedActivities = 0
+    private var tracksForeground = false
+
+    /** App 有界面在前台。小组件、通知里记的决定不弹浮层，也不带问题 */
+    val isInForeground: Boolean get() = startedActivities > 0
 
     fun init(context: Context) {
         Prefs.init(context)
         all.forEach { it.load() }
         SeedData.insertIfNeeded()
+        trackForeground(context)
+    }
+
+    private fun trackForeground(context: Context) {
+        if (tracksForeground) return
+        val app = context.applicationContext as? Application ?: return
+        tracksForeground = true
+        app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityStarted(activity: Activity) {
+                startedActivities += 1
+            }
+
+            override fun onActivityStopped(activity: Activity) {
+                startedActivities = maxOf(0, startedActivities - 1)
+            }
+
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+            override fun onActivityResumed(activity: Activity) {}
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {}
+        })
     }
 
     val sortedProfiles: List<Profile> get() = profiles.items.sortedBy { it.sortIndex }
@@ -331,9 +433,51 @@ object Store {
         if (wasPrimary) setPrimary(sortedProfiles.firstOrNull()) else onDataChanged()
     }
 
-    /** 往「决策历史」里记一笔 */
-    fun log(tool: String, title: String, result: String, detail: String? = null) {
-        records.update { (it + DecisionRecord(tool = tool, title = title, result = result, detail = detail)).takeLast(2000) }
+    /**
+     * 往「决策历史」里记一笔并返回这条记录。App 在前台时，「问一问」里正在问的问题（currentQuestion）一起记进 question，
+     * 并把它设为 lastDecision，根布局据此弹出「就这么办 / 再想想」（与 iOS 的 HistoryLog.add 一致）
+     */
+    fun log(tool: String, title: String, result: String, detail: String? = null): DecisionRecord {
+        val foreground = isInForeground
+        val question = if (foreground) currentQuestion?.trim()?.takeIf { it.isNotEmpty() } else null
+        val record = DecisionRecord(tool = tool, title = title, result = result, detail = detail, question = question)
+        records.update { (it + record).takeLast(2000) }
+        if (foreground) lastDecision = record
+        return record
+    }
+
+    /** 「就这么办」(true) /「再想想」(false)。不改 lastDecision，浮层由调用方收起 */
+    fun setAdopted(id: String, adopted: Boolean) = updateRecord(id) { it.copy(adopted = adopted) }
+
+    /** 补记里选「还没决定」 */
+    fun clearAdopted(id: String) = updateRecord(id) { it.copy(adopted = null) }
+
+    /**
+     * 回访：1 满意，0 一般，-1 后悔；null 表示「跳过」，只记回访时间。
+     * 不管选了哪一项都会写 followedUpAt，这条记录之后不再出现在首页回访卡里
+     */
+    fun setSatisfaction(id: String, value: Int?) =
+        updateRecord(id) { it.copy(satisfaction = value?.coerceIn(-1, 1), followedUpAt = System.currentTimeMillis()) }
+
+    /** 记录已经删掉时什么都不做 */
+    private fun updateRecord(id: String, transform: (DecisionRecord) -> DecisionRecord) {
+        if (records.items.none { it.id == id }) return
+        records.update { list -> list.map { if (it.id == id) transform(it) else it } }
+    }
+
+    fun hasRitual(day: DayKey): Boolean = ritualDays.items.any { it.dayKey == day.rawValue }
+
+    /** 记下今天的仪式。每天最多一条；完成过就一直算完成，跳过只会升级为完成，不会反过来 */
+    fun recordRitual(day: DayKey, skipped: Boolean) {
+        ritualDays.update { list ->
+            val existing = list.firstOrNull { it.dayKey == day.rawValue }
+            val entry = when {
+                existing == null -> RitualDay(day.rawValue, skipped = skipped, moonPhase = MoonInfo.on(day).name.ordinal)
+                existing.skipped && !skipped -> existing.copy(skipped = false, completedAt = System.currentTimeMillis())
+                else -> existing
+            }
+            (list.filter { it.dayKey != day.rawValue } + entry).sortedBy { it.dayKey }
+        }
     }
 
     fun greeting(): String {

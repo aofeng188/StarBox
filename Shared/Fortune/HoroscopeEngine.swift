@@ -73,7 +73,9 @@ enum HoroscopeEngine {
             skyNote = "本月太阳主要行经\(sun.name)"
         }
 
-        var rng = SeededGenerator("horoscope", sign.rawValue, period.rawValue, periodKey)
+        // 今日和明日共用 "day"：昨天看到的「明日」与今天的「今日」一致
+        let seedPeriod = period == .today || period == .tomorrow ? "day" : period.rawValue
+        var rng = SeededGenerator("horoscope", sign.rawValue, seedPeriod, periodKey)
         if period == .month || period == .week { skyBoost += rng.double(-2...2) }
         let score = clamp(rng.gaussian(mean: 68, deviation: 12) + skyBoost, 38, 98)
 

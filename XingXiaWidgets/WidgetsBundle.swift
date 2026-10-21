@@ -7,6 +7,10 @@ struct XingXiaWidgetsBundle: WidgetBundle {
         FortuneWidget()
         HoroscopeWidget()
         CountdownWidget()
+        MoodWidget()
+        CoinWidget()
+        AnswerBookWidget()
+        StickLockWidget()
         QuickToolControl()
     }
 }

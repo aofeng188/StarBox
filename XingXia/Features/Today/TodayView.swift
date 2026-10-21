@@ -1,10 +1,12 @@
 import SwiftUI
 import SwiftData
+import Combine
 
 struct TodayView: View {
     @Environment(AppState.self) private var app
     @Environment(AppSettings.self) private var settings
     @Environment(\.palette) private var palette
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var showEditor = false
     @State private var showOnboarding = false
@@ -25,17 +27,22 @@ struct TodayView: View {
                     SetupProfileBanner { showOnboarding = true }
                 }
 
+                // 决定回访固定在最前、通栏；没有要回访的决定时不占位置
+                FollowUpCard(today: today)
+
                 // 宽屏（Duo 展开横持）排成两栏
                 ColumnsLayout(columns: isWide ? 2 : 1, spacing: 16, fold: fold) {
-                    ForEach(settings.homeCards.filter { !settings.hiddenHomeCards.contains($0) }) { card in
+                    ForEach(settings.homeCards.filter { $0.isEditable && !settings.hiddenHomeCards.contains($0) }) { card in
                         switch card {
+                        case .followUp: EmptyView()
                         case .fortune: FortuneHeroCard(fortune: fortune)
+                        case .family: FamilyFortuneCard(today: today)
                         case .almanac: AlmanacCard(fortune: fortune, almanac: almanac)
-                        case .horoscope: HoroscopeMiniCard()
-                        case .stick: StickMiniCard()
+                        case .horoscope: HoroscopeMiniCard(today: today)
+                        case .stick: StickMiniCard(today: today)
                         case .quickTools: QuickToolsRow()
-                        case .countdown: CountdownStrip()
-                        case .mood: MoodCheckInCard()
+                        case .countdown: CountdownStrip(today: today)
+                        case .mood: MoodCheckInCard(today: today)
                         case .quote: QuoteCard(quote: fortune.quote)
                         }
                     }
@@ -71,9 +78,19 @@ struct TodayView: View {
                 settings.hasOnboarded = true
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
-            today = .today
+        // 跨过零点、或者隔天从后台回来时刷新「今天」，卡片跟着换天
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: DispatchQueue.main)) { _ in
+            refreshToday()
         }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { refreshToday() }
+        }
+        .onAppear(perform: refreshToday)
+    }
+
+    private func refreshToday() {
+        let now = DayKey.today
+        if now != today { today = now }
     }
 }
 
@@ -85,40 +102,106 @@ private struct TodayHeader: View {
     let greeting: String
 
     @Environment(\.palette) private var palette
+    /// 日期大字跟随系统字号放大（设上限），和旁边的星期保持比例
+    @ScaledMetric(relativeTo: .largeTitle) private var dateSize: CGFloat = 40
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(greeting)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("\(day.month)月\(day.day)日")
-                    .font(.system(size: 40, weight: .bold, design: .rounded))
-                    .foregroundStyle(palette.accentGradient)
-                Text(DateText.weekday(day))
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-            HStack(spacing: 8) {
-                Text("农历\(almanac.lunar.text)")
-                Text("·")
-                Text("\(almanac.lunar.yearGanZhi.name)\(almanac.lunar.yearGanZhi.branch.animal)年")
-                Text("·")
-                Text(almanac.termText)
-            }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            if !almanac.festivals.isEmpty {
-                FlowLayout(spacing: 6) {
-                    ForEach(almanac.festivals, id: \.self) { TagChip(text: $0, symbol: "party.popper.fill") }
+        let dateText = Text("\(day.month)月\(day.day)日")
+            .font(.system(size: min(dateSize, 60), weight: .bold, design: .rounded))
+            .foregroundStyle(palette.accentGradient)
+        let weekdayText = Text(DateText.weekday(day))
+            .font(.title3.weight(.semibold))
+        let lunarText = "农历\(almanac.lunar.text)"
+        let yearText = "\(almanac.lunar.yearGanZhi.name)\(almanac.lunar.yearGanZhi.branch.animal)年"
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(greeting)
+                    .font(.subheadline.weight(.medium))
+                    .subtleForeground()
+                // 一行放不下（超大字号）时星期换到日期下面
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        dateText
+                        weekdayText.subtleForeground()
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        dateText
+                        weekdayText.subtleForeground()
+                    }
                 }
-                .padding(.top, 2)
+                // 农历一行放不下时改成竖排，而不是被挤成几列
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        Text(lunarText)
+                        Text("·")
+                        Text(yearText)
+                        Text("·")
+                        Text(almanac.termText)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(lunarText)
+                        Text(yearText)
+                        Text(almanac.termText)
+                    }
+                }
+                .font(.footnote)
+                .subtleForeground()
+                if !almanac.festivals.isEmpty {
+                    FlowLayout(spacing: 6) {
+                        ForEach(almanac.festivals, id: \.self) { TagChip(text: $0, symbol: "party.popper.fill") }
+                    }
+                    .padding(.top, 2)
+                }
             }
+            .accessibilityElement(children: .combine)
+
+            MoonPhaseCapsule(day: day)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 4)
-        .accessibilityElement(children: .combine)
+    }
+}
+
+/// 头部的月相小胶囊：今晚的月相和亮面比例，点开看天象日历
+private struct MoonPhaseCapsule: View {
+    let day: DayKey
+    @Environment(\.palette) private var palette
+    /// 月亮跟着旁边的字一起放大（封顶 1.6 倍）
+    @ScaledMetric(relativeTo: .footnote) private var moonSize: CGFloat = 18
+
+    var body: some View {
+        let moon = MoonInfo.on(day)
+        let disc = MoonDisc(phase: moon.phase, size: min(moonSize, 18 * 1.6))
+        let name = Text(moon.name.name).font(.footnote.weight(.semibold))
+        let percent = Text("亮 \(moon.percent)%").font(.footnote).monospacedDigit()
+        let chevron = Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+        NavigationLink(value: AppRoute.skyCalendar) {
+            // 超大字号下一行放不下时，亮面比例换到月相名下面，不被截断
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) {
+                    disc
+                    name
+                    percent.subtleForeground()
+                    chevron
+                }
+                HStack(spacing: 6) {
+                    disc
+                    VStack(alignment: .leading, spacing: 0) {
+                        name
+                        percent.subtleForeground()
+                    }
+                    chevron
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .contentShape(.capsule)
+            .glassEffect(.regular.tint(palette.glassTint).interactive(), in: .capsule)
+            .zoomSource(.skyCalendar)
+        }
+        .buttonStyle(.pressableCard)
+        .accessibilityLabel("今晚\(moon.name.name)，亮面 \(moon.percent)%")
+        .accessibilityHint("查看天象日历")
     }
 }
 
@@ -134,7 +217,7 @@ private struct SetupProfileBanner: View {
                     Text("填写生日，解锁专属运势").font(.headline)
                     Text("根据你的八字与星座，每天计算只属于你的运势")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .subtleForeground()
                 }
                 Spacer()
                 Image(systemName: "chevron.right").foregroundStyle(.tertiary)

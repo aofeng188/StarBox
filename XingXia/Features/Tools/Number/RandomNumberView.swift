@@ -33,6 +33,8 @@ struct RandomNumberView: View {
     @State private var isRolling = false
     @State private var history: [String] = []
     @FocusState private var focused: Bool
+    /// 单个结果的大数字跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .largeTitle) private var numberSize: CGFloat = 110
 
     var body: some View {
         ScrollView {
@@ -41,17 +43,18 @@ struct RandomNumberView: View {
                     ForEach(Mode.allCases) { Text($0.name).tag($0) }
                 }
                 .pickerStyle(.segmented)
+                .disabled(isRolling)
                 .onChange(of: mode) { _, _ in balls = [] }
 
                 // 结果
                 VStack(spacing: 16) {
                     if balls.isEmpty {
                         Text("?")
-                            .font(.system(size: 96, weight: .heavy, design: .rounded))
+                            .font(.system(size: min(numberSize, 110 * 1.6) * 96 / 110, weight: .heavy, design: .rounded))
                             .foregroundStyle(palette.accentGradient.opacity(0.5))
                     } else if balls.count == 1 {
                         Text("\(balls[0].value)")
-                            .font(.system(size: 110, weight: .heavy, design: .rounded))
+                            .font(.system(size: min(numberSize, 110 * 1.6), weight: .heavy, design: .rounded))
                             .monospacedDigit()
                             .foregroundStyle(palette.accentGradient)
                             .contentTransition(.numericText(value: Double(balls[0].value)))
@@ -105,6 +108,7 @@ struct RandomNumberView: View {
             .pageContent()
             .padding(.bottom, 30)
         }
+        .contentMargins(.bottom, 24, for: .scrollContent)
         .scrollDismissesKeyboard(.immediately)
         .cosmicBackground()
         .navigationTitle("随机数字")
@@ -180,9 +184,21 @@ struct RandomNumberView: View {
             SoundEngine.shared.play(.pop)
             Haptics.success()
             isRolling = false
+            Announce.post(announcement(for: final))
             let text = final.map { String(format: $0.isSpecial ? "[%02d]" : "%d", $0.value) }.joined(separator: " ")
             history.append(text)
             HistoryLog.add(context, tool: ToolKind.number.rawValue, title: mode.name, result: text)
+        }
+    }
+
+    /// 读屏播报用的结果文字；彩票模式分开念红蓝球 / 前后区
+    private func announcement(for values: [Ball]) -> String {
+        let normal = values.filter { !$0.isSpecial }.map { "\($0.value)" }.joined(separator: "、")
+        let special = values.filter(\.isSpecial).map { "\($0.value)" }.joined(separator: "、")
+        switch mode {
+        case .ssq: return "红球 \(normal)，蓝球 \(special)"
+        case .dlt: return "前区 \(normal)，后区 \(special)"
+        default: return "结果：\(normal)"
         }
     }
 }
@@ -218,7 +234,8 @@ struct BallView: View {
             : [palette.accent, palette.accentSecondary]
         Text(String(format: lotteryStyle ? "%02d" : "%d", value))
             .font(.title3.bold().monospacedDigit())
-            .foregroundStyle(.white)
+            // 彩票球是固定的深红、深蓝；普通球用主题强调色，文字跟着 onAccent
+            .foregroundStyle(lotteryStyle ? .white : palette.onAccent)
             .frame(minWidth: 52, minHeight: 52)
             .padding(.horizontal, value > 999 ? 8 : 0)
             .background(Circle().fill(RadialGradient(colors: [colors[0], colors[1]], center: .init(x: 0.35, y: 0.3), startRadius: 2, endRadius: 40)))

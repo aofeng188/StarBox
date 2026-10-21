@@ -1,8 +1,12 @@
 import SwiftUI
+import Combine
 
 struct AlmanacDetailView: View {
     @Environment(AppState.self) private var app
     @Environment(\.palette) private var palette
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var scheme
+    @State private var today = DayKey.today
     @State private var day = DayKey.today
     @State private var showPicker = false
     @State private var pickerDate = Date()
@@ -10,6 +14,8 @@ struct AlmanacDetailView: View {
     var body: some View {
         let almanac = AlmanacDay(day)
         let fortune = FortuneEngine.daily(for: app.birth, on: day)
+        // 翻到别的日期时，「今日」改成「昨日 / 明日 / 当日」
+        let dayWord = Self.dayWord(for: day, today: today)
 
         ScrollView {
             VStack(spacing: 16) {
@@ -25,8 +31,9 @@ struct AlmanacDetailView: View {
                     } label: {
                         VStack(spacing: 2) {
                             Text("\(DateText.full(day)) \(DateText.weekday(day))").font(.headline)
-                            if day != .today { Text("点按选择日期").font(.caption2).foregroundStyle(.secondary) }
+                            if day != today { Text("点按选择日期").font(.caption2).foregroundStyle(.secondary) }
                         }
+                        .multilineTextAlignment(.center)
                     }
                     .buttonStyle(.plain)
                     Spacer()
@@ -37,20 +44,49 @@ struct AlmanacDetailView: View {
 
                 // 主信息
                 VStack(spacing: 10) {
+                    // 农历大字跟着字号放大，但封顶约 1.6 倍、只占一行（「十一月廿九」这类长日期在窄屏上缩一点）
                     Text(almanac.lunar.monthName + almanac.lunar.dayName)
                         .font(AppFont.serif(46, weight: .bold))
                         .foregroundStyle(palette.accentGradient)
                         .shadow(color: palette.accent.opacity(0.4), radius: 12)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                     Text(almanac.ganzhiText).font(.subheadline.weight(.medium))
                     Text("\(almanac.lunar.yearGanZhi.branch.animalEmoji) \(almanac.lunar.yearGanZhi.name)\(almanac.lunar.yearGanZhi.branch.animal)年 · 纳音\(almanac.day.nayin)")
                         .font(.footnote).foregroundStyle(.secondary)
-                    HStack(spacing: 8) {
-                        TagChip(text: almanac.jianChu.name, color: almanac.jianChu.isLucky ? Color(hex: 0x34D399) : Color(hex: 0xFBBF24))
-                        TagChip(text: "\(almanac.deity.name) · \(almanac.deity.pathName)", color: almanac.deity.isYellowPath ? Color(hex: 0xFBBF24) : Color(hex: 0x94A3B8))
+                    // 吉凶用语义色（深浅色各一套），黄道日用金色，黑道日沿用灰色
+                    let jianChuColor = almanac.jianChu.isLucky ? Color.positive(scheme) : Color.caution(scheme)
+                    let deityColor = almanac.deity.isYellowPath ? Color.gold(scheme) : Color(hex: 0x94A3B8)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) {
+                            TagChip(text: almanac.jianChu.name, color: jianChuColor)
+                            TagChip(text: "\(almanac.deity.name) · \(almanac.deity.pathName)", color: deityColor)
+                        }
+                        VStack(spacing: 6) {
+                            TagChip(text: almanac.jianChu.name, color: jianChuColor)
+                            TagChip(text: "\(almanac.deity.name) · \(almanac.deity.pathName)", color: deityColor)
+                        }
+                    }
+                    if !almanac.shensha.isEmpty {
+                        // 神煞多时（大字号下）一行放不下就竖排
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 8) { shenshaChips(almanac.shensha) }
+                            VStack(spacing: 6) { shenshaChips(almanac.shensha) }
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("神煞：\(almanac.shensha.joined(separator: "、"))")
                     }
                     if !almanac.festivals.isEmpty {
-                        HStack(spacing: 8) {
-                            ForEach(almanac.festivals, id: \.self) { TagChip(text: $0, color: Color(hex: 0xFB7185)) }
+                        // 节日色是「身份色」，向主题强调色靠一点；放不下一行时竖排
+                        let festivalColor = palette.identity(Color(hex: 0xFB7185))
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 8) {
+                                ForEach(almanac.festivals, id: \.self) { TagChip(text: $0, color: festivalColor) }
+                            }
+                            VStack(spacing: 6) {
+                                ForEach(almanac.festivals, id: \.self) { TagChip(text: $0, color: festivalColor) }
+                            }
                         }
                     }
                 }
@@ -62,6 +98,23 @@ struct AlmanacDetailView: View {
                     SectionHeader(title: "黄历宜忌", subtitle: almanac.jianChu.summary, symbol: "book.closed.fill")
                     YiJiRow(isYi: true, items: almanac.yi)
                     YiJiRow(isYi: false, items: almanac.ji)
+                    if !almanac.shensha.isEmpty {
+                        Divider().opacity(0.4)
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(almanac.shensha, id: \.self) { name in
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    Text(name)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(palette.ink(shenshaColor(name)))
+                                    Text(Shensha.notes[name] ?? "")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .accessibilityElement(children: .combine)
+                            }
+                        }
+                    }
                 }
                 .glassCard()
 
@@ -72,7 +125,7 @@ struct AlmanacDetailView: View {
                     InfoCell(title: "喜神方位", value: almanac.joyDirection, symbol: "face.smiling.inverse")
                     InfoCell(title: "财神方位", value: almanac.wealthDirection, symbol: "yensign.circle.fill")
                     InfoCell(title: "日柱纳音", value: almanac.day.nayin, symbol: "waveform")
-                    InfoCell(title: "今日冲", value: "属\(almanac.clashAnimal.animal)的朋友多注意", symbol: "exclamationmark.shield.fill")
+                    InfoCell(title: "\(dayWord)冲", value: "属\(almanac.clashAnimal.animal)的朋友多注意", symbol: "exclamationmark.shield.fill")
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
@@ -88,19 +141,32 @@ struct AlmanacDetailView: View {
                     SectionHeader(title: "节气", symbol: "leaf.fill")
                     let current = almanac.solarTerm ?? SolarTerms.previous(onOrBefore: day)
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(almanac.solarTerm != nil ? "今日 \(current.name)" : "当前节气 · \(current.name)")
+                        Text(almanac.solarTerm != nil ? "\(dayWord) \(current.name)" : "当前节气 · \(current.name)")
                             .font(.headline)
                         Text(SolarTerms.blurbs[current.name] ?? "").font(.subheadline).foregroundStyle(.secondary)
                     }
                     Divider().opacity(0.4)
                     ForEach(upcomingTerms(after: day), id: \.self) { term in
-                        HStack {
-                            Text(term.name).font(.subheadline.weight(.semibold))
-                            Spacer()
-                            Text("\(term.day.month)月\(term.day.day)日 \(term.moment.formatted(.dateTime.hour().minute()))")
-                                .font(.caption).foregroundStyle(.secondary)
-                            Text("\(day.days(to: term.day))天后").font(.caption).foregroundStyle(.tint)
+                        let date = Text("\(term.day.month)月\(term.day.day)日 \(term.moment.formatted(.dateTime.hour().minute()))")
+                        let countdown = Text("\(day.days(to: term.day))天后")
+                        // 大字号下一行放不下时，节气名单独一行，日期和倒数排在下面
+                        ViewThatFits(in: .horizontal) {
+                            HStack {
+                                Text(term.name).font(.subheadline.weight(.semibold))
+                                Spacer()
+                                date.font(.caption).foregroundStyle(.secondary)
+                                countdown.font(.caption).foregroundStyle(.tint)
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(term.name).font(.subheadline.weight(.semibold))
+                                HStack(alignment: .firstTextBaseline) {
+                                    date.font(.caption).foregroundStyle(.secondary)
+                                    countdown.font(.caption).foregroundStyle(.tint)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .accessibilityElement(children: .combine)
                     }
                 }
                 .glassCard()
@@ -112,18 +178,27 @@ struct AlmanacDetailView: View {
                 }
                 .glassCard()
 
-                Text("黄历宜忌按「建除十二神」与「黄黑道值神」推算，仅作传统文化参考。")
+                NavigationLink(value: AppRoute.auspicious) {
+                    Label("择吉日：挑个办事的好日子", systemImage: "calendar.badge.checkmark")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
+
+                Text("黄历宜忌按「建除十二神」「黄黑道值神」推算，并参考天德、月德、天赦、四离四绝等神煞，仅作传统文化参考。")
                     .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             .pageContent()
             .padding(.bottom, 30)
         }
+        // 悬浮 tab 栏下，最底下的说明文字也能完整滚出来
+        .contentMargins(.bottom, 24, for: .scrollContent)
         .cosmicBackground()
         .navigationTitle("黄历")
         .toolbar {
-            if day != .today {
+            if day != today {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("今天") { withAnimation(.snappy) { day = .today } }
+                    Button("今天") { withAnimation(.snappy) { day = today } }
                 }
             }
         }
@@ -148,11 +223,48 @@ struct AlmanacDetailView: View {
             }
             .presentationDetents([.medium, .large])
         }
+        // 跨过零点、或者隔天从后台回来时刷新「今天」
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: DispatchQueue.main)) { _ in
+            refreshToday()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { refreshToday() }
+        }
+        .onAppear(perform: refreshToday)
+    }
+
+    private func refreshToday() {
+        let now = DayKey.today
+        guard now != today else { return }
+        // 原本停在今天的跟着换到新的一天，翻到别的日期的不动
+        if day == today { day = now }
+        today = now
     }
 
     private func move(_ delta: Int) {
         Haptics.selection()
         withAnimation(.snappy) { day = day.adding(days: delta) }
+    }
+
+    @ViewBuilder
+    private func shenshaChips(_ names: [String]) -> some View {
+        ForEach(names, id: \.self) { name in
+            TagChip(text: name, color: shenshaColor(name), symbol: Shensha.isLucky(name) ? "sparkle" : "exclamationmark.triangle")
+        }
+    }
+
+    /// 吉神用金色，四离、四绝这类凶日沿用黑道日的灰色
+    private func shenshaColor(_ name: String) -> Color {
+        Shensha.isLucky(name) ? Color.gold(scheme) : Color(hex: 0x94A3B8)
+    }
+
+    private static func dayWord(for day: DayKey, today: DayKey) -> String {
+        switch today.days(to: day) {
+        case 0: "今日"
+        case -1: "昨日"
+        case 1: "明日"
+        default: "当日"
+        }
     }
 
     private func upcomingTerms(after day: DayKey) -> [SolarTerms.Term] {
@@ -182,5 +294,6 @@ private struct InfoCell: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard(cornerRadius: 22, padding: 14)
+        .accessibilityElement(children: .combine)
     }
 }

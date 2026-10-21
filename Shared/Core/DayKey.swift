@@ -73,8 +73,17 @@ extension Calendar {
         return calendar
     }
 
+    /// 农历 + 北京时间。农历只按年月日换算，与设备时区无关。
     static var chineseLocal: Calendar {
         var calendar = Calendar(identifier: .chinese)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        calendar.locale = Locale(identifier: "zh_CN")
+        return calendar
+    }
+
+    /// 公历 + 北京时间，用于和 `chineseLocal` 互相换算
+    static var gregorianBeijing: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
         calendar.locale = Locale(identifier: "zh_CN")
         return calendar

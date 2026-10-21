@@ -1,11 +1,5 @@
 package com.tianaofeng.xingxia.ui.screens.tools
 
-import android.content.ClipData
-import android.content.ClipDescription
-import android.content.ClipboardManager
-import android.content.Context
-import android.os.Build
-import android.os.PersistableBundle
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -17,7 +11,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -127,9 +120,12 @@ import com.tianaofeng.xingxia.ui.components.SoundEngine
 import com.tianaofeng.xingxia.ui.components.StepperRow
 import com.tianaofeng.xingxia.ui.components.TextAction
 import com.tianaofeng.xingxia.ui.components.ToggleRow
+import com.tianaofeng.xingxia.ui.components.copyText
+import com.tianaofeng.xingxia.ui.components.fadingHorizontalScroll
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.weight
+import com.tianaofeng.xingxia.ui.screens.ask.QuestionBanner
 import com.tianaofeng.xingxia.ui.screens.divination.GlassTextField
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.hex
@@ -262,7 +258,8 @@ private fun LotteryDraw(pool: LotteryPool, onBack: () -> Unit, onEdit: () -> Uni
     OnShake { draw() }
 
     Box(Modifier.fillMaxSize()) {
-        Screen(title = "${pool.icon} ${pool.name}", onBack = onBack, actions = { CircleIconButton(Icons.Rounded.Edit, "编辑", onClick = onEdit) }) {
+        // 抽奖动画进行中不能编辑或重置：结果在动画结束时才写回，会覆盖掉中途的修改
+        Screen(title = "${pool.icon} ${pool.name}", onBack = onBack, actions = { CircleIconButton(Icons.Rounded.Edit, "编辑", enabled = !drawing, onClick = onEdit) }) {
             GachaMachine(drawing, palette.spectrum)
             GlassCard(Modifier.heightIn(min = 90.dp), horizontalAlignment = Alignment.CenterHorizontally, spacing = 8.dp) {
                 val rolling = rollingText
@@ -272,7 +269,20 @@ private fun LotteryDraw(pool: LotteryPool, onBack: () -> Unit, onEdit: () -> Uni
                         SecondaryText(if (results.size == 1) "恭喜抽中" else "本轮抽中 ${results.size} 个")
                         for (r in results) GradientText(r, style = if (results.size == 1) Fonts.display(30, FontWeight.Black) else Fonts.headline, textAlign = TextAlign.Center)
                     }
-                    else -> Text(if (available.isEmpty()) "奖品已经抽完啦" else "准备好了吗？", style = Fonts.title3)
+                    available.isNotEmpty() -> Text("准备好了吗？", style = Fonts.title3)
+                    // 奖池为空、权重全为 0、抽完了，分别给出提示
+                    pool.items.isEmpty() -> {
+                        Text("先添加奖品吧", style = Fonts.title3)
+                        SecondaryText("点右上角「编辑」添加奖品或选项", style = Fonts.caption)
+                    }
+                    pool.items.none { it.weight > 0 } -> {
+                        Text("所有奖品权重都是 0", style = Fonts.title3)
+                        SecondaryText("在「编辑」里调高权重才能抽", style = Fonts.caption)
+                    }
+                    else -> {
+                        Text("奖品已经抽完啦", style = Fonts.title3)
+                        SecondaryText("点下方奖池的「重置」可以再来一轮", style = Fonts.caption)
+                    }
                 }
             }
             GlassCard(padding = 14.dp) { StepperRow("一次抽 $drawCount 个", drawCount, 1..10) { drawCount = it } }
@@ -280,7 +290,7 @@ private fun LotteryDraw(pool: LotteryPool, onBack: () -> Unit, onEdit: () -> Uni
 
             GlassCard(spacing = 8.dp) {
                 SectionHeader("奖池", subtitle = if (pool.removeAfterDraw) "抽中后数量减少" else "可重复抽中", icon = Icons.Rounded.Inventory2) {
-                    if (pool.removeAfterDraw) TextAction("重置") {
+                    if (pool.removeAfterDraw) TextAction("重置", enabled = !drawing) {
                         save { p -> p.copy(items = p.items.map { it.copy(remaining = it.quantity) }) }
                         results = emptyList()
                         Haptics.success()
@@ -376,7 +386,7 @@ private fun LotteryEditor(pool: LotteryPool, onDone: () -> Unit) {
     Screen(title = "编辑奖池", onBack = onDone, actions = { TextAction("完成", onClick = onDone) }) {
         GlassCard {
             GlassTextField(pool.name, "名称") { name -> save { it.copy(name = name) } }
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fadingHorizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (icon in icons) {
                     Box(
                         Modifier
@@ -532,6 +542,7 @@ fun FingerScreen() {
 
     Screen(title = "指尖轮盘", scrollable = false) {
         if (touches.isEmpty()) {
+            QuestionBanner()
             GlassCard(padding = 14.dp) {
                 SegmentedPicker(FingerMode.entries, mode, { it.label }) { mode = it }
                 if (mode == FingerMode.SEVERAL) StepperRow("选出 $pickCount 人", pickCount, 2..8) { pickCount = it }
@@ -669,17 +680,6 @@ fun GeneratorsScreen() {
     }
 }
 
-private fun copyText(context: Context, text: String, sensitive: Boolean = false) {
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    val clip = ClipData.newPlainText("星匣", text)
-    if (sensitive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        // 标记为敏感内容，系统不会在剪贴板预览里显示密码
-        clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
-    }
-    clipboard.setPrimaryClip(clip)
-    Haptics.success()
-}
-
 private enum class ColorStyle(val label: String) { HARMONY("随机和谐"), ANALOGOUS("邻近色"), COMPLEMENTARY("互补色"), TRADITIONAL("中国传统色") }
 
 private fun hsvColor(h: Double, s: Double, v: Double): NamedColor {
@@ -791,7 +791,8 @@ private fun PasswordGenerator() {
         entropy < 80 -> 3
         else -> 4
     }
-    val levelColor = listOf(Color.Transparent, hex(0xEF4444), hex(0xF59E0B), hex(0x34D399), hex(0x22D3EE))[level]
+    // 弱、一般、强用语义的红、橙、绿，非常强用青色（与 iOS 一致）
+    val levelColor = listOf(Color.Transparent, palette.negative, palette.caution, palette.positive, palette.identity(hex(0x22D3EE)))[level]
 
     fun generate() {
         if (charset.isEmpty()) return
@@ -850,7 +851,7 @@ private fun PasswordGenerator() {
         ToggleRow("排除易混淆字符（0 O 1 l I）", noSimilar) { noSimilar = it }
     }
     BigActionButton("生成新密码", Icons.Rounded.Key, enabled = charset.isNotEmpty()) { generate() }
-    SecondaryText("使用系统加密级随机数生成，仅在本机生成，不会上传。", style = Fonts.caption)
+    SecondaryText("使用系统加密级随机数生成，仅在本机生成，不会上传。拷贝的密码 60 秒后会从剪贴板清除。", style = Fonts.caption)
 }
 
 private enum class NameStyle(val label: String) {
@@ -1093,7 +1094,7 @@ fun ScratchScreen() {
                     verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
                 ) {
                     Text(if (isBlank) "🙂" else "🎁", style = TextStyle(fontSize = 34.sp))
-                    Text(prize, style = Fonts.display(28, FontWeight.Black), color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 20.dp))
+                    Text(prize, style = Fonts.display(28, FontWeight.Black), color = if (isBlank) Color.White else palette.onAccent, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 20.dp))
                 }
                 val coatingAlpha by animateFloatAsState(if (revealed) 0f else 1f, tween(600), label = "coating")
                 if (coatingAlpha > 0f) {

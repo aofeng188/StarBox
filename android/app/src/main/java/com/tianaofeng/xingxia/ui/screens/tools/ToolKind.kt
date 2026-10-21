@@ -7,7 +7,10 @@ import androidx.compose.material.icons.rounded.Celebration
 import androidx.compose.material.icons.rounded.DonutLarge
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.MonetizationOn
+import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.PanTool
 import androidx.compose.material.icons.rounded.Redeem
 import androidx.compose.material.icons.rounded.Restaurant
@@ -17,6 +20,7 @@ import androidx.compose.material.icons.rounded.Tag
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.tianaofeng.xingxia.ui.nav.Routes
 import com.tianaofeng.xingxia.ui.theme.hex
 
 enum class ToolCategory(val label: String, val icon: ImageVector) {
@@ -57,11 +61,43 @@ enum class ToolKind(
     }
 }
 
+/**
+ * 可以收藏到首页「快捷工具」的入口：百宝箱里的工具，外加答案之书（与 iOS 的 FavoriteTool 一致）。
+ * 收藏列表（AppSettings.favoriteTools）里存的是 id：工具的 id，答案之书是 "answers"。
+ */
+data class FavoriteTool(
+    val id: String,
+    val label: String,
+    val subtitle: String,
+    val icon: ImageVector,
+    val colors: List<Color>,
+    val route: String,
+) {
+    companion object {
+        const val ANSWERS_ID = "answers"
+
+        private val answers = FavoriteTool(
+            ANSWERS_ID, "答案之书", "默念问题 · 翻开一页", Icons.Rounded.MenuBook, listOf(hex(0xF5B83D), hex(0xB45309)), Routes.ANSWERS,
+        )
+
+        private fun of(tool: ToolKind) = FavoriteTool(tool.id, tool.label, tool.subtitle, tool.icon, tool.colors, Routes.tool(tool))
+
+        /** 认不出的 id（已下线的工具）返回 null */
+        fun of(id: String): FavoriteTool? =
+            if (id == ANSWERS_ID) answers else ToolKind.of(id)?.takeIf { it.available }?.let { of(it) }
+
+        /** 收藏管理页里的全部候选，按百宝箱顺序 */
+        val all: List<FavoriteTool> get() = ToolKind.entries.filter { it.available }.map { of(it) } + answers
+    }
+}
+
 /** 历史记录里显示的工具名称和图标 */
 fun toolInfo(tool: String): Triple<String, ImageVector, List<Color>> {
     ToolKind.of(tool)?.let { return Triple(it.label, it.icon, it.colors) }
     return when (tool) {
         "stick" -> Triple("求签", Icons.Rounded.Celebration, listOf(hex(0xFF8A3D), hex(0xE11D48)))
+        "jiaobei" -> Triple("掷筊", Icons.Rounded.NightsStay, listOf(hex(0xEF4444), hex(0x9F1239)))
+        "nearby" -> Triple("附近餐厅", Icons.Rounded.LocationOn, listOf(hex(0xFF9F43), hex(0xFF4D6D)))
         "tarot" -> Triple("塔罗牌", Icons.Rounded.Style, listOf(hex(0x8B5CF6), hex(0x3B82F6)))
         "answers" -> Triple("答案之书", Icons.Rounded.AutoFixHigh, listOf(hex(0xF5B83D), hex(0xB45309)))
         else -> Triple("其他", Icons.Rounded.Casino, listOf(hex(0x94A3B8), hex(0x64748B)))

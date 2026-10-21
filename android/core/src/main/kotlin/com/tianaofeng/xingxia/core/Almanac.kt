@@ -71,6 +71,80 @@ class DayDeity(val index: Int) {
     }
 }
 
+/** 神煞：吉神（天德、天德合、月德、月德合、天赦日）与凶日（四绝日、四离日）。与 iOS 版 Shensha 一致。 */
+object Shensha {
+    /** 吉神；其余（四绝日、四离日）是凶日 */
+    val LUCKY = setOf("天德", "天德合", "月德", "月德合", "天赦日")
+
+    fun isLucky(name: String): Boolean = name in LUCKY
+
+    /** 黄历页上的简短解释 */
+    val NOTES = mapOf(
+        "天德" to "天之福德所临，诸事逢凶化吉。",
+        "天德合" to "与天德相合，吉庆同于天德。",
+        "月德" to "当月德神所在，宜祈福、修造。",
+        "月德合" to "与月德相合，百事顺遂。",
+        "天赦日" to "上天赦宥之日，宜祭祀、祈福、解除。",
+        "四绝日" to "四立前一天，旧季之气将绝，忌出行、嫁娶。",
+        "四离日" to "二分二至前一天，阴阳分离，忌出行、嫁娶。",
+    )
+
+    // 以下按节气月排列：下标 0 = 寅月（正月，立春起）… 11 = 丑月（十二月）
+    /** 天德：日干或日支与之相同 */
+    private val TIAN_DE = listOf("丁", "申", "壬", "辛", "亥", "甲", "癸", "寅", "丙", "乙", "巳", "庚")
+    /** 天德合：日干或日支与之相同 */
+    private val TIAN_DE_HE = listOf("壬", "巳", "丁", "丙", "寅", "己", "戊", "亥", "辛", "庚", "申", "乙")
+    /** 月德：寅午戌月丙、亥卯未月甲、申子辰月壬、巳酉丑月庚，比日干 */
+    private val YUE_DE = listOf("丙", "甲", "壬", "庚", "丙", "甲", "壬", "庚", "丙", "甲", "壬", "庚")
+    /** 月德合：寅午戌月辛、亥卯未月己、申子辰月丁、巳酉丑月乙，比日干 */
+    private val YUE_DE_HE = listOf("辛", "己", "丁", "乙", "辛", "己", "丁", "乙", "辛", "己", "丁", "乙")
+    /** 天赦：寅卯辰月戊寅、巳午未月甲午、申酉戌月戊申、亥子丑月甲子，下标 = 月序 / 3 */
+    private val TIAN_SHE = listOf("戊寅", "甲午", "戊申", "甲子")
+    private val DE = setOf("天德", "天德合", "月德", "月德合")
+
+    /**
+     * 某天的神煞，按天德、天德合、月德、月德合、天赦日、四绝日、四离日的顺序。
+     * monthIndex 为节气月序（与月柱相同，交节当天算新月），day 为日柱，
+     * tomorrowTerm 为次日（北京时间）交的节气名，没有则为 null。
+     */
+    fun of(monthIndex: Int, day: GanZhi, tomorrowTerm: String?): List<String> {
+        val m = Math.floorMod(monthIndex, 12)
+        val stem = day.stem.name
+        val branch = day.branch.name
+        val result = mutableListOf<String>()
+        if (TIAN_DE[m] == stem || TIAN_DE[m] == branch) result.add("天德")
+        if (TIAN_DE_HE[m] == stem || TIAN_DE_HE[m] == branch) result.add("天德合")
+        if (YUE_DE[m] == stem) result.add("月德")
+        if (YUE_DE_HE[m] == stem) result.add("月德合")
+        if (TIAN_SHE[m / 3] == day.name) result.add("天赦日")
+        if (tomorrowTerm != null) {
+            if (tomorrowTerm in listOf("立春", "立夏", "立秋", "立冬")) result.add("四绝日")
+            if (tomorrowTerm in listOf("春分", "夏至", "秋分", "冬至")) result.add("四离日")
+        }
+        return result
+    }
+
+    /**
+     * 按神煞调整宜忌（在建除、值神的处理之后），返回 (宜, 忌)。
+     * 原列表里没有的新项按规则顺序放在最前，原有项位置不变，整体去重。
+     */
+    fun adjust(yi: List<String>, ji: List<String>, shensha: List<String>): Pair<List<String>, List<String>> {
+        val addYi = mutableListOf<String>()
+        if (shensha.any { it in DE }) addYi.addAll(listOf("祈福", "求嗣"))
+        if ("天赦日" in shensha) addYi.addAll(listOf("祭祀", "祈福", "解除"))
+        var newYi = prepending(addYi, yi)
+        var newJi = ji
+        if ("四绝日" in shensha || "四离日" in shensha) {
+            newJi = prepending(listOf("出行", "嫁娶"), newJi)
+            newYi = newYi.filter { it != "出行" && it != "嫁娶" }
+        }
+        return newYi to newJi
+    }
+
+    private fun prepending(items: List<String>, list: List<String>): List<String> =
+        (items.filter { it !in list } + list).distinct()
+}
+
 /** 某一天的完整黄历 */
 class AlmanacDay(val key: DayKey) {
     val lunar: LunarDate = key.lunar()
@@ -83,6 +157,8 @@ class AlmanacDay(val key: DayKey) {
     val deity: DayDeity
     val yi: List<String>
     val ji: List<String>
+    /** 神煞标签（天德、月德、天赦日、四离日等），顺序见 Shensha.of */
+    val shensha: List<String>
     val festivals: List<String>
 
     init {
@@ -105,8 +181,13 @@ class AlmanacDay(val key: DayKey) {
             ji.add("大事勿用")
         }
         if (jianChu.index == 6) yi = listOf("求医", "治病", "破旧")
-        this.yi = yi
-        this.ji = ji
+
+        // 神煞：节气月 + 日柱；四绝、四离看次日（北京时间）是否交四立、二分二至
+        val tomorrowTerm = if (nextTerm.day == key.adding(1)) nextTerm.name else null
+        shensha = Shensha.of(monthIndex, day, tomorrowTerm)
+        val adjusted = Shensha.adjust(yi, ji, shensha)
+        this.yi = adjusted.first
+        this.ji = adjusted.second
         festivals = Festivals.on(key, lunar)
     }
 

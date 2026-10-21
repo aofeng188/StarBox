@@ -28,6 +28,9 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.hex
@@ -73,13 +76,17 @@ fun HapticsHost() {
     }
 }
 
-/** 摇一摇：加速度超过阈值时回调（受「摇一摇」设置控制）。 */
+/**
+ * 摇一摇：加速度超过阈值时回调（受「摇一摇」设置控制）。
+ * 只在页面处于前台（RESUMED）时监听：切到别的页面、退到后台、锁屏都会停止。
+ */
 @Composable
 fun OnShake(enabled: Boolean = true, onShake: () -> Unit) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val callback by rememberUpdatedState(onShake)
     val active = enabled && AppSettings.shakeEnabled
-    DisposableEffect(active) {
+    DisposableEffect(active, lifecycleOwner) {
         if (!active) return@DisposableEffect onDispose { }
         val manager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
         val sensor = manager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -97,8 +104,31 @@ fun OnShake(enabled: Boolean = true, onShake: () -> Unit) {
 
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
-        if (sensor != null) manager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME)
-        onDispose { manager?.unregisterListener(listener) }
+        var registered = false
+        fun register() {
+            if (!registered && sensor != null) {
+                registered = manager?.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME) == true
+            }
+        }
+        fun unregister() {
+            if (registered) {
+                manager?.unregisterListener(listener)
+                registered = false
+            }
+        }
+        // 添加观察者时会补发到当前状态为止的事件，已经 RESUMED 的页面会立刻注册
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> register()
+                Lifecycle.Event.ON_PAUSE -> unregister()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            unregister()
+        }
     }
 }
 
@@ -112,6 +142,11 @@ fun Confetti(trigger: Int, modifier: Modifier = Modifier, count: Int = 90) {
     var t by remember { mutableStateOf(0.0) }
     LaunchedEffect(trigger) {
         if (trigger == 0) return@LaunchedEffect
+        // 系统关闭了动画时不放彩带（与 iOS 的「减弱动态效果」一致）
+        if (isReduceMotion()) {
+            particles = emptyList()
+            return@LaunchedEffect
+        }
         particles = List(count) {
             Particle(
                 angle = Random.nextDouble(-PI * 0.95, -PI * 0.05),

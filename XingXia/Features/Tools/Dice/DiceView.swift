@@ -28,7 +28,9 @@ final class DiceWorld {
 
         let camera = PerspectiveCamera()
         camera.camera.fieldOfViewInDegrees = 50
-        camera.look(at: [0, 0, 0.02], from: [0, 0.84, 0.46], relativeTo: nil)
+        // 对准围栏中心、骰子半高处：骰子能停到的范围在画面里上下对称，停在中央的骰子正好在画面正中
+        let focus: SIMD3<Float> = [0, size / 2, 0]
+        camera.look(at: focus, from: focus + [0, 0.84, 0.44], relativeTo: nil)
         root.addChild(camera)
 
         // 主光 + 阴影
@@ -117,15 +119,28 @@ final class DiceWorld {
         return die
     }
 
+    /// 第 index 颗骰子的摆放格位：每行最多三颗，每行各自左右居中
+    private static func slot(_ index: Int, of count: Int) -> (column: Float, row: Int, rows: Int) {
+        let row = index / 3
+        let inRow = min(3, count - row * 3)
+        return (Float(index % 3) - Float(inRow - 1) / 2, row, (count + 2) / 3)
+    }
+
     func setCount(_ count: Int) {
         while dice.count < count {
             let die = makeDie()
-            die.position = [Float(dice.count % 3 - 1) * 0.14, size / 2 + 0.001, Float(dice.count / 3) * 0.15 - 0.05]
             root.addChild(die)
             dice.append(die)
         }
         while dice.count > count {
             dice.removeLast().removeFromParent()
+        }
+        // 重新整齐摆在桌面正中，新加的骰子也不会和停在原处的骰子重叠
+        for (index, die) in dice.enumerated() {
+            let slot = Self.slot(index, of: dice.count)
+            die.position = [slot.column * 0.14, size / 2 + 0.001, (Float(slot.row) - Float(slot.rows - 1) / 2) * 0.15]
+            die.orientation = simd_quatf(angle: 0, axis: [0, 1, 0])
+            die.components.set(PhysicsMotionComponent(linearVelocity: .zero, angularVelocity: .zero))
         }
     }
 
@@ -135,15 +150,14 @@ final class DiceWorld {
         rollTime = 0
         stillFrames = 0
         lastTransforms = []
-        let columns = min(3, dice.count)
         for (index, die) in dice.enumerated() {
             // 最多三列，多出来的叠在上一层，避免初始位置互相穿插
-            let column = Float(index % 3) - Float(columns - 1) / 2
-            let row = Float(index / 3)
-            die.position = [column * 0.14 + Float.random(in: -0.02...0.02), 0.26 + row * 0.15, 0.18 + Float.random(in: -0.03...0.03)]
+            let slot = Self.slot(index, of: dice.count)
+            die.position = [slot.column * 0.14 + Float.random(in: -0.02...0.02), 0.26 + Float(slot.row) * 0.15, 0.18 + Float.random(in: -0.03...0.03)]
             die.orientation = simd_quatf(angle: Float.random(in: 0...(2 * .pi)), axis: simd_normalize([Float.random(in: -1...1), Float.random(in: -1...1), Float.random(in: -1...1)] + [0.001, 0, 0]))
+            // 从靠近镜头的一侧往里抛；这个力度下骰子平均停在桌面中央，而不是堆到里侧围栏边
             die.components.set(PhysicsMotionComponent(
-                linearVelocity: [Float.random(in: -0.5...0.5), -0.5, Float.random(in: -1.1 ... -0.55)],
+                linearVelocity: [Float.random(in: -0.5...0.5), -0.5, Float.random(in: -0.75 ... -0.35)],
                 angularVelocity: [Float.random(in: -22...22), Float.random(in: -22...22), Float.random(in: -22...22)]
             ))
         }
@@ -236,30 +250,40 @@ struct DiceView: View {
     @State private var isRolling = false
     @State private var history: [[Int]] = []
     @State private var revealCount = 0
+    /// 结果里的骰子图标和合计跟着字号放大，封顶 1.6 倍
+    @ScaledMetric(relativeTo: .title) private var resultSize: CGFloat = 34
 
     var body: some View {
         StageScaffold(spacing: 14) {
-            // 结果
-            HStack(spacing: 10) {
+            QuestionBanner()
+            // 结果。大字号下一行放不下六颗骰子加合计时，合计换到下一行，再放不下就每行三颗
+            Group {
                 if results.isEmpty || isRolling {
                     Text(isRolling ? "骰子滚动中…" : "点按桌面或摇一摇掷骰子")
                         .font(.headline)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 } else {
-                    ForEach(Array(results.enumerated()), id: \.offset) { _, value in
-                        Image(systemName: "die.face.\(value).fill")
-                            .font(.system(size: 34))
-                            .foregroundStyle(value == 1 || value == 4 ? Color(hex: 0xEF4444) : .primary)
-                    }
-                    if results.count > 1 {
-                        Text("= \(results.reduce(0, +))")
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
-                            .foregroundStyle(palette.accentGradient)
-                            .contentTransition(.numericText())
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 10) {
+                            dice(results)
+                            total
+                        }
+                        VStack(spacing: 4) {
+                            HStack(spacing: 10) { dice(results) }
+                            total
+                        }
+                        VStack(spacing: 4) {
+                            HStack(spacing: 10) { dice(Array(results.prefix(3))) }
+                            if results.count > 3 {
+                                HStack(spacing: 10) { dice(Array(results.dropFirst(3))) }
+                            }
+                            total
+                        }
                     }
                 }
             }
-            .frame(height: 50)
+            .frame(minHeight: 50)
             .keyframeAnimator(initialValue: 1.0, trigger: revealCount) { view, scale in
                 view.scaleEffect(scale)
             } keyframes: { _ in
@@ -267,7 +291,7 @@ struct DiceView: View {
                 SpringKeyframe(1, duration: 0.4, spring: .bouncy)
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(results.isEmpty ? "还没有结果" : "点数 \(results.map(String.init).joined(separator: "、"))，合计 \(results.reduce(0, +))")
+            .accessibilityLabel(results.isEmpty ? "还没有结果" : Self.spoken(results))
         } stage: {
             RealityView { content in
                 world.build(into: &content, feltColor: UIColor(palette.isDark ? palette.backgroundBottom : palette.accent.opacity(0.85)))
@@ -303,7 +327,11 @@ struct DiceView: View {
                                 .glassEffect(.regular, in: .capsule)
                         }
                     }
+                    .padding(.horizontal, 16)
                 }
+                // 横条铺到屏幕边缘，还有内容的那端渐隐，提示还能滑动
+                .fadingScrollEdges(16)
+                .pageBleed()
             }
         }
         .padding(.bottom, 12)
@@ -313,8 +341,31 @@ struct DiceView: View {
         .onShake { roll() }
     }
 
+    private var resultIconSize: CGFloat { min(resultSize, 34 * 1.6) }
+
+    /// 结果里的骰子图标：一点和四点用（向主题色靠过的）传统红
+    @ViewBuilder
+    private func dice(_ values: [Int]) -> some View {
+        ForEach(Array(values.enumerated()), id: \.offset) { _, value in
+            Image(systemName: "die.face.\(value).fill")
+                .font(.system(size: resultIconSize))
+                .foregroundStyle(value == 1 || value == 4 ? palette.identity(Color(hex: 0xEF4444)) : .primary)
+        }
+    }
+
+    @ViewBuilder
+    private var total: some View {
+        if results.count > 1 {
+            Text("= \(results.reduce(0, +))")
+                .font(.system(size: resultIconSize, weight: .bold, design: .rounded))
+                .foregroundStyle(palette.accentGradient)
+                .contentTransition(.numericText())
+        }
+    }
+
     private func roll() {
-        guard !isRolling else { return }
+        // 场景还没建好（刚进页面就摇）时 world.roll() 什么也不做，也就不会回调 settled，别把按钮卡在「滚动中」
+        guard !isRolling, !world.dice.isEmpty else { return }
         isRolling = true
         SoundEngine.shared.play(.whoosh, volume: 0.5)
         Haptics.rattle(count: 5)
@@ -328,8 +379,15 @@ struct DiceView: View {
         history.append(values)
         if history.count > 12 { history.removeFirst() }
         Haptics.success()
+        Announce.post(Self.spoken(values))
         let total = values.reduce(0, +)
         HistoryLog.add(context, tool: ToolKind.dice.rawValue, title: "\(values.count) 颗",
                        result: values.count > 1 ? "\(values.map(String.init).joined(separator: "+")) = \(total)" : "\(total) 点")
+    }
+
+    /// 读屏用的结果：「点数 3、5，合计 8」，只有一颗时是「点数 3」
+    private static func spoken(_ values: [Int]) -> String {
+        let points = "点数 \(values.map(String.init).joined(separator: "、"))"
+        return values.count > 1 ? "\(points)，合计 \(values.reduce(0, +))" : points
     }
 }

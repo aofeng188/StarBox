@@ -68,7 +68,8 @@ struct HoroscopeWidgetView: View {
                             .frame(height: 5)
                         }
                     }
-                    Text("速配 \(h.matchSign.name) · 幸运色 \(h.luckyColor.name)").font(.caption2).foregroundStyle(.secondary)
+                    Text("速配 \(h.matchSign.name) · 星座幸运色 \(h.luckyColor.name)")
+                        .font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
                 }
             }
             .widgetURL(URL(string: "xingxia://horoscope"))
@@ -96,13 +97,14 @@ struct HoroscopeWidgetView: View {
                     .font(.system(size: 9))
             }
         }
-        .foregroundStyle(.yellow)
+        // 浅色模式下亮黄色星星几乎看不见，用按深浅模式调整过的金色
+        .foregroundStyle(Color.gold(scheme))
     }
 }
 
 struct HoroscopeWidget: Widget {
     var body: some WidgetConfiguration {
-        AppIntentConfiguration(kind: "XingXiaHoroscope", intent: HoroscopeConfigIntent.self, provider: HoroscopeProvider()) { entry in
+        AppIntentConfiguration(kind: WidgetKinds.horoscope, intent: HoroscopeConfigIntent.self, provider: HoroscopeProvider()) { entry in
             HoroscopeWidgetView(entry: entry)
                 .containerBackground(for: .widget) { WidgetCosmicBackground() }
         }

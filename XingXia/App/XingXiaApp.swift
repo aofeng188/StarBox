@@ -17,6 +17,8 @@ struct XingXiaApp: App {
             fatalError("无法打开数据库：\(error)")
         }
         SeedData.insertIfNeeded(into: container.mainContext)
+        // App Intents（Siri、小组件按钮）在 App 进程里运行时共用这一个容器，写入能立刻出现在界面上
+        SharedStore.use(container)
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
     }
 

@@ -9,7 +9,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,6 +61,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -94,9 +94,13 @@ import com.tianaofeng.xingxia.ui.components.SectionHeader
 import com.tianaofeng.xingxia.ui.components.SegmentedPicker
 import com.tianaofeng.xingxia.ui.components.StepperRow
 import com.tianaofeng.xingxia.ui.components.ToggleRow
+import com.tianaofeng.xingxia.ui.components.fadingHorizontalScroll
 import com.tianaofeng.xingxia.ui.components.glass
 import com.tianaofeng.xingxia.ui.components.pressable
 import com.tianaofeng.xingxia.ui.components.weight
+import com.tianaofeng.xingxia.ui.screens.ask.PrefillQuestion
+import com.tianaofeng.xingxia.ui.screens.ask.QuestionBanner
+import com.tianaofeng.xingxia.ui.screens.ask.keepClearOfDecisionPrompt
 import com.tianaofeng.xingxia.ui.screens.divination.GlassTextField
 import com.tianaofeng.xingxia.ui.theme.LocalPalette
 import com.tianaofeng.xingxia.ui.theme.hex
@@ -111,6 +115,7 @@ import kotlin.math.sin
 @Composable
 fun CoinScreen() {
     val palette = LocalPalette.current
+    val view = LocalView.current
     val scope = rememberCoroutineScope()
     var heads by Prefs.int("coin.heads", 0)
     var tails by Prefs.int("coin.tails", 0)
@@ -147,11 +152,14 @@ fun CoinScreen() {
             if (isHeads) heads++ else tails++
             streak = if (last == isHeads) streak + 1 else 1
             last = isHeads
+            view.announceForAccessibility(if (isHeads) "正面" else "反面")
             Store.log(ToolKind.COIN.id, question, if (isHeads) "正面" else "反面")
         }
     }
 
     OnShake { flip() }
+    // 从问一问带着问题进来时预填进问题框
+    PrefillQuestion(question) { question = it }
 
     Screen(title = "抛硬币", horizontalAlignment = Alignment.CenterHorizontally) {
         GlassTextField(question, "想决定什么？（可选）") { question = it }
@@ -197,21 +205,23 @@ fun CoinScreen() {
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            StatPill("正面", heads, heads + tails, hex(0xF5B83D), Modifier.weight(1f))
-            StatPill("反面", tails, heads + tails, hex(0x94A3B8), Modifier.weight(1f))
+            StatPill("正面", heads, heads + tails, palette.identity(hex(0xF5B83D)), Modifier.weight(1f))
+            StatPill("反面", tails, heads + tails, palette.identity(hex(0x94A3B8)), Modifier.weight(1f))
             CircleIconButton(Icons.Rounded.Refresh, "清空统计", size = 44.dp) {
                 heads = 0
                 tails = 0
                 streak = 0
             }
         }
-        BigActionButton("抛硬币", Icons.Rounded.TouchApp, enabled = !flipping) { flip() }
+        // 连抛时「就这么办」浮层不盖住这个按钮
+        BigActionButton("抛硬币", Icons.Rounded.TouchApp, enabled = !flipping, modifier = Modifier.keepClearOfDecisionPrompt()) { flip() }
     }
 }
 
-/** 绕水平轴翻转的硬币，自带厚度 */
+/** 绕水平轴翻转的硬币，自带厚度。硬币保留金色，但向主题强调色靠一点 */
 @Composable
 private fun CoinView(angle: Float, modifier: Modifier) {
+    val palette = LocalPalette.current
     val radians = Math.toRadians(angle.toDouble())
     val c = cos(radians).toFloat()
     val front = c >= 0
@@ -227,7 +237,7 @@ private fun CoinView(angle: Float, modifier: Modifier) {
                     translationY = (if (front) thickness / 2 else -thickness / 2) * density
                 }
                 .clip(CircleShape)
-                .background(Brush.horizontalGradient(listOf(hex(0x8A6A12), hex(0xC9A227), hex(0x6B4F0E)))),
+                .background(Brush.horizontalGradient(palette.identity(listOf(hex(0x8A6A12), hex(0xC9A227), hex(0x6B4F0E))))),
         )
         Box(
             Modifier
@@ -242,16 +252,18 @@ private fun CoinView(angle: Float, modifier: Modifier) {
 
 @Composable
 private fun CoinFace(isFront: Boolean, brightness: Float) {
-    val ink = hex(0x7A5A0E)
+    val palette = LocalPalette.current
+    val ink = palette.identity(hex(0x7A5A0E))
+    val edge = palette.identity(hex(0x8A6A12))
     Box(
         Modifier
             .fillMaxSize()
             .clip(CircleShape)
-            .background(Brush.radialGradient(listOf(hex(0xFFF1B8), hex(0xF2C94C), hex(0xB8862E))))
+            .background(Brush.radialGradient(palette.identity(listOf(hex(0xFFF1B8), hex(0xF2C94C), hex(0xB8862E)))))
             .drawBehind {
-                drawCircle(hex(0x8A6A12, 0.6f), size.minDimension / 2 - 7.dp.toPx(), style = Stroke(6.dp.toPx()))
+                drawCircle(edge.copy(alpha = 0.6f), size.minDimension / 2 - 7.dp.toPx(), style = Stroke(6.dp.toPx()))
                 drawCircle(
-                    hex(0x8A6A12, 0.5f), size.minDimension / 2 - 16.dp.toPx(),
+                    edge.copy(alpha = 0.5f), size.minDimension / 2 - 16.dp.toPx(),
                     style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 4.dp.toPx()))),
                 )
                 if (brightness < 1f) drawCircle(Color.Black.copy(alpha = 1f - brightness))
@@ -285,6 +297,7 @@ fun StatPill(title: String, value: Int, total: Int, color: Color, modifier: Modi
 @Composable
 fun DiceScreen() {
     val palette = LocalPalette.current
+    val view = LocalView.current
     val scope = rememberCoroutineScope()
     var count by Prefs.int("dice.count", 2)
     val faces = remember { mutableStateListOf<Int>() }
@@ -321,6 +334,9 @@ fun DiceScreen() {
             history.add(final)
             if (history.size > 12) history.removeAt(0)
             val total = final.sum()
+            // 读屏：「点数 3、5，合计 8」，一颗时「点数 3」
+            val points = "点数 ${final.joinToString("、")}"
+            view.announceForAccessibility(if (final.size > 1) "$points，合计 $total" else points)
             Store.log(ToolKind.DICE.id, "${final.size} 颗", if (final.size > 1) "${final.joinToString("+")} = $total" else "$total 点")
         }
     }
@@ -328,6 +344,7 @@ fun DiceScreen() {
     OnShake { roll() }
 
     Screen(title = "骰子", horizontalAlignment = Alignment.CenterHorizontally) {
+        QuestionBanner()
         Box(Modifier.height(50.dp), contentAlignment = Alignment.Center) {
             if (!settled || rolling) {
                 SecondaryText(if (rolling) "骰子滚动中…" else "点按桌面或摇一摇掷骰子", style = Fonts.headline)
@@ -356,7 +373,8 @@ fun DiceScreen() {
                 .pressable { roll() },
             contentAlignment = Alignment.Center,
         ) {
-            Flow(spacing = 22.dp, modifier = Modifier.padding(24.dp)) {
+            // 4、5 颗时第二行不满，也要居中
+            Flow(spacing = 22.dp, modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 faces.forEachIndexed { i, value ->
                     DieFace(
                         value,
@@ -374,9 +392,9 @@ fun DiceScreen() {
         GlassCard(padding = 14.dp) {
             StepperRow("骰子 $count 颗", count, 1..6) { if (!rolling) count = it }
         }
-        BigActionButton("掷骰子", Icons.Rounded.Casino, enabled = !rolling) { roll() }
+        BigActionButton("掷骰子", Icons.Rounded.Casino, enabled = !rolling, modifier = Modifier.keepClearOfDecisionPrompt()) { roll() }
         if (history.isNotEmpty()) {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fadingHorizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (values in history.reversed()) {
                     Text(
                         "${values.joinToString("+")}=${values.sum()}",
@@ -391,9 +409,10 @@ fun DiceScreen() {
     }
 }
 
-/** 传统中式骰子：一点和四点是红色 */
+/** 传统中式骰子：一点和四点是红色（向主题强调色靠一点） */
 @Composable
 fun DieFace(value: Int, modifier: Modifier = Modifier) {
+    val pipRed = LocalPalette.current.identity(Color(0xFFDB1F29))
     Canvas(modifier) {
         val side = size.minDimension
         drawRoundRect(Color(0xFFF7F7F7), cornerRadius = CornerRadius(side * 0.18f))
@@ -410,7 +429,7 @@ fun DieFace(value: Int, modifier: Modifier = Modifier) {
             listOf(a to a, a to b, a to c, c to a, c to b, c to c),
         )
         val red = value == 1 || value == 4
-        val color = if (red) Color(0xFFDB1F29) else Color(0xFF1F2133)
+        val color = if (red) pipRed else Color(0xFF1F2133)
         val radius = side * if (value == 1) 0.17f else 0.09f
         for ((x, y) in layout[(value - 1).coerceIn(0, 5)]) {
             val center = Offset(x * side, y * side)
@@ -570,7 +589,7 @@ private fun NumberField(title: String, value: String, modifier: Modifier, onChan
 private fun BallView(value: Int, special: Boolean, lottery: Boolean) {
     val palette = LocalPalette.current
     val colors = if (lottery) {
-        if (special) listOf(hex(0x60A5FA), hex(0x1D4ED8)) else listOf(hex(0xF87171), hex(0xB91C1C))
+        palette.identity(if (special) listOf(hex(0x60A5FA), hex(0x1D4ED8)) else listOf(hex(0xF87171), hex(0xB91C1C)))
     } else {
         listOf(palette.accent, palette.accentSecondary)
     }
@@ -582,7 +601,8 @@ private fun BallView(value: Int, special: Boolean, lottery: Boolean) {
             .padding(horizontal = if (value > 999) 8.dp else 0.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(if (lottery) "%02d".format(value) else "$value", style = Fonts.title3.weight(FontWeight.Bold), color = Color.White)
+        // 彩票球是深红 / 深蓝底；普通模式压在 accent 上，深色主题用深字
+        Text(if (lottery) "%02d".format(value) else "$value", style = Fonts.title3.weight(FontWeight.Bold), color = if (lottery) Color.White else palette.onAccent)
     }
 }
 
@@ -601,9 +621,13 @@ private enum class Hand(val emoji: String, val label: String) {
 
 private enum class Match(val label: String, val target: Int?) { FREE("自由对战", null), BO3("三局两胜", 2), BO5("五局三胜", 3) }
 
+/** 结果文字的语义，颜色按深浅模式在绘制时取 */
+private enum class RpsTone { NEUTRAL, WIN, LOSE, CHAMPION }
+
 @Composable
 fun RpsScreen() {
     val palette = LocalPalette.current
+    val view = LocalView.current
     val scope = rememberCoroutineScope()
     var wins by Prefs.int("rps.wins", 0)
     var losses by Prefs.int("rps.losses", 0)
@@ -618,7 +642,7 @@ fun RpsScreen() {
     var playing by remember { mutableStateOf(false) }
     var chant by remember { mutableStateOf("") }
     var resultText by remember { mutableStateOf("") }
-    var resultColor by remember { mutableStateOf(Color.Unspecified) }
+    var resultTone by remember { mutableStateOf(RpsTone.NEUTRAL) }
     var matchOver by remember { mutableStateOf(false) }
     var confetti by remember { mutableIntStateOf(0) }
     val history = remember { mutableStateListOf<Hand>() }
@@ -647,35 +671,39 @@ fun RpsScreen() {
     fun settle(mine: Hand, ai: Hand) {
         history.lastOrNull()?.let { transitions[it] = (transitions[it] ?: emptyList()) + mine }
         history.add(mine)
-        when (mine.outcome(ai)) {
+        val outcome = mine.outcome(ai)
+        when (outcome) {
             1 -> {
                 myScore++; wins++
-                resultText = "你赢了！"; resultColor = hex(0x34D399)
+                resultText = "你赢了！"; resultTone = RpsTone.WIN
                 SoundEngine.play(SoundEffect.SUCCESS)
                 Haptics.success()
             }
             -1 -> {
                 aiScore++; losses++
-                resultText = "你输了"; resultColor = hex(0xFB7185)
+                resultText = "你输了"; resultTone = RpsTone.LOSE
                 SoundEngine.play(SoundEffect.FAIL)
                 Haptics.error()
             }
             else -> {
                 draws++
-                resultText = "平局"; resultColor = palette.secondaryText
+                resultText = "平局"; resultTone = RpsTone.NEUTRAL
                 SoundEngine.play(SoundEffect.TAP)
                 Haptics.tap()
             }
         }
+        var announcement = "你出${mine.label}，星匣出${ai.label}，" + listOf("你输了", "平局", "你赢了")[outcome + 1]
         val target = match.target
         if (target != null && (myScore >= target || aiScore >= target)) {
             matchOver = true
             val won = myScore > aiScore
             resultText = if (won) "🏆 你赢下了比赛！" else "星匣赢下了比赛"
-            resultColor = if (won) hex(0xFFD166) else hex(0xFB7185)
+            resultTone = if (won) RpsTone.CHAMPION else RpsTone.LOSE
             if (won) confetti++
+            announcement += "。$myScore 比 $aiScore，" + if (won) "你赢下了比赛" else "星匣赢下了比赛"
             Store.log(ToolKind.RPS.id, match.label, "$myScore : $aiScore ${if (won) "胜" else "负"}")
         }
+        view.announceForAccessibility(announcement)
     }
 
     fun play(hand: Hand) {
@@ -723,7 +751,12 @@ fun RpsScreen() {
             Text(
                 if (playing) chant else resultText,
                 style = Fonts.display(30, FontWeight.Black),
-                color = if (playing || resultColor == Color.Unspecified) palette.text else resultColor,
+                color = if (playing) palette.text else when (resultTone) {
+                    RpsTone.NEUTRAL -> palette.secondaryText
+                    RpsTone.WIN -> palette.positive
+                    RpsTone.LOSE -> palette.negative
+                    RpsTone.CHAMPION -> palette.gold
+                },
                 modifier = Modifier.height(44.dp),
             )
             if (matchOver) {
@@ -825,9 +858,11 @@ fun TruthDareScreen() {
         val isTruth = kind == "truth"
         val colors = when (kind) {
             null -> listOf(palette.accent, palette.accentSecondary)
-            "truth" -> listOf(hex(0x60A5FA), hex(0x8B5CF6))
-            else -> listOf(hex(0xF472B6), hex(0xEF4444))
+            "truth" -> palette.identity(listOf(hex(0x60A5FA), hex(0x8B5CF6)))
+            else -> palette.identity(listOf(hex(0xF472B6), hex(0xEF4444)))
         }
+        // 还没抽题时卡片是 accent 底，深色主题下 accent 偏亮，文字改用 onAccent
+        val ink = if (kind == null) palette.onAccent else Color.White
         Column(
             Modifier
                 .fillMaxWidth()
@@ -842,19 +877,19 @@ fun TruthDareScreen() {
             Text(
                 when (kind) { null -> "准备好了吗？"; "truth" -> "真心话"; else -> "大冒险" },
                 style = Fonts.headline,
-                color = Color.White.copy(alpha = 0.85f),
+                color = ink.copy(alpha = 0.85f),
             )
             Text(
                 if (kind == null) "选择真心话或大冒险，抽一道题" else prompt,
                 style = Fonts.title2,
-                color = Color.White,
+                color = ink,
                 textAlign = TextAlign.Center,
             )
-            if (kind != null) Text("尺度：${levels[level.coerceIn(0, 2)]}", style = Fonts.caption, color = Color.White.copy(alpha = 0.7f))
+            if (kind != null) Text("尺度：${levels[level.coerceIn(0, 2)]}", style = Fonts.caption, color = ink.copy(alpha = 0.7f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            ChoiceButton("真心话", Icons.Rounded.Forum, listOf(hex(0x60A5FA), hex(0x8B5CF6)), Modifier.weight(1f)) { draw("truth") }
-            ChoiceButton("大冒险", Icons.Rounded.LocalFireDepartment, listOf(hex(0xF472B6), hex(0xEF4444)), Modifier.weight(1f)) { draw("dare") }
+            ChoiceButton("真心话", Icons.Rounded.Forum, palette.identity(listOf(hex(0x60A5FA), hex(0x8B5CF6))), Modifier.weight(1f)) { draw("truth") }
+            ChoiceButton("大冒险", Icons.Rounded.LocalFireDepartment, palette.identity(listOf(hex(0xF472B6), hex(0xEF4444))), Modifier.weight(1f)) { draw("dare") }
         }
         if (isTruth || kind != null) SecondaryText("最近抽过的题目会尽量避开", style = Fonts.caption)
         val customCount = Store.customPrompts.items.size

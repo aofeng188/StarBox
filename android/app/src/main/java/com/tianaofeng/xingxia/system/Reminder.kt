@@ -18,6 +18,8 @@ import com.tianaofeng.xingxia.MainActivity
 import com.tianaofeng.xingxia.R
 import com.tianaofeng.xingxia.core.DayKey
 import com.tianaofeng.xingxia.core.FortuneEngine
+import com.tianaofeng.xingxia.core.SkyEvent
+import com.tianaofeng.xingxia.core.SkyEvents
 import com.tianaofeng.xingxia.data.AppSettings
 import com.tianaofeng.xingxia.data.Store
 import java.time.LocalDate
@@ -56,6 +58,24 @@ object ReminderScheduler {
         val millis = next.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         // 不需要精确闹钟权限；系统可能为省电推迟几分钟
         alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, millis, intent)
+    }
+
+    /**
+     * 每天零点过 5 秒刷新一次小组件，并在收到后排下一天。
+     * DATE_CHANGED 在 Android 8+ 不再发给静态 receiver；用非唤醒闹钟，设备醒着或下次亮屏时触发即可。
+     * 用 setWindow 给出 10 分钟窗口：setAndAllowWhileIdle 的默认窗口在 Android 8–11 上可达距触发时间的 3/4，
+     * 白天排的闹钟可能拖到凌晨好几点才响。窗口内的闹钟不需要精确闹钟权限。
+     */
+    fun scheduleDayChange(context: Context) {
+        val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = PendingIntent.getBroadcast(
+            context, 2,
+            Intent(context, DayChangeReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val next = LocalDate.now().plusDays(1).atTime(0, 0, 5)
+        val millis = next.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        alarm.setWindow(AlarmManager.RTC, millis, 10 * 60 * 1000L, intent)
     }
 
     fun ensureChannel(context: Context) {
@@ -99,6 +119,112 @@ object ReminderScheduler {
     }
 }
 
+/**
+ * 天象提醒：满月、新月、流星雨极大的前一天晚上 20:00（本地时间），与每日运势提醒互不影响。
+ * 标题、正文和提醒时间与 iOS 的 NotificationScheduler 相同。和每日提醒一样只排下一次：
+ * 到点时由 [SkyReminderReceiver] 发出当天该提醒的天象，再排下一次。
+ */
+object SkyReminders {
+    private const val CHANNEL_ID = "sky-events"
+    private const val REQUEST_CODE = 3
+    private const val EXTRA_DAY = "remindDay"
+    private val KINDS = setOf(SkyEvent.Kind.NEW_MOON, SkyEvent.Kind.FULL_MOON, SkyEvent.Kind.METEOR_SHOWER)
+
+    /** 一条提醒：remindDay 是天象前一天，当晚 20:00 提醒 */
+    class Item(val event: SkyEvent, val remindDay: DayKey, val title: String, val body: String) {
+        val fireAt: LocalDateTime get() = remindDay.localDate.atTime(20, 0)
+    }
+
+    /** 从 today 起未来 30 天内要发的提醒（含今晚已经过点的，由调用方按时间筛） */
+    fun items(today: DayKey = DayKey.today): List<Item> {
+        val events = SkyEvents.upcoming(today, 31)
+        return events.filter { it.kind in KINDS }.mapNotNull { event ->
+            val remindDay = event.day.adding(-1)
+            if (today.daysTo(remindDay) !in 0 until 30) return@mapNotNull null
+            val title = "明天${event.title}" + if (event.kind == SkyEvent.Kind.METEOR_SHOWER) "极大" else ""
+            // 同一天有日月食时一并提醒
+            val eclipses = events.filter { it.kind == SkyEvent.Kind.ECLIPSE && it.day == event.day }
+            val body = event.detail + eclipses.joinToString("") { "\n另有${it.title}：${it.detail}" }
+            Item(event, remindDay, title, body)
+        }
+    }
+
+    private fun pendingIntent(context: Context, remindDay: DayKey?): PendingIntent {
+        val intent = Intent(context, SkyReminderReceiver::class.java)
+        if (remindDay != null) intent.putExtra(EXTRA_DAY, remindDay.rawValue)
+        return PendingIntent.getBroadcast(context, REQUEST_CODE, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
+    /** 重新排下一次天象提醒（开关变化、开机、提醒触发后调用） */
+    fun reschedule(context: Context) {
+        val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        alarm.cancel(pendingIntent(context, null))
+        if (!AppSettings.skyReminders) return
+        val now = LocalDateTime.now()
+        val next = items().filter { it.fireAt.isAfter(now) }.minByOrNull { it.fireAt } ?: return
+        val millis = next.fireAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val operation = pendingIntent(context, next.remindDay)
+        // 提醒可能排在几周后：Android 8–11 上非精确闹钟最多可推迟「距触发时间」的 3/4，过了提醒日 show() 就不发了。
+        // 这几个版本用精确闹钟（不需要权限）；Android 12 起非精确闹钟在触发后一小时内送达，且精确闹钟要单独授权
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, millis, operation)
+        } else {
+            alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, millis, operation)
+        }
+    }
+
+    private fun ensureChannel(context: Context) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        if (manager.getNotificationChannel(CHANNEL_ID) == null) {
+            manager.createNotificationChannel(
+                NotificationChannel(CHANNEL_ID, "天象提醒", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = "满月、新月和流星雨极大的前一天晚上提醒"
+                },
+            )
+        }
+    }
+
+    /** 发出 remindDay 当晚的天象提醒。过了那一天才收到（例如设备关机）就不发，免得「明天」说错 */
+    fun show(context: Context, remindDayRaw: Int) {
+        if (!AppSettings.skyReminders || !ReminderScheduler.hasPermission(context)) return
+        val today = DayKey.today
+        if (today.rawValue != remindDayRaw) return
+        val due = items(today).filter { it.remindDay == today }
+        if (due.isEmpty()) return
+        ensureChannel(context)
+        for (item in due) {
+            val code = item.event.id.hashCode()
+            val open = PendingIntent.getActivity(
+                context, code,
+                Intent(Intent.ACTION_VIEW, Uri.parse("xingxia://sky"), context, MainActivity::class.java),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle(item.title)
+                .setContentText(item.body)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(item.body))
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .build()
+            try {
+                NotificationManagerCompat.from(context).notify(code, notification)
+            } catch (_: SecurityException) {
+                // 用户撤销了通知权限
+            }
+        }
+    }
+
+    internal fun remindDay(intent: Intent): Int = intent.getIntExtra(EXTRA_DAY, 0)
+}
+
+class SkyReminderReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        SkyReminders.show(context, SkyReminders.remindDay(intent))
+        SkyReminders.reschedule(context)
+    }
+}
+
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         ReminderScheduler.showToday(context)
@@ -106,10 +232,22 @@ class ReminderReceiver : BroadcastReceiver() {
     }
 }
 
-/** 开机、时区或时间变化后重新排提醒，并刷新小组件 */
+/** 开机、时区或时间变化后重新排提醒和跨天刷新，并刷新小组件 */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         ReminderScheduler.reschedule(context)
-        Widgets.updateAll(context)
+        SkyReminders.reschedule(context)
+        ReminderScheduler.scheduleDayChange(context)
+        val pending = goAsync()
+        Widgets.updateAll(context) { pending.finish() }
+    }
+}
+
+/** 过了零点：刷新小组件（运势、星座、倒数日都换成新的一天），再排下一天 */
+class DayChangeReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        ReminderScheduler.scheduleDayChange(context)
+        val pending = goAsync()
+        Widgets.updateAll(context) { pending.finish() }
     }
 }
